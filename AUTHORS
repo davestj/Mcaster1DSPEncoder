@@ -1,0 +1,36 @@
+Mcaster1DSPEncoder — Authors and Attribution
+==============================================
+
+Maintainer
+----------
+Dave St. John <davestj@gmail.com>
+  https://github.com/davestj
+  Fork maintainer, VS2022 modernization, codec expansion, PortAudio
+  integration, YAML configuration system, ICY 2.1 protocol work,
+  ResizableLib UI modernization, Mcaster1 ecosystem integration.
+
+Original Author — EdCast / Oddsock / AltaCast lineage
+------------------------------------------------------
+Ed Zaleski <ed@oddsock.org>
+  https://www.oddsock.org/
+  Author of the original Oddcast/EdCast DSP encoder suite on which this
+  project is based. Architect of the core streaming engine, multi-encoder
+  thread model, ICY/YP metadata handling, and the original Win32 MFC
+  application framework.
+
+  Ed Zaleski mentored Dave St. John in C/C++ and MFC Windows programming
+  beginning in 2001, contributing directly to the early Castit broadcast
+  infrastructure project at casterclub.com. His guidance and architectural
+  input on backend streaming infrastructure were foundational to the
+  Mcaster1 ecosystem.
+
+AltaCast Fork
+-------------
+AltaCast was an intermediate fork of EdCast maintained by Ed Zaleski
+and contributors at altacast.com. Mcaster1DSPEncoder inherits from the
+AltaCast codebase.
+
+Additional Credits
+------------------
+See CREDITS.md for full attribution history, dependency library credits,
+and the story behind the fork.

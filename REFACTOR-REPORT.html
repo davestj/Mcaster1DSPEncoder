@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mcaster1DSPEncoder — Refactor &amp; Development Roadmap</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --bg3: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #d29922;
+      --danger: #f85149;
+      --code-bg: #1c2128;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .page-wrap { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+
+    /* Header */
+    .report-header { border-bottom: 2px solid var(--accent); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    .report-header h1 { font-size: 2rem; color: #fff; margin-bottom: 0.25rem; }
+    .report-header .meta { color: var(--text-muted); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 0.5rem; }
+    .report-header .meta a { color: var(--accent); text-decoration: none; }
+    .report-header .meta a:hover { text-decoration: underline; }
+
+    /* TOC */
+    .toc { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem 1.5rem; margin-bottom: 2.5rem; }
+    .toc h2 { font-size: 1rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+    .toc ol { margin-left: 1.25rem; }
+    .toc li { margin: 0.3rem 0; }
+    .toc a { color: var(--accent); text-decoration: none; }
+    .toc a:hover { text-decoration: underline; }
+    .toc ul { margin-left: 1.25rem; }
+
+    /* Sections */
+    section { margin-bottom: 3rem; }
+    h2 { font-size: 1.55rem; color: #fff; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; margin: 2rem 0 1rem; }
+    h3 { font-size: 1.15rem; color: var(--accent); margin: 1.5rem 0 0.75rem; }
+    h4 { font-size: 1rem; color: var(--accent2); margin: 1.25rem 0 0.5rem; }
+    p { margin: 0.6rem 0; }
+
+    /* Badges */
+    .badge { display: inline-block; font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.55rem; border-radius: 20px; letter-spacing: 0.03em; vertical-align: middle; }
+    .badge-done   { background: rgba(63,185,80,0.18);  color: var(--accent2); border: 1px solid var(--accent2); }
+    .badge-next   { background: rgba(88,166,255,0.18); color: var(--accent);  border: 1px solid var(--accent); }
+    .badge-pend   { background: rgba(139,148,158,0.18); color: var(--text-muted); border: 1px solid var(--border); }
+    .badge-remove { background: rgba(248,81,73,0.18);  color: var(--danger);  border: 1px solid var(--danger); }
+
+    /* Tables */
+    .tbl-wrap { overflow-x: auto; margin: 1rem 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead tr { background: var(--bg3); }
+    th { text-align: left; padding: 0.6rem 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.06em; border-bottom: 2px solid var(--border); }
+    td { padding: 0.55rem 0.85rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    code { background: var(--code-bg); color: #e6edf3; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85em; font-family: "Cascadia Code","Fira Code",Consolas,"Courier New",monospace; }
+
+    /* Code blocks */
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; overflow-x: auto; margin: 1rem 0; font-size: 0.82rem; line-height: 1.55; font-family: "Cascadia Code","Fira Code",Consolas,"Courier New",monospace; color: #e6edf3; }
+
+    /* Callout boxes */
+    .callout { border-left: 4px solid; background: var(--bg2); border-radius: 0 6px 6px 0; padding: 0.85rem 1.1rem; margin: 1rem 0; font-size: 0.9rem; }
+    .callout-info    { border-color: var(--accent); }
+    .callout-warn    { border-color: var(--accent3); }
+    .callout-danger  { border-color: var(--danger); }
+    .callout-success { border-color: var(--accent2); }
+    .callout strong  { display: block; margin-bottom: 0.3rem; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .callout-info strong    { color: var(--accent); }
+    .callout-warn strong    { color: var(--accent3); }
+    .callout-danger strong  { color: var(--danger); }
+    .callout-success strong { color: var(--accent2); }
+
+    /* Checklist */
+    .checklist { list-style: none; margin: 0.75rem 0; }
+    .checklist li { padding: 0.3rem 0; color: var(--text-muted); display: flex; align-items: baseline; gap: 0.5rem; }
+    .checklist li::before { content: "\2610"; color: var(--border); font-size: 1rem; flex-shrink: 0; }
+
+    /* Category headers */
+    .audit-category { background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.8rem; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent3); margin: 1.5rem 0 0.5rem; display: inline-block; }
+
+    /* Phase cards */
+    .phase-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap: 1rem; margin: 1.25rem 0; }
+    .phase-card { background: var(--bg2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.1rem; }
+    .phase-card .phase-num { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+    .phase-card .phase-name { font-size: 1rem; font-weight: 600; color: #fff; margin: 0.2rem 0 0.5rem; }
+    .phase-card p { font-size: 0.82rem; color: var(--text-muted); margin: 0; }
+
+    footer { border-top: 1px solid var(--border); padding-top: 1.5rem; margin-top: 3rem; font-size: 0.8rem; color: var(--text-muted); text-align: center; }
+    footer a { color: var(--accent); text-decoration: none; }
+    ul.plain { margin-left: 1.25rem; line-height: 2; }
+    ol.plain { margin-left: 1.25rem; line-height: 2; }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- HEADER -->
+  <header class="report-header">
+    <h1>Mcaster1DSPEncoder &mdash; Refactor &amp; Development Roadmap</h1>
+    <div class="meta">
+      <span><strong>Fork of:</strong> EdCast/Oddsock DSP encoder by Ed Zaleski</span>
+      <span><strong>Maintainer:</strong> Dave St. John &lt;<a href="mailto:davestj@gmail.com">davestj@gmail.com</a>&gt;</span>
+      <span><strong>Repository:</strong> <a href="https://github.com/davestj/Mcaster1DSPEncoder" target="_blank">github.com/davestj/Mcaster1DSPEncoder</a></span>
+      <span><strong>Phase 1:</strong> <span class="badge badge-done">COMPLETE</span></span>
+      <span><strong>Phase 2:</strong> <span class="badge badge-done">COMPLETE</span></span>
+      <span><strong>Phase 3:</strong> <span class="badge badge-next">IN PROGRESS</span></span>
+      <span><strong>Last Updated:</strong> 2026-02</span>
+    </div>
+  </header>
+
+  <!-- TOC -->
+  <nav class="toc" id="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#overview">Project Overview</a></li>
+      <li><a href="#phase1">Phase 1 &mdash; VS2022 Build Fix <span class="badge badge-done">COMPLETE</span></a></li>
+      <li><a href="#phase2">Phase 2 &mdash; Rebrand &amp; Refactor <span class="badge badge-done">COMPLETE</span></a>
+        <ul>
+          <li><a href="#p2-naming">2.1 Naming Conventions</a></li>
+          <li><a href="#p2-audit">2.2 Deep Naming Audit &mdash; 150+ Instances</a></li>
+          <li><a href="#p2-dirs">2.3 File &amp; Directory Renames</a></li>
+          <li><a href="#p2-credits">2.4 Credits &amp; Attribution</a></li>
+          <li><a href="#p2-lame">2.5 MP3 &mdash; Replace BladeMP3 with Native LAME</a></li>
+          <li><a href="#p2-x64">2.6 Dual-Platform Build: x86 (Win32) and x64</a></li>
+          <li><a href="#p2-build">2.7 Build System Cleanup</a></li>
+          <li><a href="#p2-deliverables">2.8 Phase 2 Deliverables</a></li>
+          <li><a href="#p2-resizable">2.9 ResizableLib &amp; Dialog Modernization</a></li>
+        </ul>
+      </li>
+      <li><a href="#phase3">Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-next">IN PROGRESS</span></a>
+        <ul>
+          <li><a href="#p3-wma">3.1 Remove WMA / basswma.dll</a></li>
+          <li><a href="#p3-mp3">3.2 Dual MP3 Encoder Paths (LAME + ACM)</a></li>
+          <li><a href="#p3-opus">3.3 Opus Encoder</a></li>
+          <li><a href="#p3-aac">3.4 AAC-LC / HE-AAC via fdk-aac</a></li>
+          <li><a href="#p3-portaudio">3.5 Replace bass.dll with PortAudio (WASAPI + ASIO)</a></li>
+          <li><a href="#p3-parity">3.6 Format &amp; Device Parity Summary</a></li>
+          <li><a href="#p3-deliverables">3.7 Phase 3 Deliverables</a></li>
+        </ul>
+      </li>
+      <li><a href="#phase4">Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#phase5">Phase 5 &mdash; ICY 2.1 Enhanced Metadata Protocol <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#phase6">Phase 6 &mdash; Mcaster1DNAS Integration <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#phase7">Phase 7 &mdash; Mcaster1Castit <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#phase8">Phase 8 &mdash; Analytics, Metrics &amp; Platform Engagement <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#deps">Dependency Matrix</a></li>
+      <li><a href="#git">Git Repository Setup &amp; Release Tags</a></li>
+    </ol>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <h2>Project Overview</h2>
+    <p><strong>Mcaster1DSPEncoder</strong> is an open-source, multi-format audio streaming DSP encoder suite &mdash;
+    a maintained, modernized fork of the EdCast/Oddsock DSP encoder lineage. It ships as a plugin for Winamp, foobar2000, and RadioDJ,
+    and as a self-contained encoder application targeting Shoutcast and Icecast servers.</p>
+    <div class="phase-grid">
+      <div class="phase-card">
+        <div class="phase-num">Phase 1</div>
+        <div class="phase-name">VS2022 Build Fix</div>
+        <p>All 4 build targets compiling and running under VS2022 v143 toolset.</p>
+        <br/><span class="badge badge-done">COMPLETE</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 2</div>
+        <div class="phase-name">Rebrand &amp; Refactor</div>
+        <p>Full AltaCast &rarr; Mcaster1DSPEncoder rename, ResizableLib UI, Segoe UI, native LAME.</p>
+        <br/><span class="badge badge-done">COMPLETE</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 3</div>
+        <div class="phase-name">Audio Modernization</div>
+        <p>Dual MP3, Opus, HE-AAC via fdk-aac, WMA removed, PortAudio WASAPI+ASIO. Pending E2E verify.</p>
+        <br/><span class="badge badge-next">IN PROGRESS</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 4</div>
+        <div class="phase-name">YAML Multi-Station</div>
+        <p>YAML config, multi-station, per-station encoders + archive. libyaml ready in vcpkg.</p>
+        <br/><span class="badge badge-pend">PLANNED</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 5</div>
+        <div class="phase-name">ICY 2.1 Metadata</div>
+        <p>JSON metadata blocks, album art, track IDs, DNAS history API linkage, backward-compatible.</p>
+        <br/><span class="badge badge-pend">PLANNED</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 6</div>
+        <div class="phase-name">Mcaster1DNAS Integration</div>
+        <p>Auto-discovery, shared YAML config, live health feedback, song history push API.</p>
+        <br/><span class="badge badge-pend">PLANNED</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 7</div>
+        <div class="phase-name">Mcaster1Castit</div>
+        <p>Castit VC6 &rarr; VS2022: libxml2 / libcurl / libmariadb via vcpkg. Broadcast scheduler modernization.</p>
+        <br/><span class="badge badge-pend">PLANNED</span>
+      </div>
+      <div class="phase-card">
+        <div class="phase-num">Phase 8</div>
+        <div class="phase-name">Analytics &amp; Engagement</div>
+        <p>Listener metrics, tune-in/tune-out signals, platform engagement via ICY 2.1, Castit playlist optimization.</p>
+        <br/><span class="badge badge-pend">PLANNED</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PHASE 1 -->
+  <section id="phase1">
+    <h2>Phase 1 &mdash; VS2022 Build Fix <span class="badge badge-done">COMPLETE</span></h2>
+    <p>All issues blocking compilation under Visual Studio 2022 (v143 toolset, Windows 10 SDK) were resolved.
+    All 4 build targets compile cleanly and run without crashes.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Target</th><th>Output</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Core encoder library</td><td><code>libmcaster1dspencoder.lib</code></td><td><span class="badge badge-done">DONE</span></td></tr>
+          <tr><td>Winamp DSP plugin</td><td><code>dsp_mcaster1.dll</code></td><td><span class="badge badge-done">DONE</span></td></tr>
+          <tr><td>RadioDJ DSP plugin</td><td><code>dsp_mcaster1_radiodj.dll</code></td><td><span class="badge badge-done">DONE</span></td></tr>
+          <tr><td>foobar2000 component</td><td><code>foo_mcaster1.dll</code></td><td><span class="badge badge-done">DONE</span></td></tr>
+          <tr><td>Encoder application</td><td><code>Mcaster1DSPEncoder.exe</code></td><td><span class="badge badge-done">DONE</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h3>Fixes Applied</h3>
+    <ul class="plain">
+      <li><strong>foobar2000_SDK / helpers:</strong> Updated <code>_WIN32_WINNT=0x501</code> &rarr; <code>0x0601</code> to resolve <code>_REASON_CONTEXT</code> C2011 struct redefinition against Win10 SDK</li>
+      <li><strong>pfc/alloc.h:</strong> Fixed <code>alloc_fixed::alloc::move_from()</code> calling <code>pfc::copy_array_t()</code> on a type lacking <code>has_owned_items</code> &mdash; replaced with element-by-element copy loop</li>
+      <li><strong>foobar2000/SDK/guids.cpp:</strong> Overrode <code>FOOGUIDDECL</code> (<code>__declspec(selectany)</code>) with empty define so <code>class_guid</code> symbols become regular externals visible to <code>lib.exe</code>, resolving mass LNK2001</li>
+      <li><strong>All vcxproj files:</strong> Unified CRT/MFC runtime to consistent <code>/MD</code> (MultiThreadedDLL), eliminating <code>STATUS_STACK_BUFFER_OVERRUN</code> (0xC0000409) crash from mixed <code>/MT</code>+<code>/MD</code> build</li>
+    </ul>
+  </section>
+
+  <!-- PHASE 2 -->
+  <section id="phase2">
+    <h2>Phase 2 &mdash; Rebrand &amp; Refactor <span class="badge badge-done">COMPLETE</span></h2>
+    <p><strong>Goal:</strong> Complete renaming of every AltaCast identity in the codebase. No new features.
+    "Standalone" is dropped from all names &mdash; the application is self-contained by definition.</p>
+
+    <h3 id="p2-naming">2.1 Naming Conventions</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Old Name</th><th>New Name</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>altacastStandalone.exe</code></td><td><code>Mcaster1DSPEncoder.exe</code></td><td>Drop "Standalone" &mdash; implied</td></tr>
+          <tr><td><code>altacastStandalone.vcxproj</code></td><td><code>Mcaster1DSPEncoder.vcxproj</code></td><td></td></tr>
+          <tr><td><code>libaltacast/</code></td><td><code>libmcaster1dspencoder/</code></td><td>Rename directory</td></tr>
+          <tr><td><code>libaltacast.lib</code></td><td><code>libmcaster1dspencoder.lib</code></td><td></td></tr>
+          <tr><td><code>libaltacast.vcxproj</code></td><td><code>libmcaster1dspencoder.vcxproj</code></td><td></td></tr>
+          <tr><td><code>libaltacast.cpp</code> / <code>.h</code></td><td><code>libmcaster1dspencoder.cpp</code> / <code>.h</code></td><td></td></tr>
+          <tr><td><code>libaltacast_socket.*</code></td><td><code>libmcaster1dspencoder_socket.*</code></td><td></td></tr>
+          <tr><td><code>libaltacast_resample.*</code></td><td><code>libmcaster1dspencoder_resample.*</code></td><td></td></tr>
+          <tr><td><code>dsp_altacast.dll</code></td><td><code>dsp_mcaster1.dll</code></td><td>Winamp plugin</td></tr>
+          <tr><td><code>altacast_winamp.vcxproj</code></td><td><code>mcaster1_winamp.vcxproj</code></td><td></td></tr>
+          <tr><td><code>dsp_radiodj.dll</code></td><td><code>dsp_mcaster1_radiodj.dll</code></td><td>RadioDJ plugin</td></tr>
+          <tr><td><code>altacast_radiodj.vcxproj</code></td><td><code>mcaster1_radiodj.vcxproj</code></td><td></td></tr>
+          <tr><td><code>foo_altacast.dll</code></td><td><code>foo_mcaster1.dll</code></td><td>foobar2000 component</td></tr>
+          <tr><td><code>altacast_foobar.vcxproj</code></td><td><code>mcaster1_foobar.vcxproj</code></td><td></td></tr>
+          <tr><td><code>altacast.h</code></td><td><code>mcaster1dspencoder.h</code></td><td>Shared plugin header</td></tr>
+          <tr><td><code>altacast.rc</code></td><td><code>mcaster1dspencoder.rc</code></td><td>Shared resource file</td></tr>
+          <tr><td><code>altacastStandalone.sln</code></td><td><code>Mcaster1DSPEncoder.sln</code></td><td></td></tr>
+          <tr><td><code>altacaststandalone_N.cfg</code></td><td><code>mcaster1dspencoder.cfg</code></td><td>Already done</td></tr>
+          <tr><td><code>APP_NAME=altacast_*</code></td><td><code>APP_NAME=mcaster1_*</code></td><td>Preprocessor defines</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="p2-audit">2.2 Deep Naming Audit &mdash; All 150+ Instances</h3>
+    <p>Complete inventory of all instances requiring change, organized by category.</p>
+
+    <div class="audit-category">Category 1 &mdash; Class Names</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>CaltacastStandaloneApp</code></td><td><code>CMcaster1DSPEncoderApp</code></td><td><code>altacastStandalone.h:22</code></td></tr>
+          <tr><td><code>dsp_altacast</code> (class)</td><td><code>dsp_mcaster1</code></td><td><code>altacast_foobar.cpp:153,253</code></td></tr>
+          <tr><td><code>initquit_altacast</code></td><td><code>initquit_mcaster1</code></td><td><code>altacast_foobar.cpp:331</code></td></tr>
+          <tr><td><code>altacast_play_callback_ui</code></td><td><code>mcaster1_play_callback_ui</code></td><td><code>altacast_foobar.cpp:356</code></td></tr>
+          <tr><td><code>altacastGlobals</code> (struct)</td><td><code>mcaster1Globals</code></td><td><code>libaltacast/libaltacast.h</code> (all refs)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 2 &mdash; Function Names</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File(s)</th></tr></thead>
+        <tbody>
+          <tr><td><code>altacast_init(altacastGlobals *g)</code></td><td><code>mcaster1_init(mcaster1Globals *g)</code></td><td><code>MainWindow.cpp:28,401,954,1005,1274,1360</code></td></tr>
+          <tr><td><code>altacast_init(altacastGlobals *g)</code></td><td><code>mcaster1_init(mcaster1Globals *g)</code></td><td><code>altacastStandalone.cpp:60</code></td></tr>
+          <tr><td><code>altacast_init(altacastGlobals *g)</code></td><td><code>mcaster1_init(mcaster1Globals *g)</code></td><td><code>altacast_radiodj.cpp:110</code></td></tr>
+          <tr><td><code>altacast_init(altacastGlobals *g)</code></td><td><code>mcaster1_init(mcaster1Globals *g)</code></td><td><code>altacast_foobar.cpp:68</code></td></tr>
+          <tr><td><code>altacast_init(altacastGlobals *g)</code></td><td><code>mcaster1_init(mcaster1Globals *g)</code></td><td><code>altacast_winamp.cpp:110</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 3 &mdash; Preprocessor Defines &amp; Header Guards</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>#ifndef __DSP_ALTACAST_H</code></td><td><code>#ifndef __DSP_MCASTER1_H</code></td><td><code>libaltacast.h:1</code></td></tr>
+          <tr><td><code>#define __DSP_ALTACAST_H</code></td><td><code>#define __DSP_MCASTER1_H</code></td><td><code>libaltacast.h:2</code></td></tr>
+          <tr><td><code>FRONT_END_ALTACAST_PLUGIN 1</code></td><td><code>FRONT_END_MCASTER1_PLUGIN 1</code></td><td><code>libaltacast.h:110</code></td></tr>
+          <tr><td><code>AFX_ALTACASTSTANDALONE_H__*</code></td><td><code>AFX_MCASTER1DSPENCODER_H__*</code></td><td><code>altacastStandalone.h:4,5,50</code></td></tr>
+          <tr><td><code>#ifndef ALTACASTSTANDALONE</code></td><td><code>#ifndef MCASTER1DSPENCODER</code></td><td><code>EditMetadata.cpp:191</code></td></tr>
+          <tr><td><code>#ifdef ALTACASTSTANDALONE</code></td><td><code>#ifdef MCASTER1DSPENCODER</code></td><td><code>MainWindow.cpp:978,1061,1247</code></td></tr>
+          <tr><td><code>#ifndef ALTACASTSTANDALONE</code></td><td><code>#ifndef MCASTER1DSPENCODER</code></td><td><code>MainWindow.cpp:1482,1681</code></td></tr>
+          <tr><td><code>#ifdef altacastSTANDALONE</code></td><td><code>#ifdef MCASTER1DSPENCODER</code></td><td><code>libaltacast.cpp:3090</code></td></tr>
+          <tr><td><code>IDD_ALTACAST_CONFIG</code></td><td><code>IDD_MCASTER1_CONFIG</code></td><td><code>resource.h:7</code></td></tr>
+          <tr><td><code>IDD_ALTACAST 301</code></td><td><code>IDD_MCASTER1 301</code></td><td><code>resource.h:30</code></td></tr>
+          <tr><td><code>IDD = IDD_ALTACAST</code></td><td><code>IDD = IDD_MCASTER1</code></td><td><code>MainWindow.h:56</code></td></tr>
+          <tr><td><code>ALTACAST_PLUGIN</code></td><td><code>MCASTER1_PLUGIN</code></td><td><code>altacast_foobar.vcxproj:76,124</code></td></tr>
+          <tr><td><code>ALTACAST_PLUGIN</code></td><td><code>MCASTER1_PLUGIN</code></td><td><code>altacast_radiodj.vcxproj:82,134</code></td></tr>
+          <tr><td><code>ALTACAST_WINAMP_EXPORTS</code></td><td><code>MCASTER1_WINAMP_EXPORTS</code></td><td><code>altacast_winamp.vcxproj:82,131</code></td></tr>
+          <tr><td><code>ALTACAST_RADIODJ_EXPORTS</code></td><td><code>MCASTER1_RADIODJ_EXPORTS</code></td><td><code>altacast_radiodj.vcxproj:82,134</code></td></tr>
+          <tr><td><code>ALTACASTSTANDALONE</code></td><td><code>MCASTER1DSPENCODER</code></td><td><code>altacastStandalone.vcxproj:79,91,127</code></td></tr>
+          <tr><td><code>APP_NAME=altacast_foobar</code></td><td><code>APP_NAME=mcaster1_foobar</code></td><td><code>altacast_foobar.vcxproj:76,124</code></td></tr>
+          <tr><td><code>APP_NAME=altacast_radiodj</code></td><td><code>APP_NAME=mcaster1_radiodj</code></td><td><code>altacast_radiodj.vcxproj:82,134</code></td></tr>
+          <tr><td><code>APP_NAME=altacast_winamp</code></td><td><code>APP_NAME=mcaster1_winamp</code></td><td><code>altacast_winamp.vcxproj:82,131</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 4 &mdash; String Literals &amp; UI Text</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current String</th><th>New String</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>"AltaCast"</code> (dialog caption)</td><td><code>"Mcaster1 DSP Encoder"</code></td><td><code>altacast.rc:35</code></td></tr>
+          <tr><td><code>"AltaCast 1.1"</code> (about text)</td><td><code>"Mcaster1 DSP Encoder"</code></td><td><code>altacast.rc:189</code></td></tr>
+          <tr><td><code>"AltaCast Standalone"</code> (caption)</td><td><code>"Mcaster1 DSP Encoder"</code></td><td><code>altacast.rc:197</code></td></tr>
+          <tr><td><code>"altacast\n"</code> (foobar info)</td><td><code>"mcaster1dspencoder\n"</code></td><td><code>altacast_foobar.cpp:36</code></td></tr>
+          <tr><td><code>"Written by admin@altacast.com\n"</code></td><td><code>"Maintained by davestj@gmail.com\n"</code></td><td><code>altacast_foobar.cpp:37</code></td></tr>
+          <tr><td><code>"dsp_altacastv2"</code> (cfg key)</td><td><code>"dsp_mcaster1v2"</code></td><td><code>altacast_foobar.cpp:40</code></td></tr>
+          <tr><td><code>"altacast_foo"</code> (log prefix)</td><td><code>"mcaster1_foo"</code></td><td><code>altacast_foobar.cpp:104</code></td></tr>
+          <tr><td><code>"altacast V3"</code> (version str)</td><td><code>"mcaster1dspencoder V3"</code></td><td><code>altacast_foobar.cpp:282</code></td></tr>
+          <tr><td><code>"dsp_altacast"</code> (log prefix)</td><td><code>"dsp_mcaster1"</code></td><td><code>altacast_radiodj.cpp:20</code></td></tr>
+          <tr><td><code>"altacaststandalone"</code> (log prefix)</td><td><code>"mcaster1dspencoder"</code></td><td><code>altacastStandalone.cpp:19</code></td></tr>
+          <tr><td><code>LoadConfigs(currentDir, "altacaststandalone")</code></td><td><code>LoadConfigs(currentDir, "mcaster1dspencoder")</code></td><td><code>altacastStandalone.cpp:168</code></td></tr>
+          <tr><td><code>"dsp_altacast"</code> (log prefix)</td><td><code>"dsp_mcaster1"</code></td><td><code>altacast_winamp.cpp:20</code></td></tr>
+          <tr><td><code>LoadConfigs(".", "altacaststandalone")</code></td><td><code>LoadConfigs(".", "mcaster1dspencoder")</code></td><td><code>Dummy.cpp:98</code></td></tr>
+          <tr><td><code>CInternetSession session("altacast")</code></td><td><code>CInternetSession session("mcaster1dspencoder")</code></td><td><code>MainWindow.cpp:193</code></td></tr>
+          <tr><td><code>"altacast"</code> (tray notification)</td><td><code>"mcaster1dspencoder"</code></td><td><code>MainWindow.cpp:639</code></td></tr>
+          <tr><td><code>"altacast.chm"</code> (help file)</td><td><code>"mcaster1dspencoder.chm"</code></td><td><code>MainWindow.cpp:1543</code></td></tr>
+          <tr><td><code>"altacast.log"</code></td><td><code>"mcaster1dspencoder.log"</code></td><td><code>libaltacast.cpp:127</code></td></tr>
+          <tr><td><code>"altacast"</code> (defaultConfigName)</td><td><code>"mcaster1dspencoder"</code></td><td><code>libaltacast.cpp:600,670,694</code></td></tr>
+          <tr><td><code>"altacast_aacp.ini"</code></td><td><code>"mcaster1_aacp.ini"</code></td><td><code>libaltacast.cpp:2090</code></td></tr>
+          <tr><td><code>"ENCODEDBY","altacast"</code> (FLAC tag)</td><td><code>"ENCODEDBY","mcaster1dspencoder"</code></td><td><code>libaltacast.cpp:2415</code></td></tr>
+          <tr><td><code>strcpy(g-&gt;gAppName, "altacast")</code></td><td><code>strcpy(g-&gt;gAppName, "mcaster1dspencoder")</code></td><td><code>libaltacast.cpp:2798,3253</code></td></tr>
+          <tr><td><code>"http://www.altacast.com"</code></td><td><code>"https://github.com/davestj/Mcaster1DSPEncoder"</code></td><td><code>libaltacast.cpp:2834</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 5 &mdash; Resource IDs &amp; Dialog References</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>IDD_ALTACAST</code></td><td><code>IDD_MCASTER1</code></td><td><code>altacast.rc:32</code></td></tr>
+          <tr><td><code>IDD_ALTACAST_CONFIG</code></td><td><code>IDD_MCASTER1_CONFIG</code></td><td><code>resource.h:7</code></td></tr>
+          <tr><td><code>mainWindow-&gt;Create((UINT)IDD_ALTACAST,...)</code></td><td><code>mainWindow-&gt;Create((UINT)IDD_MCASTER1,...)</code></td><td><code>altacast_foobar.cpp:131</code></td></tr>
+          <tr><td><code>mainWindow-&gt;Create((UINT)IDD_ALTACAST,...)</code></td><td><code>mainWindow-&gt;Create((UINT)IDD_MCASTER1,...)</code></td><td><code>altacast_radiodj.cpp:246</code></td></tr>
+          <tr><td><code>mainWindow-&gt;Create((UINT)IDD_ALTACAST,...)</code></td><td><code>mainWindow-&gt;Create((UINT)IDD_MCASTER1,...)</code></td><td><code>altacast_winamp.cpp:246</code></td></tr>
+          <tr><td><code>mainWindow-&gt;Create((UINT)IDD_ALTACAST,...)</code></td><td><code>mainWindow-&gt;Create((UINT)IDD_MCASTER1,...)</code></td><td><code>Dummy.cpp:108</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 6 &mdash; DLL/EXE Output Names in vcxproj</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td><code>&lt;TargetName&gt;dsp_altacast&lt;/TargetName&gt;</code></td><td><code>&lt;TargetName&gt;dsp_mcaster1&lt;/TargetName&gt;</code></td><td><code>altacast_winamp.vcxproj:47</code></td></tr>
+          <tr><td><code>&lt;TargetName&gt;foo_altacast&lt;/TargetName&gt;</code></td><td><code>&lt;TargetName&gt;foo_mcaster1&lt;/TargetName&gt;</code></td><td><code>altacast_foobar.vcxproj:47</code></td></tr>
+          <tr><td><code>$(OutDir)dsp_altacast.dll</code></td><td><code>$(OutDir)dsp_mcaster1.dll</code></td><td><code>altacast_winamp.vcxproj:101,148</code></td></tr>
+          <tr><td><code>foo_altacast.dll/.pdb/.lib</code></td><td><code>foo_mcaster1.dll/.pdb/.lib</code></td><td><code>altacast_foobar.vcxproj:93,103,141</code></td></tr>
+          <tr><td><code>$(OutDir)altacastStandalone.exe</code></td><td><code>$(OutDir)Mcaster1DSPEncoder.exe</code></td><td><code>altacastStandalone.vcxproj:96,144</code></td></tr>
+          <tr><td><code>libaltacast.lib/.pch/.bsc</code></td><td><code>libmcaster1dspencoder.lib/.pch/.bsc</code></td><td><code>libaltacast.vcxproj:76,81,105,110</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 7 &mdash; Solution Files (.sln)</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>File</th></tr></thead>
+        <tbody>
+          <tr><td>Project name <code>"altacastStandalone"</code></td><td><code>"Mcaster1DSPEncoder"</code></td><td><code>altacastStandalone.sln:6</code></td></tr>
+          <tr><td>Project name <code>"libaltacast"</code></td><td><code>"libmcaster1dspencoder"</code></td><td>all <code>.sln</code> files</td></tr>
+          <tr><td>Project name <code>"altacast_winamp"</code></td><td><code>"mcaster1_winamp"</code></td><td><code>altacast_winamp.sln</code></td></tr>
+          <tr><td>Project name <code>"altacast_foobar"</code></td><td><code>"mcaster1_foobar"</code></td><td><code>altacast_foobar.sln</code></td></tr>
+          <tr><td>Project name <code>"altacast_radiodj"</code></td><td><code>"mcaster1_radiodj"</code></td><td><code>altacast_radiodj.sln</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 8 &mdash; vcxproj Internal Paths &amp; Namespaces</div>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Current</th><th>New</th><th>Files</th></tr></thead>
+        <tbody>
+          <tr><td><code>&lt;RootNamespace&gt;altacastStandalone&lt;/RootNamespace&gt;</code></td><td><code>&lt;RootNamespace&gt;mcaster1dspencoder&lt;/RootNamespace&gt;</code></td><td><code>altacastStandalone.vcxproj:19</code></td></tr>
+          <tr><td><code>&lt;RootNamespace&gt;altacast_*&lt;/RootNamespace&gt;</code></td><td><code>&lt;RootNamespace&gt;mcaster1_*&lt;/RootNamespace&gt;</code></td><td>all plugin vcxproj</td></tr>
+          <tr><td><code>&lt;RootNamespace&gt;libaltacast&lt;/RootNamespace&gt;</code></td><td><code>&lt;RootNamespace&gt;libmcaster1dspencoder&lt;/RootNamespace&gt;</code></td><td><code>libaltacast.vcxproj:15</code></td></tr>
+          <tr><td><code>libaltacast;libaltacast_config</code> (include dirs)</td><td><code>libmcaster1dspencoder;libmcaster1dspencoder_config</code></td><td>all vcxproj</td></tr>
+          <tr><td><code>libaltacast/Debug</code> (lib dirs)</td><td><code>libmcaster1dspencoder/Debug</code></td><td>all vcxproj</td></tr>
+          <tr><td><code>ProjectReference Include="libaltacast\libaltacast.vcxproj"</code></td><td><code>ProjectReference Include="libmcaster1dspencoder\libmcaster1dspencoder.vcxproj"</code></td><td>all consumer vcxproj</td></tr>
+          <tr><td><code>Include="altacast.h"</code> / <code>Include="altacast.rc"</code></td><td><code>Include="mcaster1dspencoder.h"</code> / <code>.rc</code></td><td>all vcxproj</td></tr>
+          <tr><td><code>Include="altacast_winamp.cpp"</code></td><td><code>Include="mcaster1_winamp.cpp"</code></td><td><code>mcaster1_winamp.vcxproj</code></td></tr>
+          <tr><td><code>Include="altacast_foobar.cpp"</code></td><td><code>Include="mcaster1_foobar.cpp"</code></td><td><code>mcaster1_foobar.vcxproj</code></td></tr>
+          <tr><td><code>Include="altacast_radiodj.cpp"</code></td><td><code>Include="mcaster1_radiodj.cpp"</code></td><td><code>mcaster1_radiodj.vcxproj</code></td></tr>
+          <tr><td><code>Include="libaltacast.cpp/h"</code></td><td><code>Include="libmcaster1dspencoder.cpp/h"</code></td><td><code>libmcaster1dspencoder.vcxproj</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="audit-category">Category 9 &mdash; InnoSetup Installer</div>
+    <p>All references in <code>*.iss</code> installer script:</p>
+    <ul class="plain">
+      <li>App name, app publisher URL, output base filename</li>
+      <li><code>Source:</code> file paths for <code>dsp_altacast.dll</code>, <code>foo_altacast.dll</code>, <code>altacastStandalone.exe</code></li>
+      <li><code>[Registry]</code> keys using <code>AltaCast</code> as a key name</li>
+    </ul>
+
+    <h3 id="p2-dirs">2.3 File &amp; Directory Renames</h3>
+    <p>Ordered sequence to avoid broken references mid-rename:</p>
+    <pre>Step 1 — Rename source files inside libaltacast/:
+  libaltacast.cpp         → libmcaster1dspencoder.cpp
+  libaltacast.h           → libmcaster1dspencoder.h
+  libaltacast_socket.cpp  → libmcaster1dspencoder_socket.cpp
+  libaltacast_socket.h    → libmcaster1dspencoder_socket.h
+  libaltacast_resample.h  → libmcaster1dspencoder_resample.h
+  libaltacast.vcxproj     → libmcaster1dspencoder.vcxproj
+
+Step 2 — Rename libaltacast/ folder:
+  src/libaltacast/        → src/libmcaster1dspencoder/
+
+Step 3 — Rename plugin source files:
+  altacast_winamp.cpp     → mcaster1_winamp.cpp
+  altacast_winamp.h       → mcaster1_winamp.h
+  altacast_foobar.cpp     → mcaster1_foobar.cpp
+  altacast_radiodj.cpp    → mcaster1_radiodj.cpp
+  altacast_radiodj.h      → mcaster1_radiodj.h
+
+Step 4 — Rename shared files:
+  altacast.h              → mcaster1dspencoder.h
+  altacast.rc             → mcaster1dspencoder.rc
+  altacastStandalone.h    → Mcaster1DSPEncoder.h
+  altacastStandalone.cpp  → Mcaster1DSPEncoder.cpp
+
+Step 5 — Rename project files:
+  altacastStandalone.vcxproj  → Mcaster1DSPEncoder.vcxproj
+  altacast_winamp.vcxproj     → mcaster1_winamp.vcxproj
+  altacast_foobar.vcxproj     → mcaster1_foobar.vcxproj
+  altacast_radiodj.vcxproj    → mcaster1_radiodj.vcxproj
+
+Step 6 — Rename solution files:
+  altacastStandalone.sln  → Mcaster1DSPEncoder.sln
+  altacast_winamp.sln     → mcaster1_winamp.sln
+  altacast_foobar.sln     → mcaster1_foobar.sln
+  altacast_radiodj.sln    → mcaster1_radiodj.sln</pre>
+
+    <h3 id="p2-credits">2.4 Credits &amp; Attribution</h3>
+    <p>In all About dialogs, splash screens, installer text, and source file headers:</p>
+    <pre>Mcaster1 DSP Encoder
+Maintainer: Dave St. John &lt;davestj@gmail.com&gt;
+https://github.com/davestj/Mcaster1DSPEncoder
+
+Based on EdCast/Oddsock DSP encoder by Ed Zaleski
+Original project: https://www.oddsock.org/</pre>
+    <p>All source file copyright comment blocks &mdash; ADD, do not replace original:</p>
+    <pre>// Mcaster1DSPEncoder — fork of EdCast/Oddsock DSP encoder
+// Maintainer: Dave St. John &lt;davestj@gmail.com&gt;
+// Original Author: Ed Zaleski</pre>
+
+    <h3 id="p2-lame">2.5 MP3 &mdash; Replace BladeMP3 with Native LAME</h3>
+    <p>AltaCast uses <code>BladeMP3EncDLL.h</code> &mdash; an obsolete Windows-only interface. All US MP3 patents expired
+    April 23, 2017. LAME (LGPL) is now freely distributable. LAME 3.100 source is in <code>external/lame/</code>;
+    also available via vcpkg <code>mp3lame:x64-windows</code>.</p>
+    <ol class="plain">
+      <li>Upgrade <code>external/lame/vc_solution/vc9_libmp3lame_dll.vcproj</code> to v143, build <code>libmp3lame.dll</code></li>
+      <li>Replace <code>#ifdef WIN32</code> BladeMP3 guards with <code>#ifdef HAVE_LAME</code> using standard <code>lame.h</code> API</li>
+      <li>Remove <code>BladeMP3EncDLL.h</code> from <code>external/include/</code></li>
+      <li>Distribute <code>libmp3lame.dll</code> with all targets</li>
+    </ol>
+
+    <h3 id="p2-x64">2.6 Dual-Platform Build: x86 (Win32) and x64</h3>
+    <p><strong>Goal:</strong> Ship both 32-bit and 64-bit builds to maximize Windows compatibility.
+    x64 for modern systems (Windows 10/11); x86 for legacy environments and 32-bit host applications
+    (older Winamp builds, 32-bit RadioDJ, etc.). DSP plugins must match the bitness of the host
+    application, so shipping both ensures broadest compatibility.</p>
+
+    <div class="callout callout-info">
+      <strong>Step 1 &mdash; Install x86-windows vcpkg triplets</strong>
+      x64-windows packages are already installed. Add x86 alongside them:<br/>
+      <code>.\vcpkg install opus:x86-windows libopusenc:x86-windows mp3lame:x86-windows libyaml:x86-windows libflac:x86-windows libogg:x86-windows libvorbis:x86-windows fdk-aac[he-aac]:x86-windows libxml2:x86-windows curl:x86-windows</code>
+    </div>
+
+    <h4>Step 2 &mdash; Add x64 Configurations to All vcxproj Files</h4>
+    <p>Each project currently has <code>Win32|Debug</code> and <code>Win32|Release</code>. Add <code>x64|Debug</code>
+    and <code>x64|Release</code> to each. Key changes per x64 config group:</p>
+    <ul class="plain">
+      <li><code>&lt;Platform&gt;Win32&lt;/Platform&gt;</code> &rarr; <code>&lt;Platform&gt;x64&lt;/Platform&gt;</code></li>
+      <li>Linker: <code>MachineX86</code> &rarr; <code>MachineX64</code></li>
+      <li>vcpkg paths: <code>x64-windows\</code> for x64 configs, <code>x86-windows\</code> for Win32 configs</li>
+      <li>Output dirs already vary by config &mdash; ensure <code>x64\Release\</code> and <code>Win32\Release\</code> are distinct</li>
+    </ul>
+
+    <h4>Step 3 &mdash; DRY vcpkg Paths via MSBuild Property</h4>
+    <pre>&lt;PropertyGroup&gt;
+  &lt;VcpkgTriplet Condition="'$(Platform)'=='Win32'"&gt;x86-windows&lt;/VcpkgTriplet&gt;
+  &lt;VcpkgTriplet Condition="'$(Platform)'=='x64'"&gt;x64-windows&lt;/VcpkgTriplet&gt;
+  &lt;VcpkgInclude&gt;$(VCPKG_ROOT)\installed\$(VcpkgTriplet)\include&lt;/VcpkgInclude&gt;
+  &lt;VcpkgLib&gt;$(VCPKG_ROOT)\installed\$(VcpkgTriplet)\lib&lt;/VcpkgLib&gt;
+&lt;/PropertyGroup&gt;</pre>
+
+    <h4>Step 4 &mdash; Release Artifact Layout</h4>
+    <pre>dist/
+  Win32/
+    Mcaster1DSPEncoder.exe
+    dsp_mcaster1.dll  dsp_mcaster1_radiodj.dll  foo_mcaster1.dll
+    libmp3lame.dll  opus.dll  opusenc.dll  fdk-aac.dll  ...
+  x64/
+    Mcaster1DSPEncoder.exe
+    dsp_mcaster1.dll  dsp_mcaster1_radiodj.dll  foo_mcaster1.dll
+    libmp3lame.dll  opus.dll  opusenc.dll  fdk-aac.dll  ...</pre>
+
+    <h4>Compatibility Matrix</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Target</th><th>x86 Build</th><th>x64 Build</th></tr></thead>
+        <tbody>
+          <tr><td><code>Mcaster1DSPEncoder.exe</code></td><td>Win7+ (32-bit)</td><td>Win10+ (64-bit)</td></tr>
+          <tr><td><code>dsp_mcaster1.dll</code> (Winamp)</td><td>Winamp 5.x 32-bit</td><td>Winamp 5.9+ 64-bit</td></tr>
+          <tr><td><code>foo_mcaster1.dll</code> (foobar2000)</td><td>foobar2000 32-bit</td><td>foobar2000 64-bit</td></tr>
+          <tr><td><code>dsp_mcaster1_radiodj.dll</code></td><td>RadioDJ (32-bit)</td><td>RadioDJ 64-bit (future)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-warn">
+      <strong>Plugin Bitness Must Match Host</strong>
+      A 32-bit Winamp can only load 32-bit DSP plugins; a 64-bit Winamp requires 64-bit DLLs.
+      Ship both builds so users install the one matching their host application.
+    </div>
+
+    <h3 id="p2-build">2.7 Build System Cleanup</h3>
+    <ul class="plain">
+      <li>Update <code>build_all.ps1</code>: build both <code>Win32</code> and <code>x64</code> for all targets, copy runtime DLLs from correct vcpkg triplet per platform, populate <code>dist/Win32/</code> and <code>dist/x64/</code></li>
+      <li>Remove <code>build.ps1</code> and <code>build_winamp.ps1</code> (consolidated into <code>build_all.ps1</code>)</li>
+      <li>Add <code>.gitignore</code>: <code>Release/</code>, <code>Debug/</code>, <code>x64/</code>, <code>Win32/</code>, <code>dist/</code>, <code>*.user</code>, <code>*.suo</code>, <code>*.aps</code>, <code>*.pch</code>, <code>*.obj</code>, <code>*.ilk</code>, <code>ipch/</code>, <code>.vs/</code>, <code>*.log</code>, <code>*.tlog</code></li>
+      <li>Initialize fresh git repository in project root</li>
+    </ul>
+
+    <h3 id="p2-deliverables">2.8 Phase 2 Deliverables</h3>
+    <ul class="checklist">
+      <li>All source files, folders, and projects renamed per Section 2.3</li>
+      <li>All 150+ string/symbol instances replaced per Section 2.2 deep audit</li>
+      <li>All 4 targets compile clean (x86 and x64) with zero AltaCast references remaining</li>
+      <li>x86-windows vcpkg triplets installed for all required packages</li>
+      <li>x64 configurations added to all vcxproj files alongside existing Win32 configs</li>
+      <li>VcpkgTriplet MSBuild property wires correct include/lib paths per platform</li>
+      <li>About dialogs show correct attribution (Ed Zaleski original, davestj maintainer)</li>
+      <li><code>Mcaster1DSPEncoder.exe</code> launches and encodes &mdash; both x86 and x64 builds</li>
+      <li><code>dsp_mcaster1.dll</code> loads in Winamp &mdash; both x86 and x64 builds</li>
+      <li><code>foo_mcaster1.dll</code> loads in foobar2000 &mdash; both x86 and x64 builds</li>
+      <li><code>dsp_mcaster1_radiodj.dll</code> loads in RadioDJ &mdash; both x86 and x64 builds</li>
+      <li>Native LAME MP3 via <code>libmp3lame.dll</code> working, BladeMP3 removed</li>
+      <li><code>dist/Win32/</code> and <code>dist/x64/</code> populated with correct runtime DLLs</li>
+      <li><code>build_all.ps1</code> builds both platforms in one pass</li>
+      <li><code>README.md</code> updated</li>
+      <li><code>.gitignore</code> in place</li>
+      <li>Initial git commit tagged <code>v0.2.0</code></li>
+    </ul>
+
+    <h3 id="p2-resizable">2.9 ResizableLib &amp; Dialog Modernization <span class="badge badge-done">COMPLETE</span></h3>
+    <p>All MFC dialogs were modernized with resizable layout and professional flat styling
+    using <strong>ResizableLib</strong> (Paolo Messina, Artistic License) from
+    <code>external/ResizableLib/</code>. This was completed as part of Phase 2 to establish
+    a consistent UI foundation before audio codec work.</p>
+
+    <h4>Changes Applied</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Dialog</th><th>Class</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td>Main window</td><td><code>CMainWindow</code></td><td><code>CDialog</code> &rarr; <code>CResizableDialog</code>, AddAnchor for all controls, encoder list anchors to BOTTOM_RIGHT</td></tr>
+          <tr><td>Config shell</td><td><code>CConfig</code></td><td><code>CResizableDialog</code>, <code>OnSize()</code> to resize embedded tab page child dialogs via <code>MoveWindow()</code></td></tr>
+          <tr><td>Basic Settings tab</td><td><code>CBasicSettings</code></td><td><code>CResizableDialog</code>, server/encoder fields anchor TOP_LEFT→TOP_RIGHT</td></tr>
+          <tr><td>YP Settings tab</td><td><code>CYPSettings</code></td><td><code>CResizableDialog</code>, stream metadata fields anchor TOP_LEFT→TOP_RIGHT</td></tr>
+          <tr><td>Advanced Settings tab</td><td><code>CAdvancedSettings</code></td><td><code>CResizableDialog</code>, log/archive path fields anchor TOP_LEFT→TOP_RIGHT</td></tr>
+          <tr><td>Edit Metadata</td><td><code>CEditMetadata</code></td><td><code>CResizableDialog</code>, text fields expand, OK/Cancel anchor BOTTOM</td></tr>
+          <tr><td>Find Window</td><td><code>CFindWindowDlg</code></td><td><code>CResizableDialog</code>, list anchors BOTTOM_RIGHT</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Dialog Style Updates (<code>mcaster1dspencoder.rc</code>)</h4>
+    <ul class="plain">
+      <li><code>DS_MODALFRAME</code> &rarr; <code>WS_THICKFRAME</code> on all resizable dialogs (enables drag-resize)</li>
+      <li>Font updated to <code>9, "Segoe UI", 400, 0, 0x1</code> throughout (was <code>8, "MS Sans Serif"</code>)</li>
+      <li><code>DS_3DLOOK</code> removed for flat look; <code>WS_EX_COMPOSITED</code> NOT used (RC compiler does not support it)</li>
+      <li>About dialog retains <code>DS_MODALFRAME</code> by design (fixed-size, no resize needed)</li>
+    </ul>
+
+    <h4>Build Integration — All 4 Targets</h4>
+    <p>ResizableLib sources compiled into all 4 build targets (standalone EXE + 3 DLL plugins),
+    since all plugin projects compile the full MFC dialog source set. Each target's vcxproj has
+    8 ResizableLib <code>ClCompile</code> entries with:</p>
+    <pre>&lt;PrecompiledHeader&gt;NotUsing&lt;/PrecompiledHeader&gt;
+&lt;AdditionalOptions&gt;/wd4005 %(AdditionalOptions)&lt;/AdditionalOptions&gt;
+&lt;AdditionalIncludeDirectories&gt;../external/ResizableLib;...&lt;/AdditionalIncludeDirectories&gt;</pre>
+    <p><code>NotUsing</code> allows ResizableLib to find its own <code>StdAfx.h</code> (which defines
+    <code>WINVER=0x0501</code>) via directory-first include resolution.
+    <code>/wd4005</code> suppresses the WINVER redefinition warning against the project-level <code>0x0601</code>.</p>
+    <div class="callout callout-warn">
+      <strong>Plugin Build Gotcha — Resolved</strong>
+      Plugin projects include <code>MainWindow.h</code> which declares <code>CMainWindow : public CResizableDialog</code>.
+      <code>ResizableDialog.h</code> was only included via the main project's PCH, not available in plugin builds.
+      Fix: <code>#include "ResizableDialog.h"</code> added <em>directly inside</em> <code>MainWindow.h</code>
+      (making it self-contained regardless of which project includes it).
+    </div>
+  </section>
+
+  <!-- PHASE 3 -->
+  <section id="phase3">
+    <h2>Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-next">IN PROGRESS</span></h2>
+    <p><strong>Goal:</strong> Remove WMA (end-of-life). Add dual MP3 paths (LAME built-in + ACM),
+    Opus, and full HE-AAC (AAC-LC / HE-AACv1 / HE-AACv2) via fdk-aac.
+    Replace bass.dll capture with statically-linked PortAudio (WASAPI / ASIO / MME / DS / WDM-KS).
+    Achieve format parity with RadioBOSS: MP3 (&times;2), AAC-LC, AAC+, AAC++, Ogg Vorbis, Opus, FLAC.</p>
+
+    <h3>vcpkg Packages for Phase 3</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Package</th><th>Version</th><th>Purpose</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><code>opus:x64-windows</code></td><td>1.5.2</td><td>Core Opus codec</td><td><span class="badge badge-done">Installed</span></td></tr>
+          <tr><td><code>libopusenc:x64-windows</code></td><td>0.3</td><td>High-level Opus encoding API</td><td><span class="badge badge-done">Installed</span></td></tr>
+          <tr><td><code>fdk-aac:x64-windows[he-aac]</code></td><td>2.0.3</td><td>AAC-LC / HE-AAC / HE-AAC v2 encoding</td><td><span class="badge badge-next">Install Required</span></td></tr>
+          <tr><td><code>libflac:x64-windows</code></td><td>1.5.0</td><td>Updated FLAC</td><td><span class="badge badge-done">Installed</span></td></tr>
+          <tr><td><code>libvorbis:x64-windows</code></td><td>1.3.7</td><td>Updated Vorbis</td><td><span class="badge badge-done">Installed</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout callout-info">
+      <strong>Install fdk-aac before Phase 3</strong>
+      <code>cd C:\vcpkg &amp;&amp; .\vcpkg install fdk-aac[he-aac]:x64-windows</code><br/>
+      The <code>[he-aac]</code> feature enables HE-AAC (AAC+) and HE-AAC v2 (AAC++) alongside standard AAC-LC.
+    </div>
+
+    <h3 id="p3-wma">3.1 Remove basswma.dll / WMA <span class="badge badge-remove">REMOVE</span></h3>
+    <p>Microsoft deprecated Windows Media Services. <code>basswma.dll</code> is a proprietary Un4seen plugin and is EOL.</p>
+    <ul class="plain">
+      <li>Remove <code>basswma.dll/.lib</code> from <code>external/lib/</code></li>
+      <li>Remove <code>basswma.h</code> from <code>external/include/</code></li>
+      <li>Remove all WMA encoder code paths from <code>libmcaster1dspencoder.cpp</code></li>
+      <li>Remove WMA UI controls from all plugin config dialogs</li>
+      <li>Remove <code>basswma.lib</code> from all vcxproj linker inputs</li>
+    </ul>
+
+    <h3 id="p3-opus">3.2 Add Opus Encoder</h3>
+    <p>vcpkg provides <code>opus</code> + <code>libopusenc</code> ready to link. Integration via <code>libopusenc</code> high-level API:</p>
+    <pre>#include &lt;opusenc.h&gt;
+
+OggOpusComments *comments = ope_comments_create();
+ope_comments_add(comments, "ENCODER", "mcaster1dspencoder");
+OggOpusEnc *enc = ope_encoder_create_callbacks(
+    &amp;callbacks, userdata, comments, 48000, channels, 0, &amp;error);
+ope_encoder_ctl(enc, OPUS_SET_BITRATE(bitrate * 1000));
+ope_encoder_ctl(enc, OPUS_SET_COMPLEXITY(10));
+ope_encoder_write(enc, pcm, samples_per_channel);
+ope_encoder_drain(enc);
+ope_encoder_destroy(enc);
+ope_comments_destroy(comments);</pre>
+    <p>MIME: <code>audio/ogg; codecs=opus</code>. Mount point extension: <code>.opus</code>.</p>
+
+    <h3 id="p3-aac">3.3 Add AAC and AAC+ (HE-AAC) via fdk-aac</h3>
+    <p>Replace the legacy <code>libfaac</code> dependency with <code>fdk-aac 2.0.3</code>, which supports
+    AAC-LC, HE-AAC (AAC+), and HE-AAC v2 (AAC++/eAAC+). This achieves full RadioBOSS format parity.</p>
+
+    <h4>Format Matrix</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Format</th><th>Profile</th><th>Typical Bitrate</th><th>Best For</th></tr></thead>
+        <tbody>
+          <tr><td>AAC-LC</td><td>Low Complexity</td><td>96&ndash;256 kbps</td><td>High quality, broad compatibility</td></tr>
+          <tr><td>AAC+ (HE-AAC v1)</td><td>High Efficiency</td><td>32&ndash;96 kbps</td><td>Low-bitrate streaming</td></tr>
+          <tr><td>AAC++ (HE-AAC v2)</td><td>High Efficiency v2</td><td>16&ndash;48 kbps</td><td>Very low bitrate (SBR + PS)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h4>Integration via fdk-aac C API</h4>
+    <pre>#include &lt;fdk-aac/aacenc_lib.h&gt;
+
+HANDLE_AACENCODER hEncoder;
+aacEncOpen(&amp;hEncoder, 0, channels);
+
+// Profile selection:
+// AOT_AAC_LC (2)  = standard AAC-LC
+// AOT_SBR    (5)  = HE-AAC v1 (AAC+)  — adds Spectral Band Replication
+// AOT_PS     (29) = HE-AAC v2 (AAC++) — adds Parametric Stereo on top of SBR
+aacEncoder_SetParam(hEncoder, AACENC_AOT,         AOT_SBR);   // AAC+ example
+aacEncoder_SetParam(hEncoder, AACENC_SAMPLERATE,  44100);
+aacEncoder_SetParam(hEncoder, AACENC_CHANNELMODE, MODE_2);
+aacEncoder_SetParam(hEncoder, AACENC_BITRATE,     64000);
+aacEncoder_SetParam(hEncoder, AACENC_TRANSMUX,    TT_MP4_ADTS); // ADTS for live streaming
+
+aacEncEncode(hEncoder, &amp;inBufDesc, &amp;outBufDesc, &amp;inArgs, &amp;outArgs);
+aacEncClose(&amp;hEncoder);</pre>
+
+    <h4>Recommended Bitrates (RadioBOSS Parity)</h4>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Profile</th><th>Recommended Bitrates</th></tr></thead>
+        <tbody>
+          <tr><td>AAC-LC</td><td>96, 128, 192, 256 kbps</td></tr>
+          <tr><td>AAC+ (HE-AACv1)</td><td>32, 40, 48, 64 kbps</td></tr>
+          <tr><td>AAC++ (HE-AACv2)</td><td>16, 24, 32 kbps</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>Patent Notice</strong>
+      HE-AAC patents are managed through the Via Licensing AAC patent pool. The fdk-aac library
+      itself is BSD-2 licensed. Verify your distribution license before shipping commercially.
+      For non-commercial / internal use, no license fee applies.
+    </div>
+
+    <h3 id="p3-portaudio">3.4 Replace bass.dll with PortAudio</h3>
+    <ul class="plain">
+      <li>Remove <code>bass.lib</code> from Winamp / foobar2000 / RadioDJ linker deps (plugins intercept audio via host; no device capture needed)</li>
+      <li>Integrate PortAudio v19 for <code>Mcaster1DSPEncoder.exe</code> device capture path</li>
+      <li>PortAudio provides device enumeration and PCM stream capture with WASAPI / DirectSound backend</li>
+      <li>License: MIT &mdash; freely distributable, static or dynamic linkage</li>
+    </ul>
+
+    <h3 id="p3-parity">3.5 RadioBOSS Format Parity Summary</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Format</th><th>Library</th><th>Status After Phase 3</th></tr></thead>
+        <tbody>
+          <tr><td>MP3</td><td>LAME (Phase 2)</td><td><span class="badge badge-done">Done in Phase 2</span></td></tr>
+          <tr><td>AAC-LC</td><td>fdk-aac</td><td><span class="badge badge-next">New in Phase 3</span></td></tr>
+          <tr><td>AAC+ (HE-AACv1)</td><td>fdk-aac <code>[he-aac]</code></td><td><span class="badge badge-next">New in Phase 3</span></td></tr>
+          <tr><td>AAC++ (HE-AACv2)</td><td>fdk-aac <code>[he-aac]</code></td><td><span class="badge badge-next">New in Phase 3</span></td></tr>
+          <tr><td>Ogg Vorbis</td><td>libvorbis</td><td><span class="badge badge-done">Existing (updated)</span></td></tr>
+          <tr><td>Opus</td><td>libopusenc</td><td><span class="badge badge-next">New in Phase 3</span></td></tr>
+          <tr><td>FLAC</td><td>libFLAC</td><td><span class="badge badge-done">Existing (updated)</span></td></tr>
+          <tr><td>WMA</td><td>basswma.dll</td><td><span class="badge badge-remove">Removed (EOL)</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 id="p3-deliverables">3.6 Phase 3 Deliverables</h3>
+    <ul class="checklist">
+      <li><code>basswma.dll</code> removed, WMA code paths deleted</li>
+      <li><code>fdk-aac:x64-windows[he-aac]</code> installed via vcpkg and linked</li>
+      <li>AAC-LC encoder integrated in all 4 targets</li>
+      <li>AAC+ (HE-AAC v1) encoder integrated in all 4 targets</li>
+      <li>AAC++ (HE-AAC v2) encoder integrated in all 4 targets</li>
+      <li>Legacy <code>libfaac</code> removed (replaced by fdk-aac)</li>
+      <li>Opus encoder integrated in all 4 targets</li>
+      <li>Opus Ogg stream verified in Icecast and VLC</li>
+      <li>AAC ADTS stream verified in Icecast and compatible players</li>
+      <li>Format config UI updated in all plugin dialogs (AAC-LC / AAC+ / AAC++ dropdown)</li>
+      <li><code>bass.lib</code> removed from plugin linker deps</li>
+      <li>PortAudio integrated for device capture in <code>Mcaster1DSPEncoder.exe</code></li>
+      <li>Redistributables updated: <code>libmp3lame.dll</code>, <code>opus.dll</code>, <code>opusenc.dll</code>, <code>fdk-aac.dll</code></li>
+    </ul>
+  </section>
+
+  <!-- PHASE 4 -->
+  <section id="phase4">
+    <h2>Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-pend">PLANNED</span></h2>
+    <p><strong>Goal:</strong> Replace legacy flat <code>key=value</code> config with structured YAML supporting
+    multiple simultaneous stations, per-station encoder chains, ICY/YP metadata, and save-to-WAV.</p>
+    <div class="callout callout-success">
+      <strong>Already Available</strong>
+      <code>libyaml:x64-windows 0.2.5</code> is already installed in vcpkg &mdash; ready to integrate after Phase 2 x64 migration.
+    </div>
+
+    <h3>4.1 Current Config Problems</h3>
+    <div class="callout callout-info">
+      <strong>How the numbered files actually work (from source code)</strong>
+      The encoder maintains <code>altacastGlobals *g[MAX_ENCODERS]</code> (max 10 slots, <code>MainWindow.h:43</code>).
+      On startup each active slot is assigned <code>encoderNumber = i + 1</code> (1-indexed). Config filenames
+      are constructed in <code>libaltacast.cpp</code> as:<br/><br/>
+      <code>sprintf(configFile, "%s_%d.cfg", g-&gt;gConfigFileName, g-&gt;encoderNumber);</code><br/>
+      <code>// → mcaster1dspencoder_1.cfg, mcaster1dspencoder_2.cfg, ...</code><br/><br/>
+      Each numbered file is <strong>one encoder connection slot</strong>, not one station. To stream MP3
+      and Ogg simultaneously to the same server you need two slots (<code>_1.cfg</code> and <code>_2.cfg</code>)
+      each pointing at the same server with different format settings.
+    </div>
+    <ul class="plain">
+      <li><strong>No station grouping concept</strong> &mdash; encoder slots that logically belong together (same server, same ICY metadata, different formats) have no way to express that relationship in config</li>
+      <li><strong>Duplicated metadata</strong> &mdash; ICY name, genre, URL, password must be copy-pasted into every numbered file for encoders targeting the same server</li>
+      <li><strong>Opaque numbering</strong> &mdash; <code>_1.cfg</code> vs <code>_2.cfg</code> carries no semantic meaning; figuring out which slot goes where requires reading every file</li>
+      <li><strong>Hard cap of 10 slots</strong> (<code>MAX_ENCODERS 10</code>) &mdash; increasing requires a recompile</li>
+      <li><strong>Flat key namespace</strong> &mdash; no grouping or structure within each file; no inline comments describing what the encoder is for</li>
+      <li><strong>No archive configuration</strong> &mdash; no built-in save-to-WAV settings per encoder slot</li>
+    </ul>
+
+    <h3>4.2 New YAML Config Format</h3>
+    <p>File: <code>mcaster1dspencoder.yaml</code></p>
+    <pre>global:
+  log_level: info
+  log_file: mcaster1dspencoder.log
+  reconnect_delay: 5
+  reconnect_on_drop: true
+
+stations:
+  - id: 1
+    name: "My Rock Station"
+    enabled: true
+    icy:
+      name: "My Rock Station"
+      genre: "Rock"
+      url: "https://mystation.example.com"
+      description: "The best rock on the internet"
+      pub: true
+    server:
+      type: icecast2
+      host: stream.example.com
+      port: 8000
+      password: "hackme"
+      mount: /rock
+    encoders:
+      - format: mp3
+        bitrate: 128
+        samplerate: 44100
+        channels: 2
+        quality: 5
+        vbr: false
+      - format: ogg
+        bitrate: 96
+        samplerate: 44100
+        channels: 2
+        quality: 0.6
+      - format: opus
+        bitrate: 128
+        samplerate: 48000
+        channels: 2
+        complexity: 10
+        signal: audio
+      - format: aac
+        profile: he-aacv1     # lc | he-aacv1 | he-aacv2
+        bitrate: 64
+        samplerate: 44100
+        channels: 2
+    archive:
+      enabled: false
+      path: "./recordings/"
+      filename_pattern: "{station_id}_{date}_{time}.wav"
+      max_size_mb: 2048
+
+  - id: 2
+    name: "My Jazz Stream"
+    enabled: false
+    icy:
+      name: "Smooth Jazz 24/7"
+      genre: "Jazz"
+      url: "https://jazz.example.com"
+      pub: false
+    server:
+      type: shoutcast2
+      host: shout2.example.com
+      port: 8002
+      password: "jazzpass"
+      mount: /jazz
+    encoders:
+      - format: mp3
+        bitrate: 192
+        samplerate: 44100
+        channels: 2
+        quality: 2
+        vbr: true
+        vbr_min: 96
+        vbr_max: 320
+    archive:
+      enabled: true
+      path: "D:/archive/jazz/"
+      filename_pattern: "jazz_{date}.wav"
+      max_size_mb: 4096</pre>
+
+    <h3>4.3 YAML Library &mdash; libyaml (already in vcpkg)</h3>
+    <p>New module: <code>libmcaster1dspencoder/config_yaml.cpp</code> + <code>config_yaml.h</code></p>
+    <pre>int mcaster1_load_yaml_config(const char *path, mcaster1_config_t *cfg);
+int mcaster1_get_station_count(const mcaster1_config_t *cfg);
+int mcaster1_get_station(const mcaster1_config_t *cfg, int idx, mcaster1_station_t *st);
+int mcaster1_save_yaml_config(const char *path, const mcaster1_config_t *cfg);</pre>
+    <p>Legacy <code>key=value</code> reader retained as fallback. Format auto-detected by file extension.</p>
+
+    <h3>4.4 Multi-Station Architecture</h3>
+    <p><code>MAX_ENCODERS</code> increased from 10 &rarr; 32. Each YAML station encoder entry maps to one
+    <code>mcaster1Globals</code> slot. Audio input is fanned out to all active encoder threads from
+    a single capture/input callback using the existing <code>pthreadVSE</code> threading model.</p>
+
+    <h3>4.5 Phase 4 Deliverables</h3>
+    <ul class="checklist">
+      <li><code>libyaml</code> linked from vcpkg (x86-windows + x64-windows, static)</li>
+      <li><code>config_yaml.cpp</code> / <code>config_yaml.h</code> module in <code>libmcaster1dspencoder</code></li>
+      <li><code>mcaster1dspencoder.yaml</code> sample config with 2 stations</li>
+      <li>YAML loader replaces legacy cfg loader (legacy kept as fallback, auto-detected by extension)</li>
+      <li><code>MAX_ENCODERS</code> increased 10 &rarr; 32</li>
+      <li>Multi-station verified: 2 stations, 2+ encoders each, simultaneous encode</li>
+      <li>Per-station ICY metadata verified on Icecast and Shoutcast</li>
+      <li>Save-to-WAV archive functional per station with filename pattern templating</li>
+      <li>Station list UI in <code>Mcaster1DSPEncoder.exe</code></li>
+      <li>Station selector in all plugin config dialogs</li>
+    </ul>
+  </section>
+
+  <!-- PHASE 5 -->
+  <section id="phase5">
+    <h2>Phase 5 &mdash; ICY 2.1 Enhanced Metadata Protocol <span class="badge badge-pend">PLANNED</span></h2>
+    <p><strong>Goal:</strong> Implement the ICY 2.1 metadata extension on both the encoder (Mcaster1DSPEncoder)
+    and server (Mcaster1DNAS) sides, enabling richer stream metadata far beyond what the legacy
+    <code>StreamTitle=Artist - Title;</code> inline text block supports.</p>
+
+    <h3>Why ICY Metadata Needs an Upgrade</h3>
+    <p>The legacy ICY metadata protocol sends a plain-text <code>StreamTitle=...</code> string embedded in the
+    audio stream at fixed byte intervals (<code>Icy-MetaInt</code>). This works for basic now-playing display
+    but has fundamental limitations:</p>
+    <ul class="plain">
+      <li>No album art or cover image support</li>
+      <li>No track duration or playback position</li>
+      <li>No music service identifiers (ISRC, MusicBrainz, Spotify URI)</li>
+      <li>No listener engagement signals (likes, reactions)</li>
+      <li>No structured data — everything jammed into a single string</li>
+      <li>No multi-language metadata</li>
+    </ul>
+
+    <h3>ICY 2.1 Feature Set</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>JSON metadata blocks</strong></td><td>Full JSON payload option alongside legacy <code>StreamTitle=</code> for backward compatibility with all existing players</td></tr>
+          <tr><td><strong>Album art</strong></td><td>Base64-encoded thumbnail in metadata block, or HTTP URL reference for full-resolution art</td></tr>
+          <tr><td><strong>Track identifiers</strong></td><td>ISRC, MusicBrainz Track ID, Spotify URI, Apple Music ID fields for automated service lookup</td></tr>
+          <tr><td><strong>Duration + position</strong></td><td>Track length and elapsed time for player progress bars and skip tracking</td></tr>
+          <tr><td><strong>Station branding</strong></td><td>Logo URL, station accent color, social handles in stream metadata</td></tr>
+          <tr><td><strong>Engagement signals</strong></td><td>Listener like/reaction metadata for platform integration and analytics</td></tr>
+          <tr><td><strong>History API linkage</strong></td><td><code>history_url</code> field pointing to the Mcaster1DNAS song history API endpoint for the current stream</td></tr>
+          <tr><td><strong>Backward compatibility</strong></td><td>ICY 2.1 blocks always include a legacy <code>StreamTitle=</code> field — all existing players continue working unchanged</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Integration Architecture</h3>
+    <div class="callout callout-info">
+      <strong>Data Flow</strong>
+      Mcaster1DSPEncoder sends ICY 2.1 structured metadata to Mcaster1DNAS on <code>PUT /metadata</code>.
+      Mcaster1DNAS stores it in its in-memory ring buffer (the song history API introduced in v2.5.1-rc1)
+      and relays ICY 2.1 blocks to ICY 2.1-aware listeners. Legacy players receive the plain <code>StreamTitle=</code>
+      fallback automatically. Track History pages in Mcaster1DNAS consume the ring buffer and display
+      cover art, streaming service links, and track history for each mount point.
+    </div>
+
+    <h3>Sample ICY 2.1 Metadata Block</h3>
+    <pre>{
+  "StreamTitle": "Artist - Track Title",
+  "artist": "Artist Name",
+  "title": "Track Title",
+  "album": "Album Name",
+  "year": 2024,
+  "cover_url": "https://stream.example.com/art/current.jpg",
+  "cover_b64": "iVBORw0KGgo...",
+  "duration_ms": 237000,
+  "elapsed_ms": 45000,
+  "isrc": "USRC17607839",
+  "musicbrainz_id": "b9ad642e-b012-42ba-b2b5-b27c3aa99a72",
+  "spotify_uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
+  "history_url": "https://stream.example.com/api/history/rock",
+  "station": {
+    "name": "My Rock Station",
+    "logo_url": "https://stream.example.com/logo.png",
+    "color": "#e63946"
+  }
+}</pre>
+
+    <h3>Phase 5 Deliverables</h3>
+    <ul class="checklist">
+      <li>ICY 2.1 JSON block serializer in <code>libmcaster1dspencoder</code></li>
+      <li>ICY 2.1 metadata PUT integrated into encoder-to-DNAS handshake</li>
+      <li>Backward-compatible <code>StreamTitle=</code> always included in block</li>
+      <li>Album art fetch from local music library metadata (ID3/Vorbis comment cover)</li>
+      <li>ISRC / MusicBrainz / Spotify URI passthrough from track metadata</li>
+      <li>Mcaster1DNAS ICY 2.1 relay to aware listeners, fallback to legacy for others</li>
+      <li>Track History pages updated with ICY 2.1 cover art and service links</li>
+      <li>ICY 2.1 verified end-to-end: Encoder &rarr; DNAS &rarr; ICY 2.1 player</li>
+    </ul>
+  </section>
+
+  <!-- PHASE 6 -->
+  <section id="phase6">
+    <h2>Phase 6 &mdash; Mcaster1DNAS Integration <span class="badge badge-pend">PLANNED</span></h2>
+    <p><strong>Goal:</strong> First-class integration between Mcaster1DSPEncoder and the Mcaster1DNAS
+    streaming server. They are already ecosystem companions — this phase makes them work together
+    seamlessly as a matched pair, better together than either is with generic third-party tools.</p>
+
+    <h3>Integration Features</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Auto-discovery</strong></td><td>Encoder detects local Mcaster1DNAS instances on the LAN and offers them in a server picker (mDNS / simple UDP broadcast). No manual IP/port entry for local setups.</td></tr>
+          <tr><td><strong>Shared YAML config</strong></td><td>Encoder and DNAS share a common <code>mcaster1.yaml</code> with station definitions, eliminating duplicate configuration between the two applications.</td></tr>
+          <tr><td><strong>Live stream health</strong></td><td>DNAS reports listener count, bitrate stability, and buffer state back to the encoder UI in real time. Red/amber/green status indicator per encoder slot.</td></tr>
+          <tr><td><strong>Song history push</strong></td><td>Encoder pushes structured now-playing data directly to the DNAS ring buffer API on each track change — no polling delay, no metadata lag.</td></tr>
+          <tr><td><strong>Admin API auth</strong></td><td>Encoder uses the same API key as the DNAS admin panel. Single credential, single configuration point.</td></tr>
+          <tr><td><strong>Relay/fallback coordination</strong></td><td>Encoder can trigger a DNAS relay switch if the live source drops, and signal DNAS to resume live source when the connection recovers.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Phase 6 Deliverables</h3>
+    <ul class="checklist">
+      <li>LAN auto-discovery: mDNS/UDP broadcast — populate server picker from discovered DNAS instances</li>
+      <li>Shared YAML config schema v2 — station definitions consumed by both encoder and DNAS</li>
+      <li>Live stream health API polling — listener count + bitrate in encoder UI per slot</li>
+      <li>Song history push on track change — direct ring buffer API call, zero polling delay</li>
+      <li>Shared admin API key — single credential in YAML, used by both apps</li>
+      <li>Relay/fallback trigger — encoder signals DNAS relay switch on source drop/recover</li>
+      <li>Verified end-to-end: Encoder connected to DNAS, Track History pages updating in real time</li>
+    </ul>
+  </section>
+
+  <!-- PHASE 7 -->
+  <section id="phase7">
+    <h2>Phase 7 &mdash; Mcaster1Castit <span class="badge badge-pend">PLANNED</span></h2>
+    <p><strong>Goal:</strong> Resurrect and modernize <strong>Castit</strong> &mdash; the original live broadcast
+    scheduling and automation tool built for <strong>casterclub.com</strong> in 2001 with Ed Zaleski's guidance.
+    Castit was written against VC6 and will be upgraded to Visual Studio 2022 as a first-class member of the Mcaster1 ecosystem.</p>
+
+    <div class="callout callout-info">
+      <strong>Historical Context</strong>
+      Castit was the first project Dave St. John and Ed Zaleski worked on together, beginning in 2001.
+      Ed mentored Dave in C/C++ and MFC/Windows programming while helping build the broadcast infrastructure
+      for casterclub.com. The original VC6 source is the direct ancestor of this codebase. Bringing Castit
+      into the Mcaster1 ecosystem closes the circle on that collaboration.
+    </div>
+
+    <h3>Upgrade Plan</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Component</th><th>Old (VC6)</th><th>New (VS2022)</th></tr></thead>
+        <tbody>
+          <tr><td>Compiler / Toolset</td><td>VC6 (v60 toolset)</td><td>VS2022 (v143 toolset)</td></tr>
+          <tr><td>Windows SDK</td><td>Windows 98/ME/2000 era</td><td>Windows 10 SDK (10.0.x)</td></tr>
+          <tr><td>XML processing</td><td>Bundled libxml2 (VC6 era)</td><td><code>libxml2:x86-windows</code> via vcpkg</td></tr>
+          <tr><td>HTTP client</td><td>Custom / early libcurl build</td><td><code>libcurl:x86-windows</code> via vcpkg (TLS 1.3, HTTP/2)</td></tr>
+          <tr><td>Database</td><td>MySQL direct client (VC6)</td><td><strong>libmariadb</strong> via vcpkg (preferred) <em>or</em> libmysql — to be confirmed</td></tr>
+          <tr><td>UI Framework</td><td>MFC VC6 dialogs (fixed-size)</td><td>MFC VS2022 + ResizableLib (matching Mcaster1DSPEncoder)</td></tr>
+          <tr><td>Configuration</td><td>Legacy flat config</td><td>YAML via <code>libyaml</code> (matching Mcaster1DSPEncoder)</td></tr>
+          <tr><td>Encoding integration</td><td>Castit-internal encoder</td><td>Delegates to Mcaster1DSPEncoder engine via shared lib</td></tr>
+          <tr><td>Metadata</td><td>Legacy ICY text</td><td>ICY 2.1 JSON metadata push (Phase 5)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>Database Choice: MariaDB vs MySQL</strong>
+      <code>libmariadb</code> is preferred over the Oracle MySQL client. MariaDB is a true open-source,
+      community-maintained drop-in replacement for MySQL with the same wire protocol, no Oracle license
+      constraints, and active development. This will be confirmed before implementation begins.
+      vcpkg package: <code>libmariadb:x86-windows</code>.
+    </div>
+
+    <h3>Mcaster1Castit Feature Goals</h3>
+    <ul class="plain">
+      <li>Playlist scheduling: time-based and event-triggered playback with calendar UI</li>
+      <li>Live source injection: interrupt playlist for a live broadcast mid-schedule</li>
+      <li>Integration with Mcaster1DNAS for stream status and listener statistics</li>
+      <li>Integration with Mcaster1DSPEncoder for encoding, stream health, and format selection</li>
+      <li>ICY 2.1 metadata injection from the playlist schedule on each track change</li>
+      <li>Archive recording: save each scheduled slot to WAV/MP3/FLAC for replay and archival</li>
+      <li>REST API: remote schedule management via JSON API</li>
+    </ul>
+
+    <h3>Phase 7 Deliverables</h3>
+    <ul class="checklist">
+      <li>Castit VC6 project upgraded to VS2022 — compiles with v143 toolset</li>
+      <li><code>libxml2</code> integrated via vcpkg replacing bundled VC6 build</li>
+      <li><code>libcurl</code> integrated via vcpkg with TLS 1.3 support</li>
+      <li><code>libmariadb</code> (or <code>libmysql</code>) integrated via vcpkg</li>
+      <li>ResizableLib applied to all Castit dialogs (matching Mcaster1DSPEncoder style)</li>
+      <li>YAML configuration replacing legacy flat config</li>
+      <li>Mcaster1DSPEncoder encoding engine integrated for live source encoding</li>
+      <li>ICY 2.1 metadata injection on track change events</li>
+      <li>Mcaster1Castit.exe launches, schedules, and streams to a local Mcaster1DNAS instance</li>
+    </ul>
+  </section>
+
+  <!-- PHASE 8 -->
+  <section id="phase8">
+    <h2>Phase 8 &mdash; Analytics, Metrics &amp; Platform Engagement <span class="badge badge-pend">PLANNED</span></h2>
+    <p><strong>Goal:</strong> Leverage the ICY 2.1 protocol and the Mcaster1DNAS song history ring buffer to
+    build a statistical metrics and analytics layer that gives station operators actionable listener engagement
+    data &mdash; without requiring third-party analytics services or sharing data with external platforms.</p>
+
+    <h3>Analytics Architecture</h3>
+    <pre>
+[Listeners] ──ICY 2.1 engagement signals──► [Mcaster1DNAS]
+                                                    │
+                                          [Analytics Ring Buffer]
+                                                    │
+                           ┌────────────────────────┼──────────────────────────┐
+                           ▼                        ▼                          ▼
+                  [Track Play Stats]        [Listener Peaks]          [Format Stats]
+                  Most played, rotation     Hour-by-hour curve        Codec popularity
+                           │
+                  [Mcaster1Castit Scheduler]
+                           │
+                  [Optimize playlist rotation
+                   based on engagement data]</pre>
+
+    <h3>Planned Metrics</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Metric</th><th>Source</th><th>Use Case</th></tr></thead>
+        <tbody>
+          <tr><td>Track play count</td><td>DNAS ring buffer</td><td>Most-played tracks, rotation analysis, eliminate overplayed songs</td></tr>
+          <tr><td>Listener count at track change</td><td>DNAS stats API</td><td>Measure which tracks retain vs lose listeners</td></tr>
+          <tr><td>Format &amp; bitrate popularity</td><td>DNAS mount stats</td><td>Which codec/bitrate combinations listeners actually use</td></tr>
+          <tr><td>Peak listening hours</td><td>DNAS listener timeseries</td><td>Schedule high-value content at real peak times</td></tr>
+          <tr><td>Tune-in / tune-out moments</td><td>ICY 2.1 engagement signal</td><td>Identify tracks and times that cause listeners to disconnect</td></tr>
+          <tr><td>Music service click-through</td><td>Track History page analytics</td><td>Which tracks generate Spotify/Apple Music lookups from listeners</td></tr>
+          <tr><td>Geographic distribution</td><td>DNAS connection metadata</td><td>Where your listeners are — optimize relay server placement</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Platform Engagement via ICY 2.1</h3>
+    <p>The ICY 2.1 metadata block includes a <code>history_url</code> field pointing to the DNAS track history API.
+    Listener-side players that support ICY 2.1 can display:</p>
+    <ul class="plain">
+      <li>A clickable "now playing" card with album art and music service links</li>
+      <li>A scrollable track history for the current listening session</li>
+      <li>An "add to playlist" action via Spotify / Apple Music deep link</li>
+      <li>A listener engagement button (like/react) that feeds back into DNAS analytics</li>
+    </ul>
+    <p>This creates a direct engagement path from the audio stream to music service platforms,
+    measurable through <code>history_url</code> click analytics on the DNAS side &mdash; without
+    requiring a third-party ad network or analytics vendor.</p>
+
+    <h3>Mcaster1Castit Playlist Intelligence</h3>
+    <p>Phase 8 closes the loop: analytics data collected by Mcaster1DNAS feeds back into
+    Mcaster1Castit's scheduling engine. High-engagement tracks get scheduled more frequently
+    at the hours when their listener segments are most active. Tracks that consistently cause
+    tune-outs get flagged for rotation review. All processing happens on-premises — no data
+    leaves your infrastructure.</p>
+
+    <h3>Phase 8 Deliverables</h3>
+    <ul class="checklist">
+      <li>Analytics ring buffer in Mcaster1DNAS (extends existing song history ring buffer)</li>
+      <li>Listener count timeseries API endpoint — per-mount, per-hour granularity</li>
+      <li>Track engagement stats API — play count, listener delta per track change</li>
+      <li>Analytics dashboard page in Mcaster1DNAS admin UI</li>
+      <li>ICY 2.1 engagement signal receiver in DNAS (listener like/react events)</li>
+      <li>Castit playlist intelligence module — query DNAS analytics API, score tracks</li>
+      <li>Automatic rotation suggestion: flag overplayed / tune-out tracks in Castit UI</li>
+      <li>Export: CSV / JSON analytics export from DNAS admin UI</li>
+    </ul>
+  </section>
+
+  <!-- DEPS -->
+  <section id="deps">
+    <h2>Dependency Matrix</h2>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Dependency</th><th>Purpose</th><th>License</th><th>Distribute</th><th>Phase</th><th>vcpkg</th></tr></thead>
+        <tbody>
+          <tr><td><code>libmp3lame.dll</code></td><td>MP3 encoding</td><td>LGPL v2</td><td>Yes (patents expired 2017)</td><td>2</td><td><code>mp3lame:x64</code></td></tr>
+          <tr><td><code>vorbis.dll</code> / <code>vorbisenc.dll</code></td><td>Ogg Vorbis</td><td>BSD</td><td>Yes</td><td>existing</td><td><code>libvorbis:x64</code></td></tr>
+          <tr><td><code>ogg.dll</code></td><td>Ogg container</td><td>BSD</td><td>Yes</td><td>existing</td><td><code>libogg:x64</code></td></tr>
+          <tr><td><code>libFLAC.dll</code></td><td>FLAC encoding</td><td>BSD</td><td>Yes</td><td>existing</td><td><code>libflac:x64</code></td></tr>
+          <tr><td><code>fdk-aac.dll</code></td><td>AAC-LC / AAC+ / AAC++ encoding</td><td>BSD-2 (HE-AAC patent license)</td><td>Yes</td><td>3</td><td><code>fdk-aac:x64[he-aac]</code> &mdash; install required</td></tr>
+          <tr><td><code>libcurl.dll</code></td><td>HTTP / streaming</td><td>MIT/curl</td><td>Yes</td><td>existing</td><td><code>curl:x64</code></td></tr>
+          <tr><td><code>pthreadVSE.dll</code></td><td>Threading</td><td>LGPL</td><td>Yes</td><td>existing</td><td><code>pthreads:x64</code></td></tr>
+          <tr><td><code>opus.dll</code></td><td>Opus core codec</td><td>BSD</td><td>Yes</td><td>3</td><td><code>opus:x64</code> &#10003;</td></tr>
+          <tr><td><code>opusenc.dll</code></td><td>Opus encoding API</td><td>BSD</td><td>Yes</td><td>3</td><td><code>libopusenc:x64</code> &#10003;</td></tr>
+          <tr><td>PortAudio 19.7.0</td><td>Device capture (WASAPI/ASIO/MME/DS/WDM-KS)</td><td>MIT</td><td><strong>Static link</strong> — baked into EXE only, no DLL</td><td>3 &#10003;</td><td>Built from source with Steinberg ASIO SDK</td></tr>
+          <tr><td><code>libyaml</code></td><td>YAML config parser</td><td>MIT</td><td>Yes (static)</td><td>4</td><td><code>libyaml:x86-windows</code> &#10003;</td></tr>
+          <tr><td>ResizableLib</td><td>Resizable MFC dialog framework</td><td>Artistic</td><td>Source compiled in</td><td>2 &#10003;</td><td><code>external/ResizableLib/</code></td></tr>
+          <tr><td><code>bass.dll</code></td><td>Audio capture (legacy)</td><td>Proprietary</td><td>&mdash;</td><td><span class="badge badge-remove">REMOVED Phase 3</span></td><td>&mdash;</td></tr>
+          <tr><td><code>basswma.dll</code></td><td>WMA encoding (legacy)</td><td>Proprietary</td><td>&mdash;</td><td><span class="badge badge-remove">REMOVED Phase 3</span></td><td>&mdash;</td></tr>
+          <tr><td><code>libmariadb</code></td><td>MariaDB/MySQL client (Castit)</td><td>LGPL</td><td>Yes</td><td>7</td><td><code>libmariadb:x86-windows</code></td></tr>
+          <tr><td><code>libxml2.dll</code></td><td>XML / YP</td><td>MIT</td><td>Yes</td><td>existing</td><td><code>libxml2:x64</code></td></tr>
+          <tr><td><code>iconv.dll</code></td><td>Encoding conv.</td><td>LGPL</td><td>Yes</td><td>existing</td><td><code>libiconv:x64</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- GIT -->
+  <section id="git">
+    <h2>Git Repository Setup &amp; Release Tags</h2>
+    <pre>git init
+git remote add origin https://github.com/davestj/Mcaster1DSPEncoder.git
+git add .
+git commit -m "feat: initial public release — Phase 1 &amp; 2 complete, Phase 3 in progress"
+git tag v0.2.0
+git push -u origin main</pre>
+
+    <h3>Release Version Plan</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Tag</th><th>Phase</th><th>Status</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>v0.1.0</code></td><td>Phase 1</td><td><span class="badge badge-done">TAGGED</span></td><td>VS2022 build fixes — all 4 targets compile and run</td></tr>
+          <tr><td><code>v0.2.0</code></td><td>Phase 2</td><td><span class="badge badge-done">TAGGED</span></td><td>Full rebrand, ResizableLib UI, Segoe UI, native LAME, all 4 targets clean</td></tr>
+          <tr><td><code>v0.3.0</code></td><td>Phase 3</td><td><span class="badge badge-next">IN PROGRESS</span></td><td>Dual MP3 (LAME + ACM), Opus, HE-AAC via fdk-aac, WMA removed, PortAudio WASAPI+ASIO</td></tr>
+          <tr><td><code>v0.4.0</code></td><td>Phase 4</td><td><span class="badge badge-pend">PLANNED</span></td><td>YAML multi-station config, 32 encoder slots, per-station ICY metadata</td></tr>
+          <tr><td><code>v0.5.0</code></td><td>Phase 5</td><td><span class="badge badge-pend">PLANNED</span></td><td>ICY 2.1 enhanced metadata — JSON blocks, album art, track IDs, DNAS history linkage</td></tr>
+          <tr><td><code>v0.6.0</code></td><td>Phase 6</td><td><span class="badge badge-pend">PLANNED</span></td><td>Mcaster1DNAS deep integration — auto-discovery, shared YAML, live health, song push</td></tr>
+          <tr><td><code>v1.0.0</code></td><td>Phase 7</td><td><span class="badge badge-pend">PLANNED</span></td><td>Mcaster1Castit — Castit VC6 &rarr; VS2022, full Mcaster1 platform launch</td></tr>
+          <tr><td><code>v1.1.0</code></td><td>Phase 8</td><td><span class="badge badge-pend">PLANNED</span></td><td>Analytics, metrics &amp; platform engagement via ICY 2.1 signals</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Phase Summary</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Phase</th><th>Name</th><th>Status</th><th>Key Outputs</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>VS2022 Build Fix</td><td><span class="badge badge-done">COMPLETE</span></td><td>All 4 targets compile and run</td></tr>
+          <tr><td>2</td><td>Rebrand &amp; Refactor</td><td><span class="badge badge-done">COMPLETE</span></td><td>Full rename, ResizableLib UI, Segoe UI, native LAME, all 4 targets clean</td></tr>
+          <tr><td>3</td><td>Audio Modernization</td><td><span class="badge badge-next">IN PROGRESS</span></td><td>Dual MP3, Opus, HE-AAC, WMA removed, PortAudio &mdash; pending E2E verification</td></tr>
+          <tr><td>4</td><td>YAML Multi-Station</td><td><span class="badge badge-pend">PLANNED</span></td><td>YAML config, multi-station, per-station encoders, archive</td></tr>
+          <tr><td>5</td><td>ICY 2.1 Enhanced Metadata</td><td><span class="badge badge-pend">PLANNED</span></td><td>JSON blocks, album art, track IDs, DNAS history API linkage</td></tr>
+          <tr><td>6</td><td>Mcaster1DNAS Integration</td><td><span class="badge badge-pend">PLANNED</span></td><td>Auto-discovery, shared config, live health feedback, song history push</td></tr>
+          <tr><td>7</td><td>Mcaster1Castit</td><td><span class="badge badge-pend">PLANNED</span></td><td>Castit VC6 &rarr; VS2022, libxml2/libcurl/libmariadb via vcpkg, broadcast scheduler</td></tr>
+          <tr><td>8</td><td>Analytics &amp; Engagement</td><td><span class="badge badge-pend">PLANNED</span></td><td>Listener metrics, tune signals, platform engagement via ICY 2.1</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <strong>Mcaster1DSPEncoder</strong> &mdash; Fork of <a href="https://www.oddsock.org/" target="_blank">EdCast / Oddsock</a> by <strong>Ed Zaleski</strong> &mdash;
+    Maintained by <a href="mailto:davestj@gmail.com">Dave St. John</a> &mdash;
+    <a href="https://github.com/davestj/Mcaster1DSPEncoder" target="_blank">GitHub</a>
+    &mdash; GPL v2 &mdash; See <a href="CREDITS.md">CREDITS.md</a> &bull; <a href="ROADMAP.md">ROADMAP.md</a> &bull; <a href="FORKS.md">FORKS.md</a>
+    <br/>Part of the <strong>Mcaster1</strong> open-source internet radio platform &mdash; Mcaster1DNAS &bull; Mcaster1DSPEncoder &bull; Mcaster1Castit
+  </footer>
+</div>
+</body>
+</html>
