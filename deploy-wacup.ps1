@@ -12,7 +12,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 $root        = 'C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder'
-$wacup       = 'C:\Program Files\WACUP'
+$wacup       = 'C:\Program Files (x86)\WACUP'
 $plugins     = "$wacup\Plugins"
 $release     = "$root\Winamp_Plugin\$Config"
 $vcpkgBin    = 'C:\vcpkg\installed\x86-windows\bin'
@@ -43,6 +43,7 @@ $runtimeDlls = @(
     "$vcpkgBin\libmp3lame.dll",
     "$vcpkgBin\opus.dll",
     "$vcpkgBin\opusenc.dll",
+    "$vcpkgBin\yaml.dll",
     "$externalLib\ogg.dll",
     "$externalLib\vorbis.dll",
     "$externalLib\vorbisenc.dll",

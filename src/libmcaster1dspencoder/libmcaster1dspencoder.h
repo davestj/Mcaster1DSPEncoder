@@ -414,6 +414,9 @@ int ogg_encode_dataout(mcaster1Globals *g);
 int	trimVariable(char_t *variable);
 int readConfigFile(mcaster1Globals *g,int readOnly = 0);
 int writeConfigFile(mcaster1Globals *g);
+/* Helpers for YAML config layer — reset/populate the internal config store */
+void configReset(void);
+void configAddKeyValue(const char *key, const char *value);
 void    printConfigFileValues();
 void ErrorMessage(char_t *title, char_t *fmt, ...);
 int setCurrentSongTitle(mcaster1Globals *g,char_t *song);

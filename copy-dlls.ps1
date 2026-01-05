@@ -27,7 +27,8 @@ $dlls = @(
     "libFLAC.dll",
     "pthreadVSE.dll",
     "libcurl.dll",
-    "iconv.dll"
+    "iconv.dll",
+    "yaml.dll"
 )
 
 Write-Host "=== Copying external DLLs ($Config) ===" -ForegroundColor Cyan

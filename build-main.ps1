@@ -30,6 +30,10 @@ Write-Host ""
 Write-Host ""
 if ($LASTEXITCODE -eq 0) {
     Write-Host "=== BUILD SUCCEEDED ===" -ForegroundColor Green
+    # Stage runtime DLLs into output directories
+    Write-Host ""
+    Write-Host "Staging runtime DLLs..." -ForegroundColor Cyan
+    & "$PSScriptRoot\copy-dlls.ps1" -Config $Config
 } else {
     Write-Host "=== BUILD FAILED (exit $LASTEXITCODE) ===" -ForegroundColor Red
     exit $LASTEXITCODE

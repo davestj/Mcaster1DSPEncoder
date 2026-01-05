@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "MCASTER1DSPENCODER.h"
 #include "MainWindow.h"
+#include "config_yaml.h"
 //#include "Dummy.h"
 
 #ifdef _DEBUG
@@ -71,8 +72,25 @@ int mcaster1_init(mcaster1Globals *g)
 	setDestURLCallback(g, outputStreamURLCallback);
     //strcpy(g->gConfigFileName, ".\\mcaster1dspencoder");
 
-	readConfigFile(g);
-	
+	/* Try YAML first.  If no YAML file exists yet, fall back to the legacy
+	 * INI config file, then immediately write a YAML file for future runs
+	 * (one-time automatic migration from .cfg to .yaml). */
+	if (!readConfigYAML(g)) {
+		char cfgPath[1024], bakPath[1024];
+		readConfigFile(g, 1);     /* legacy INI read — readOnly, don't recreate .cfg */
+		writeConfigYAML(g);       /* create YAML file */
+		/* Rename legacy .cfg to .cfg.bak so we know migration is done */
+		if (strlen(g->gConfigFileName) == 0) {
+			_snprintf(cfgPath, sizeof(cfgPath)-1, "Mcaster1 DSP Encoder_%d.cfg", g->encoderNumber);
+			_snprintf(bakPath, sizeof(bakPath)-1, "Mcaster1 DSP Encoder_%d.cfg.bak", g->encoderNumber);
+		} else {
+			_snprintf(cfgPath, sizeof(cfgPath)-1, "%s_%d.cfg", g->gConfigFileName, g->encoderNumber);
+			_snprintf(bakPath, sizeof(bakPath)-1, "%s_%d.cfg.bak", g->gConfigFileName, g->encoderNumber);
+		}
+		cfgPath[sizeof(cfgPath)-1] = bakPath[sizeof(bakPath)-1] = '\0';
+		MoveFileA(cfgPath, bakPath);
+	}
+
 	setFrontEndType(g, FRONT_END_MCASTER1_PLUGIN);
 	
 	return 1;

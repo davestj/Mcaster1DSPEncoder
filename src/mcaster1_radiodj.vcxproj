@@ -169,6 +169,7 @@
   <ItemGroup>
     <ClCompile Include="About.cpp" />
     <ClCompile Include="AdvancedSettings.cpp" />
+    <ClCompile Include="config_yaml.cpp" />
     <ClCompile Include="mcaster1_radiodj.cpp" />
     <ClCompile Include="BasicSettings.cpp" />
     <ClCompile Include="Config.cpp" />
@@ -221,6 +222,7 @@
   <ItemGroup>
     <ClInclude Include="About.h" />
     <ClInclude Include="AdvancedSettings.h" />
+    <ClInclude Include="config_yaml.h" />
     <ClInclude Include="mcaster1dspencoder.h" />
     <ClInclude Include="mcaster1_radiodj.h" />
     <ClInclude Include="BasicSettings.h" />

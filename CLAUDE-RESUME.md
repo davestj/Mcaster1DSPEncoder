@@ -23,9 +23,9 @@
 |-------|------|--------|
 | 1 | VS2022 Build Fix | **COMPLETE** |
 | 2 | Rebrand AltaCast → Mcaster1DSPEncoder | **COMPLETE** |
-| 2.5 | Project Reorganization (master .sln, per-project outputs, SDK layout) | **COMPLETE** (this session) |
+| 2.5 | Project Reorganization (master .sln, per-project outputs, SDK layout) | **COMPLETE** |
 | 3 | Audio Backend Modernization (Opus, HE-AAC, PortAudio) | **IN PROGRESS** — codecs integrated, pending E2E verification |
-| 4 | YAML Multi-Station Config | PLANNED |
+| 4 | YAML Multi-Station Config | **COMPLETE** — config_yaml.cpp fully integrated across all targets |
 | 5 | ICY 2.1 Enhanced Metadata Protocol | PLANNED |
 | 6 | Mcaster1DNAS Integration | PLANNED |
 | 7 | Mcaster1Castit | PLANNED (next major project) |
@@ -33,142 +33,188 @@
 
 ---
 
-## 4 Build Targets — All Building Clean (REORGANIZED)
+## 4 Build Targets — All Building Clean
 
 | Target | vcxproj | Output |
 |--------|---------|--------|
-| Standalone encoder | `src\Mcaster1DSPEncoder.vcxproj` | `Release\Mcaster1DSPEncoder.exe` |
+| Standalone encoder | `src\Mcaster1DSPEncoder.vcxproj` | `Release\MCASTER1DSPENCODER.exe` |
 | Winamp/WACUP/RadioBoss DSP plugin | `src\mcaster1_winamp.vcxproj` | `Winamp_Plugin\Release\dsp_mcaster1.dll` |
 | foobar2000 component | `src\mcaster1_foobar.vcxproj` | `foobar2000\Release\foo_mcaster1.dll` |
 | Shared encoding engine (static lib) | `src\libmcaster1dspencoder\libmcaster1dspencoder.vcxproj` | `libmcaster1dspencoder\Release\libmcaster1dspencoder.lib` |
 
 **Master Solution:** `Mcaster1DSPEncoder_Master.sln` (root) — open this, NOT any src\ .sln
-- Default startup project: `Mcaster1DSPEncoder` (standalone EXE)
-- All 4 targets visible in Solution Explorer
-- Per-project build intermediate dir: `build\<target>\<config>\`
+**MSBuild:** `C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe`
 
-MSBuild: `C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe`
-Scripts: `.\build-main.ps1` (uses master .sln), `.\build-plugins.ps1`, `.\build-portaudio.ps1`
+### Build & Deploy Scripts
+
+```powershell
+# Full clean + build all targets + stage DLLs
+.\build-all.ps1 -Config Release
+
+# Build standalone only
+.\build-main.ps1 -Config Release
+
+# Build plugins only
+.\build-plugins.ps1 -Config Release
+
+# Deploy (each self-elevates via UAC)
+.\deploy-winamp.ps1    -Config Release   # C:\Program Files (x86)\Winamp\
+.\deploy-wacup.ps1     -Config Release   # C:\Program Files (x86)\WACUP\  ← x86 build
+.\deploy-radioboss.ps1 -Config Release   # C:\Program Files (x86)\RadioBoss\
+.\deploy-radiodj.ps1   -Config Release   # C:\RadioDJv2\
+.\deploy-foobar.ps1    -Config Release   # C:\Program Files\foobar2000\
+```
+
+**Note on WACUP:** WACUP x64 is at `C:\Program Files\WACUP\` but our build is Win32/x86.
+x86 WACUP is installed at `C:\Program Files (x86)\WACUP\` — deploy-wacup.ps1 already points there.
+When we do x64 build, change deploy-wacup.ps1 back to `C:\Program Files\WACUP\`.
 
 ---
 
-## Directory Structure (CURRENT — post-reorganization)
+## Fixes Applied This Session (2026-02-21)
 
-```
-Mcaster1DSPEncoder\               ← repo root
-  Mcaster1DSPEncoder_Master.sln   ← Master solution — open this in VS2022
-  src\                            ← all source files
-    Mcaster1DSPEncoder.vcxproj
-    mcaster1_winamp.vcxproj
-    mcaster1_foobar.vcxproj
-    libmcaster1dspencoder\
-      libmcaster1dspencoder.vcxproj
-  external\
-    include\                      ← shared headers
-    lib\                          ← pre-built runtime DLLs / import libs
-    ASIOSDK\                      ← Steinberg ASIO SDK (moved from root)
-    portaudio\
-      src\                        ← PortAudio source (moved from root portaudio_src\)
-      built\                      ← portaudio_static.lib (moved from root portaudio_built\)
-      build_x86\                  ← cmake build tree (gitignored)
-      build_x64\                  ← cmake build tree (gitignored)
-    foobar2000\                   ← foobar2000 SDK (moved from root foobar2000\)
-    ResizableLib\                 ← MFC resizable dialog framework
-  Release\                        ← standalone EXE output (gitignored)
-  Winamp_Plugin\Release\          ← Winamp DSP plugin output (gitignored)
-  foobar2000\Release\             ← foobar2000 component output (gitignored)
-  libmcaster1dspencoder\Release\  ← static lib output (gitignored)
-  build\                          ← intermediate obj files (gitignored)
-```
+### 1. YAML Config — Full Transition from .cfg (COMPLETE)
 
----
+**Problem:** `MCASTER1DSPENCODER_0.cfg` was still being created on app init despite transitioning to YAML.
 
-## Key Fixes Applied (This Session 2026-02-21)
+**Root causes:**
+- `MainWindow.cpp LoadConfigs()` called `readConfigFile(&gMain)` directly, bypassing YAML
+- `readConfigFile()` internally calls `writeConfigFile()` unconditionally at line 676 — creates .cfg even if none existed
+- All 3 plugin files (`mcaster1_winamp.cpp`, `mcaster1_foobar.cpp`, `mcaster1_radiodj.cpp`) still called `readConfigFile(g)` with no YAML path
 
-### 1. VS2022 "Load Failed" for Mcaster1DSPEncoder — FIXED
-**Root cause:** `src\Mcaster1DSPEncoder.vcxproj` had duplicate `<ClInclude>` entries:
-```xml
-<ClInclude Include="mcaster1dspencoder.h" />   <!-- lowercase -->
-<ClInclude Include="MCASTER1DSPENCODER.h" />   <!-- UPPERCASE -->
-```
-VS2022 IDE does case-insensitive duplicate detection and refuses to load. MSBuild ignores it silently.
-**Fix:** Merged to single `<ClInclude Include="Mcaster1DSPEncoder.h" />` in both `.vcxproj` and `.vcxproj.filters`.
-**Diagnosed with:** `devenv.exe /build Mcaster1DSPEncoder_Master.sln /out devenv-build.log`
-Error message was: `Cannot load project with duplicated project items: MCASTER1DSPENCODER.h is included as 'ClInclude' and as 'ClInclude' item types.`
+**Fixes:**
+| File | Change |
+|------|--------|
+| `src/MainWindow.cpp` `LoadConfigs()` | Replaced bare `readConfigFile(&gMain)` with YAML-first block |
+| `src/Mcaster1DSPEncoder.cpp` `mcaster1_init()` | Changed `readConfigFile(g)` → `readConfigFile(g, 1)` (readOnly, no .cfg recreation) |
+| `src/mcaster1_winamp.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
+| `src/mcaster1_foobar.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
+| `src/mcaster1_radiodj.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
+| `src/mcaster1_winamp.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
+| `src/mcaster1_foobar.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
+| `src/mcaster1_radiodj.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
 
-### 2. libmcaster1dspencoder project recovery — FIXED
-User accidentally deleted `src\libmcaster1dspencoder\` (entire folder).
-Recovered from Windows Recycle Bin via PowerShell `Shell.Application.Namespace(10)` + `InvokeVerb("undelete")`.
-All source files restored: `libmcaster1dspencoder.vcxproj`, `libmcaster1dspencoder.cpp`, `Socket.cpp`, `cbuffer.c`, `resample.c`.
+**Config file naming convention:**
+- Encoder 0 (first): `MCASTER1DSPENCODER_0.yaml`
+- Encoder 1 (second): `MCASTER1DSPENCODER_1.yaml`
+- Encoder N: `MCASTER1DSPENCODER_N.yaml`
+- Migration: old `.cfg` → renamed to `.cfg.bak` on first YAML run
+- No `.cfg` files should ever be created going forward
 
-### 3. VU Meter resize — FIXED
-**Problem:** FlexMeters bar graphs did not resize when user resized the main dialog.
-The outer Picture Control (IDC_METER) was anchored via ResizableLib (`TOP_LEFT, BOTTOM_RIGHT`)
-so its frame resized, but the DIB double-buffer inside was not recreated.
+### 2. Volume Slider for Live Recording — FIXED
 
-**Fix A — GDI leak in `src\FlexMeters.cpp Initialize_Step3()`:**
-Every resize call created new `memDC`/`memBM` without deleting old ones (GDI handle exhaustion).
-Added cleanup before recreation:
+**Problem:** When selecting a sound device for live streaming, volume pegged at 100% with slider having no effect. Slider appeared all the way to the left (position 0) but audio was at full.
+
+**Root causes:**
+- `m_RecVolume` initialized to 0 in constructor — slider started at minimum
+- `OnHScroll()` read slider position but only stored it "for UI state only" (commented-out stub)
+- No volume factor was ever applied to audio samples anywhere in the pipeline
+- `handleAllOutput()` passed raw PortAudio float32 samples to encoders with no scaling
+
+**Fix — 4 changes to `src/MainWindow.cpp`:**
+
 ```cpp
-if (memDC) {
-    if (oldBM) { ::SelectObject(memDC, oldBM); oldBM = NULL; }
-    DeleteDC(memDC);  memDC = NULL;
+// 1. New global (~line 40)
+volatile float g_recVolumeFactor = 1.0f;   // 0.0=silent, 1.0=unity
+
+// 2. OnInitDialog — slider starts at full volume
+m_RecVolumeCtrl.SetRange(0, 100);
+m_RecVolumeCtrl.SetPos(100);
+m_RecVolume = 100;
+g_recVolumeFactor = 1.0f;
+
+// 3. OnHScroll — compute factor from slider position
+g_recVolumeFactor = (float)m_RecVolume / 100.0f;
+
+// 4. handleAllOutput — scale samples before peak detection + encoding
+if (g_recVolumeFactor < 0.9999f) {
+    int total = nsamples * nchannels;
+    for (int i = 0; i < total; i++)
+        samples[i] *= g_recVolumeFactor;
 }
-if (memBM) { DeleteObject(memBM); memBM = NULL; }
-buffer = NULL;  intbuffer = NULL;
 ```
 
-**Fix B — missing immediate redraw in `src\MainWindow.cpp OnSize()`:**
-After `Initialize_Step3()`, the timer (50ms) was the only trigger to redraw — stale bars showed at old size.
-Added immediate `RenderMeters()` call:
-```cpp
-HWND hMeter = GetDlgItem(IDC_METER)->m_hWnd;
-HDC  hDC    = ::GetDC(hMeter);
-if (hDC) {
-    flexmeters.RenderMeters(hDC);
-    ::ReleaseDC(hMeter, hDC);
-}
+Scaling happens before VU meter peak calculation AND before `handle_output()` — so meters, all codecs (MP3/AAC/Opus), and encoded output all reflect the adjusted level.
+
+### 3. Build Scripts Updated
+
+| Script | Change |
+|--------|--------|
+| `build-all.ps1` | NEW — full clean+build all 4 targets + DLL staging + deploy hint |
+| `build-main.ps1` | Now auto-runs `copy-dlls.ps1` after successful build |
+| `deploy-winamp.ps1` | Added `yaml.dll` to runtime DLL list |
+| `deploy-wacup.ps1` | Added `yaml.dll`; fixed path to `C:\Program Files (x86)\WACUP\` |
+| `deploy-radioboss.ps1` | Added `yaml.dll` |
+| `deploy-radiodj.ps1` | Added `yaml.dll` |
+| `deploy-foobar.ps1` | Added `yaml.dll` |
+
+### 4. Confirmed Working
+
+- Standalone EXE: **working** (tested by user)
+- Winamp plugin: **working** (deployed, tested by user)
+- WACUP x86 plugin: **working** (deployed to `C:\Program Files (x86)\WACUP\`)
+- MP3, AAC, Opus streaming: **working**
+- Volume slider: **fixed** (previously broken, now functional)
+
+### 5. Windows Smart App Control
+
+User's machine was in **Evaluation mode (1)** — blocking unsigned dev binaries.
+To disable permanently (one-way, requires admin PowerShell + reboot):
+```powershell
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" `
+    -Name "VerifiedAndReputablePolicyState" -Value 0 -Type DWord
 ```
-
-### 4. Master Solution startup project set
-`Mcaster1DSPEncoder_Master.sln` GlobalSection(ExtensibilityGlobals) now contains:
-`StartupProject = {F2EB751E-9592-4064-9432-617FB1C45D25}` (Mcaster1DSPEncoder EXE).
-If VS still shows another project bold, right-click Mcaster1DSPEncoder → Set as Startup Project once.
-
-### 5. Old per-project .sln files deleted
-`src\Mcaster1DSPEncoder.sln`, `src\mcaster1_winamp.sln`, `src\mcaster1_foobar.sln`, `src\mcaster1_radiodj.sln` — all deleted.
-Only `Mcaster1DSPEncoder_Master.sln` at root should be used.
+Long-term solution: EV code-signing cert (Sectigo, DigiCert, etc.) for public releases.
 
 ---
 
-## Key Architectural Decisions
+## Next Session Priorities
+
+1. **Phase 3 E2E verification** — Opus stream → Icecast + VLC; HE-AAC ADTS; verify all codecs connect and stream cleanly end-to-end
+2. **`Pa_Terminate()` debt** — Add `Pa_Terminate()` to `CMainWindow::CleanUp()` before app shutdown
+3. **x64 build** — Add x64 platform configuration to all 4 targets; update deploy-wacup.ps1 back to `C:\Program Files\WACUP\`
+4. **YAML save on exit / graceful shutdown** — Verify config is written on clean exit, not just on config dialog close
+5. **Phase 5: ICY 2.1 metadata** — Integration with Mcaster1DNAS companion project
+6. **Code signing cert** — For public release builds (EV cert from Sectigo/DigiCert)
+7. **Mcaster1Castit** — Next major project: VC6 → VS2022 upgrade of original Castit tool
+
+---
+
+## Key Architecture Notes
+
+### YAML Config System (Phase 4 — COMPLETE)
+- `src/config_yaml.cpp` + `src/config_yaml.h` — libyaml-based read/write
+- All 4 build targets compile `config_yaml.cpp`
+- YAML-first init in ALL entry points: `mcaster1_init()`, `LoadConfigs()`, plugin inits
+- Migration path: INI → YAML on first run, `.cfg` renamed to `.cfg.bak`
+- `yaml.dll` (vcpkg x86-windows) required at runtime — included in all deploy scripts
+
+### PortAudio Volume Pipeline
+```
+Device → paRecordCallback (const float*) → handleAllOutput (float*)
+           ↓                                      ↓
+      raw samples                    [1] apply g_recVolumeFactor
+                                     [2] VU meter peak detection
+                                     [3] handle_output() → all encoders
+```
 
 ### ResizableLib Integration
-- All dialog classes: `CDialog` → `CResizableDialog`
-- ResizableLib at `external\ResizableLib\` compiled into all targets
-- `AddAnchor(IDC_METER, TOP_LEFT, BOTTOM_RIGHT)` in MainWindow makes meter frame resize
-- FlexMeters recalculates geometry in `OnSize()` via `Initialize_Step3()`
-
-### Dialog Styling
-- `mcaster1dspencoder.rc`: `WS_THICKFRAME` (resizable) on main dialog
-- Font: `9, "Segoe UI", 400, 0, 0x1` throughout
-- `DS_3DLOOK` removed; `WS_EX_COMPOSITED` NOT used (RC compiler doesn't support it)
+- All dialogs: `CDialog` → `CResizableDialog`
+- `AddAnchor(IDC_METER, TOP_LEFT, BOTTOM_RIGHT)` in MainWindow
+- `AddAnchor(IDC_RECVOLUME, TOP_LEFT, TOP_RIGHT)` — slider stretches with window
 
 ### CRT Runtime
 - All 4 targets: `/MD` (MultiThreadedDLL) — never mix with `/MT`
-- foobar Debug also uses `/MDd` (explicitly, not default) for CRT consistency
 
-### PortAudio
-- Built from source at `external\portaudio\src\` with `external\ASIOSDK\`
-- Static lib at `external\portaudio\built\`
+### PortAudio Build
+- Static lib at `external\portaudio\built\portaudio_static.lib`
 - Script: `.\build-portaudio.ps1`
-- Known debt: `Pa_Terminate()` not called at app exit — should be added to `CleanUp()`
+- Known debt: `Pa_Terminate()` not called at app exit
 
 ---
 
-## vcpkg Packages (C:\vcpkg)
+## vcpkg Packages (C:\vcpkg, x86-windows)
 
-Required for x86-windows:
 ```powershell
 vcpkg install opus:x86-windows libopusenc:x86-windows mp3lame:x86-windows `
               libflac:x86-windows libogg:x86-windows libvorbis:x86-windows `
@@ -176,116 +222,41 @@ vcpkg install opus:x86-windows libopusenc:x86-windows mp3lame:x86-windows `
               libiconv:x86-windows curl:x86-windows libyaml:x86-windows
 ```
 
----
-
-## Deploy Scripts
-
-```powershell
-.\deploy-winamp.ps1    -Config Release   # → C:\Program Files (x86)\Winamp\
-.\deploy-wacup.ps1     -Config Release   # → C:\Program Files\WACUP\
-.\deploy-radioboss.ps1 -Config Release   # → C:\Program Files (x86)\RadioBoss\
-.\deploy-radiodj.ps1   -Config Release   # → C:\RadioDJv2\
-.\deploy-foobar.ps1    -Config Release   # → C:\Program Files\foobar2000\
-```
-
-Each script self-elevates via UAC, validates build exists, copies plugin DLL + all dependency DLLs.
+Runtime DLLs deployed to host app directories:
+`fdk-aac.dll`, `libmp3lame.dll`, `opus.dll`, `opusenc.dll`, `yaml.dll` (from vcpkg bin)
+`ogg.dll`, `vorbis.dll`, `vorbisenc.dll`, `libFLAC.dll`, `pthreadVSE.dll`, `libcurl.dll`, `iconv.dll` (from external\lib)
 
 ---
 
-## RadioDJ Notes
-
-- RadioDJ v2 has NO DSP plugin support — dropped in v2.0.0.x
-- RadioDJ v2 workaround: use standalone EXE + virtual audio cable
-- `deploy-radiodj.ps1` deploys standalone EXE + DLLs to `C:\RadioDJv2\`
-- RadioDJ v2 has REST API for now-playing metadata (can poll separately in future)
-
----
-
-## Git Status
-
-**Not yet initialized as a git repo.** User will run `git init` themselves.
-
-Suggested initial commit message:
-```
-git commit -m "$(cat <<'EOF'
-Initial commit: Mcaster1DSPEncoder — modernized DSP encoder suite for Windows
-
-Complete reorganization and modernization from AltaCast/EdCast lineage:
-- VS2022 master solution (Mcaster1DSPEncoder_Master.sln) with all 4 targets
-- Standalone EXE, Winamp DSP plugin, foobar2000 component, shared static lib
-- Per-project output dirs: Release/, Winamp_Plugin/, foobar2000/, libmcaster1dspencoder/
-- External SDKs organized under external/: ASIOSDK, portaudio, foobar2000 SDK
-- Modern codec support: MP3/LAME, Opus, HE-AAC/fdk-aac, Ogg/Vorbis, FLAC
-- PortAudio: WASAPI loopback/exclusive, ASIO, DirectSound, MME, WDM-KS
-- All 4 targets build clean Debug + Release (CRT-consistent /MD across all)
-- VU meter resize fix: FlexMeters GDI cleanup + immediate redraw on dialog resize
-- PowerShell deploy scripts for Winamp, WACUP, RadioBoss, RadioDJ, foobar2000
-- WMA/basswma dependency removed
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
-EOF
-)"
-```
-
----
-
-## Codec Patent Quick Reference
-
-| Codec | Status | Notes |
-|-------|--------|-------|
-| MP3 | **Patent-free since April 2017** | Last US patent expired April 16, 2017 |
-| Opus | **Royalty-free** | All patents licensed royalty-free |
-| Ogg Vorbis | **Patent-free** | Xiph.Org confirmed |
-| FLAC | **Patent-free** | No known patents |
-| AAC-LC | Via Licensing pool (~2028) | Content distribution: no license needed |
-| HE-AAC v2 | Dolby/Philips patents (~2026–2027) | SBR+PS patents |
-
----
-
-## Next Session Priorities
-
-1. **Test VU meter resize** — Run the app, resize the dialog, confirm bars scale correctly at all sizes
-2. **Phase 3 E2E verification** — Opus stream to Icecast + VLC; HE-AAC ADTS to Icecast; verify all codecs connect and stream
-3. **`Pa_Terminate()` debt** — Add `Pa_Terminate()` to `CMainWindow::CleanUp()` before shutdown
-4. **git init + first commit** — User runs `git init`, then use commit message above
-5. **Phase 4 start** — YAML config: `libyaml` already in vcpkg, begin `config_yaml.cpp`
-6. **New icons** — User mentioned wanting new icons (deferred)
-7. **Mcaster1Castit** — Next project after Phase 4: VC6 → VS2022 upgrade
-
----
-
-## Source Layout (Key Files)
+## Directory Structure (Current)
 
 ```
-src\
-  Mcaster1DSPEncoder.vcxproj      — standalone EXE project
-  mcaster1_winamp.vcxproj         — Winamp DSP plugin
-  mcaster1_foobar.vcxproj         — foobar2000 component
-  MainWindow.cpp / .h             — CMainWindow : CResizableDialog
-  FlexMeters.cpp / .h             — VU meter renderer (DIB double-buffer)
-  Config.cpp / .h                 — CConfig + tab page shell
-  BasicSettings.cpp / .h          — Server/encoder settings tab
-  YPSettings.cpp / .h             — ICY metadata tab
-  AdvancedSettings.cpp / .h       — Advanced settings tab
-  EditMetadata.cpp / .h           — Manual metadata dialog
-  FindWindow.cpp / .h             — Window class finder dialog
-  mcaster1dspencoder.rc           — All dialog resources
-  StdAfx.h                        — PCH root
-  libmcaster1dspencoder\          — Core streaming engine (static lib)
-    libmcaster1dspencoder.cpp/.h  — mcaster1Globals[], mcaster1_init/encode/quit
-    Socket.cpp                    — Winsock abstraction
-    cbuffer.c                     — Circular buffer
-    resample.c                    — PCM rate converter
-  mcaster1_winamp.cpp/.h          — Winamp DSP plugin entry points
-  mcaster1_foobar.cpp             — foobar2000 component
-external\
-  ResizableLib\                   — Resizable dialog framework (Paolo Messina)
-  ASIOSDK\                        — Steinberg ASIO SDK
-  portaudio\src\                  — PortAudio source
-  portaudio\built\                — portaudio_static.lib
-  foobar2000\                     — foobar2000 SDK (unmodified)
-  include\                        — shared headers (opus, lame, fdk-aac, etc.)
-  lib\                            — pre-built runtime DLLs
+Mcaster1DSPEncoder\               ← repo root
+  Mcaster1DSPEncoder_Master.sln   ← Master solution — open this in VS2022
+  build-all.ps1                   ← NEW: full clean+build all targets
+  build-main.ps1                  ← standalone EXE (now auto-stages DLLs)
+  build-plugins.ps1               ← Winamp + foobar2000 plugins
+  build-portaudio.ps1             ← PortAudio static lib (CMake)
+  deploy-winamp.ps1               ← → C:\Program Files (x86)\Winamp\
+  deploy-wacup.ps1                ← → C:\Program Files (x86)\WACUP\ (x86!)
+  deploy-radioboss.ps1            ← → C:\Program Files (x86)\RadioBoss\
+  deploy-radiodj.ps1              ← → C:\RadioDJv2\
+  deploy-foobar.ps1               ← → C:\Program Files\foobar2000\
+  src\
+    Mcaster1DSPEncoder.vcxproj
+    mcaster1_winamp.vcxproj
+    mcaster1_foobar.vcxproj
+    config_yaml.cpp / .h          ← YAML config engine (Phase 4)
+    MainWindow.cpp / .h           ← volume slider fix, YAML init
+    FlexMeters.cpp / .h           ← GDI leak fixed, immediate redraw
+    Config.cpp / .h               ← resize flicker fixed
+    libmcaster1dspencoder\
+      libmcaster1dspencoder.vcxproj
+      libmcaster1dspencoder.cpp/.h
+  external\
+    include\, lib\, ASIOSDK\
+    portaudio\src\, portaudio\built\
+    foobar2000\, ResizableLib\
 ```
 
 ---
@@ -311,15 +282,3 @@ external\
 - Recent: song history API (in-memory ring buffer), Track History pages with music service icons
 - ICY 2.1 protocol integration planned (Phase 5 for both projects)
 - See `CLAUDE-RESUME.md` in that directory for its session state
-
----
-
-## Doc Files in Repo
-
-- `README.md` — project overview, build instructions, deployment, roadmap
-- `CREDITS.md` — Ed Zaleski history, casterclub.com, oddsock.org, dependency credits
-- `FORKS.md` — fork rationale, codec patent status, what changed from AltaCast
-- `ROADMAP.md` — 8-phase roadmap
-- `AUTHORS` — author list
-- `LICENSE` — GPL v2
-- `CLAUDE-RESUME.md` — this file (session resume state)

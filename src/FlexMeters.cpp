@@ -239,24 +239,36 @@ CFlexMeters_MeterInfo * CFlexMeters::GetMeterInfoObject(int index)
 
 void CFlexMeters::Initialize_Step3()
 {
+    // ── 1. Read the actual control size FIRST — before allocating the DIB ──
+    // This ensures the bitmap always matches the real pixel dimensions of
+    // IDC_METER, including after ResizableLib has repositioned it.
+    RECT rect;
+    GetClientRect(fmis.hWndFrame, &rect);
+    meterx  = rect.left;
+    meterx2 = rect.right;
+    metery  = rect.top;
+    metery2 = rect.bottom;
 
+    // Clamp to 1 to avoid a zero-size DIB during minimise / first call.
+    fmis.max_x = max(1, meterx2 - meterx);
+    fmis.max_y = max(1, metery2 - metery);
+
+    // ── 2. Build BITMAPINFO at the correct (dynamic) dimensions ──
     BITMAPINFO bitmapinfo;
-
-    bitmapinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bitmapinfo.bmiHeader.biWidth = fmis.max_x;
-    bitmapinfo.bmiHeader.biHeight = -fmis.max_y;
-    bitmapinfo.bmiHeader.biPlanes = 1;
-    bitmapinfo.bmiHeader.biBitCount = 32;
-    bitmapinfo.bmiHeader.biCompression = BI_RGB;
-    bitmapinfo.bmiHeader.biSizeImage = fmis.max_x * fmis.max_y * 4;
+    bitmapinfo.bmiHeader.biSize          = sizeof(BITMAPINFOHEADER);
+    bitmapinfo.bmiHeader.biWidth         = fmis.max_x;
+    bitmapinfo.bmiHeader.biHeight        = -fmis.max_y;
+    bitmapinfo.bmiHeader.biPlanes        = 1;
+    bitmapinfo.bmiHeader.biBitCount      = 32;
+    bitmapinfo.bmiHeader.biCompression   = BI_RGB;
+    bitmapinfo.bmiHeader.biSizeImage     = fmis.max_x * fmis.max_y * 4;
     bitmapinfo.bmiHeader.biXPelsPerMeter = 0;
     bitmapinfo.bmiHeader.biYPelsPerMeter = 0;
-    bitmapinfo.bmiHeader.biClrUsed = 0;
-    bitmapinfo.bmiHeader.biClrImportant = 0;
-
+    bitmapinfo.bmiHeader.biClrUsed       = 0;
+    bitmapinfo.bmiHeader.biClrImportant  = 0;
     bitmapsize = bitmapinfo.bmiHeader.biSizeImage;
 
-    // Release previous GDI objects before recreating (prevents leaks on every resize)
+    // ── 3. Release previous GDI objects before recreating (prevents leaks) ──
     if (memDC) {
         if (oldBM) { ::SelectObject(memDC, oldBM); oldBM = NULL; }
         DeleteDC(memDC);  memDC = NULL;
@@ -265,26 +277,12 @@ void CFlexMeters::Initialize_Step3()
     buffer    = NULL;
     intbuffer = NULL;
 
-    // create our doublebuffer
+    // ── 4. Create the double-buffer DIB at the new size ──
     memDC = CreateCompatibleDC(NULL);
-    memBM = CreateDIBSection(memDC,
-                             &bitmapinfo,
-                             DIB_RGB_COLORS, (void **) & buffer, NULL, 0);
-    oldBM = (HBITMAP) ::SelectObject(memDC, memBM);
-
-    intbuffer = (int *) buffer;
-
-
-
-
-    RECT rect;
-
-    GetClientRect(fmis.hWndFrame, &rect);
-
-    meterx = (rect.left);
-    meterx2 = (rect.right);
-    metery = (rect.top);
-    metery2 = (rect.bottom);
+    memBM = CreateDIBSection(memDC, &bitmapinfo,
+                             DIB_RGB_COLORS, (void **)&buffer, NULL, 0);
+    oldBM     = (HBITMAP)::SelectObject(memDC, memBM);
+    intbuffer = (int *)buffer;
 
 
 
