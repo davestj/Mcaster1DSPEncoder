@@ -16,6 +16,11 @@
 /build/
 /ARCHIVES/
 
+
+external/foobar2000/foobar2000/SDK/Release/foobar2000_SDK.pch
+external/foobar2000/foobar2000/helpers/Release/foobar2000_sdk_helpers.pch
+external/foobar2000/pfc/Release/pfc.pch
+
 # Stale in-src output dirs from old layout (no longer generated but guard against)
 src/Release/
 src/Debug/
