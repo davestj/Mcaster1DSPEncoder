@@ -15,12 +15,19 @@
 #include "libmcaster1dspencoder_socket.h"
 #ifdef WIN32
 #include <bass.h>
+#include <objbase.h>    /* CoCreateGuid — ICY 2.2 session-id auto-gen */
 #else
 #ifdef HAVE_LAME
 #include <lame/lame.h>
 #endif
 #include <errno.h>
 #endif
+
+/* Podcast RSS generator — defined in podcast_rss_gen.cpp */
+#ifdef __cplusplus
+extern "C"
+#endif
+int generate_podcast_rss(const mcaster1Globals *g, const char *audio_path);
 #ifndef LAME_MAXMP3BUFFER
 #define LAME_MAXMP3BUFFER	16384
 #endif
@@ -456,6 +463,11 @@ void closeArchiveFile(mcaster1Globals *g) {
 
 		fclose(g->gSaveFile);
 		g->gSaveFile = 0;
+
+		/* Generate companion RSS feed if the user enabled it */
+		if (g->gGenerateRSS && g->gLastSavedFilePath[0]) {
+			generate_podcast_rss(g, g->gLastSavedFilePath);
+		}
 	}
 }
 
@@ -518,6 +530,10 @@ int openArchiveFile(mcaster1Globals *g) {
 	}
 
 	sprintf(outFilename, "%s%s%s", g->gSaveDirectory, FILE_SEPARATOR, outputFile);
+
+	/* Remember the full path so closeArchiveFile() can generate the RSS feed */
+	strncpy(g->gLastSavedFilePath, outFilename, sizeof(g->gLastSavedFilePath) - 1);
+	g->gLastSavedFilePath[sizeof(g->gLastSavedFilePath) - 1] = '\0';
 
 	g->gSaveFile = fopen(outFilename, "wb");
 	if(!g->gSaveFile) {
@@ -1367,6 +1383,141 @@ int disconnectFromServer(mcaster1Globals *g) {
 
 /*
  =======================================================================================================================
+    appendICY22Headers — appends ICY 2.2 extended metadata headers to an Icecast2 SOURCE request.
+    Must be called after the base ICE headers are written (ending with a single "\n") and before
+    the blank-line header terminator.  The function appends all non-empty ICY 2.2 fields and
+    writes the final blank line that closes the HTTP header block.
+ =======================================================================================================================
+*/
+static void appendICY22Headers(mcaster1Globals *g, char *buf, size_t bufsize)
+{
+#define ICY22_S(hdr, val) \
+    if ((val)[0]) { \
+        char _h[2048]; \
+        _snprintf(_h, sizeof(_h) - 1, "%s: %s\n", (hdr), (val)); \
+        strncat(buf, _h, bufsize - strlen(buf) - 1); \
+    }
+#define ICY22_I(hdr, val) \
+    { char _h[64]; _snprintf(_h, sizeof(_h)-1, "%s: %d\n", (hdr), (val)); \
+      strncat(buf, _h, bufsize - strlen(buf) - 1); }
+
+    /* Protocol version signal */
+    strncat(buf, "icy-metadata-version: 2.2\n", bufsize - strlen(buf) - 1);
+
+    /* Audio technical (auto-populated from encoder state) */
+    {
+        char codec[32] = "";
+        if      (g->gOggFlag)              strcpy(codec, "vorbis");
+        else if (g->gLAMEFlag)             strcpy(codec, "mp3");
+        else if (g->gAACFlag || g->gAACPFlag) strcpy(codec, "aac");
+        else if (g->gFLACFlag)             strcpy(codec, "flac");
+        else if (g->gSaveAsWAV)            strcpy(codec, "pcm");
+        ICY22_S("icy-meta-audio-codec", codec);
+    }
+    if (g->currentSamplerate > 0) {
+        char tmp[32]; _snprintf(tmp, sizeof(tmp)-1, "%d", g->currentSamplerate);
+        ICY22_S("icy-meta-samplerate", tmp);
+    }
+    if (g->currentChannels > 0) {
+        char tmp[32]; _snprintf(tmp, sizeof(tmp)-1, "%d", g->currentChannels);
+        ICY22_S("icy-meta-channels", tmp);
+    }
+    strncat(buf, "icy-meta-encoder: Mcaster1DSPEncoder/1.0\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-loudness", g->gICY22LoudnessLUFS);
+
+    /* Station Identity */
+    ICY22_S("icy-meta-station-id",    g->gICY22StationID);
+    ICY22_S("icy-meta-station-logo",  g->gICY22StationLogo);
+    ICY22_S("icy-meta-verify-status", g->gICY22VerifyStatus);
+
+    /* Show / Programming */
+    {
+        const char *showTitle = g->gICY22ShowTitle[0] ? g->gICY22ShowTitle
+                              : (g->gPodcastTitle[0]  ? g->gPodcastTitle : "");
+        ICY22_S("icy-meta-show-title", showTitle);
+    }
+    ICY22_S("icy-meta-show-start",     g->gICY22ShowStart);
+    ICY22_S("icy-meta-show-end",       g->gICY22ShowEnd);
+    ICY22_S("icy-meta-next-show",      g->gICY22NextShow);
+    ICY22_S("icy-meta-next-show-time", g->gICY22NextShowTime);
+    ICY22_S("icy-meta-schedule-url",   g->gICY22ScheduleURL);
+    if (g->gICY22AutoDJ) strncat(buf, "icy-meta-autodj: 1\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-playlist-name",  g->gICY22PlaylistName);
+
+    /* DJ / Host */
+    ICY22_S("icy-meta-dj-handle", g->gICY22DJHandle);
+    ICY22_S("icy-meta-dj-bio",    g->gICY22DJBio);
+    ICY22_S("icy-meta-dj-genre",  g->gICY22DJGenre);
+    ICY22_S("icy-meta-dj-rating", g->gICY22DJRating);
+
+    /* Podcast fields (fall back to YP settings) */
+    {
+        const char *host = g->gPodcastAuthor[0] ? g->gPodcastAuthor : g->gServName;
+        ICY22_S("icy-meta-podcast-host", host);
+    }
+    ICY22_S("icy-meta-language", g->gPodcastLanguage);
+
+    /* Social & Discovery */
+    ICY22_S("icy-meta-creator-handle",  g->gICY22CreatorHandle);
+    ICY22_S("icy-meta-social-twitter",  g->gICY22SocialTwitter);
+    ICY22_S("icy-meta-social-twitch",   g->gICY22SocialTwitch);
+    ICY22_S("icy-meta-social-ig",       g->gICY22SocialIG);
+    ICY22_S("icy-meta-social-tiktok",   g->gICY22SocialTikTok);
+    ICY22_S("icy-meta-social-youtube",  g->gICY22SocialYouTube);
+    ICY22_S("icy-meta-social-facebook", g->gICY22SocialFacebook);
+    ICY22_S("icy-meta-social-linkedin", g->gICY22SocialLinkedIn);
+    ICY22_S("icy-meta-social-linktree", g->gICY22SocialLinktree);
+    ICY22_S("icy-meta-emoji",           g->gICY22Emoji);
+    ICY22_S("icy-meta-hashtags",        g->gICY22Hashtags);
+
+    /* Listener Engagement */
+    if (g->gICY22RequestEnabled) strncat(buf, "icy-meta-request-enabled: 1\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-request-url", g->gICY22RequestURL);
+    ICY22_S("icy-meta-chat-url",    g->gICY22ChatURL);
+    ICY22_S("icy-meta-tip-url",     g->gICY22TipURL);
+    ICY22_S("icy-meta-events-url",  g->gICY22EventsURL);
+
+    /* Broadcast Distribution */
+    ICY22_S("icy-meta-crosspost",    g->gICY22CrosspostPlatforms);
+    ICY22_S("icy-meta-session-id",   g->gICY22SessionID);
+    ICY22_S("icy-meta-cdn-region",   g->gICY22CDNRegion);
+    ICY22_S("icy-meta-relay-origin", g->gICY22RelayOrigin);
+
+    /* Compliance / Content Flags */
+    if (g->gICY22NSFW)        strncat(buf, "icy-meta-nsfw: 1\n",         bufsize - strlen(buf) - 1);
+    if (g->gICY22AIGenerator) strncat(buf, "icy-meta-ai-generator: 1\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-geo-region",          g->gICY22GeoRegion);
+    ICY22_S("icy-meta-license-type",        g->gICY22LicenseType);
+    if (g->gICY22RoyaltyFree) strncat(buf, "icy-meta-royalty-free: 1\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-license-territory",   g->gICY22LicenseTerritory);
+
+    /* Station Notice */
+    ICY22_S("icy-meta-notice-text",    g->gICY22NoticeText);
+    ICY22_S("icy-meta-notice-url",     g->gICY22NoticeURL);
+    ICY22_S("icy-meta-notice-expires", g->gICY22NoticeExpires);
+
+    /* Video / Simulcast */
+    ICY22_S("icy-meta-video-type",       g->gICY22VideoType);
+    ICY22_S("icy-meta-video-link",       g->gICY22VideoLink);
+    ICY22_S("icy-meta-video-title",      g->gICY22VideoTitle);
+    ICY22_S("icy-meta-video-poster",     g->gICY22VideoPoster);
+    ICY22_S("icy-meta-video-platform",   g->gICY22VideoPlatform);
+    if (g->gICY22VideoLive) strncat(buf, "icy-meta-video-live: 1\n", bufsize - strlen(buf) - 1);
+    ICY22_S("icy-meta-video-codec",      g->gICY22VideoCodec);
+    ICY22_S("icy-meta-video-fps",        g->gICY22VideoFPS);
+    ICY22_S("icy-meta-video-resolution", g->gICY22VideoResolution);
+    ICY22_S("icy-meta-video-rating",     g->gICY22VideoRating);
+    if (g->gICY22VideoNSFW) strncat(buf, "icy-meta-video-nsfw: 1\n", bufsize - strlen(buf) - 1);
+
+    /* Blank line terminates the HTTP header block */
+    strncat(buf, "\n", bufsize - strlen(buf) - 1);
+
+#undef ICY22_S
+#undef ICY22_I
+}
+
+/*
+ =======================================================================================================================
     This funciton will connect to a server (Shoutcast/Icecast/Icecast2) ;
     and send the appropriate password info and check to make sure things ;
     are connected....
@@ -1375,7 +1526,7 @@ int disconnectFromServer(mcaster1Globals *g) {
 int connectToServer(mcaster1Globals *g) {
 	int		s_socket = 0;
 	char_t	buffer[1024] = "";
-	char_t	contentString[1024] = "";
+	char_t	contentString[8192] = "";  /* enlarged to accommodate ICY 2.2 extended headers */
 	char_t	brate[25] = "";
 	char_t	ypbrate[25] = "";
 
@@ -1496,9 +1647,26 @@ int connectToServer(mcaster1Globals *g) {
 
 			char_t	*puserAuthbase64 = util_base64_encode(userAuth);
 
+#ifdef WIN32
+			/* Auto-generate ICY 2.2 session-id (UUID) once per connect if blank */
+			if (!g->gICY22SessionID[0]) {
+				GUID guid;
+				if (CoCreateGuid(&guid) == S_OK) {
+					_snprintf(g->gICY22SessionID, sizeof(g->gICY22SessionID) - 1,
+						"%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X",
+						(unsigned long)guid.Data1, guid.Data2, guid.Data3,
+						guid.Data4[0], guid.Data4[1],
+						guid.Data4[2], guid.Data4[3], guid.Data4[4],
+						guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+				}
+			}
+#endif
+
 			if(puserAuthbase64) {
+				/* Write ICE/1.0 base headers — note single trailing \n (not \n\n);
+				   appendICY22Headers() will add the ICY 2.2 fields and the blank line. */
 				sprintf(contentString,
-						"SOURCE %s ICE/1.0\ncontent-type: %s\nAuthorization: Basic %s\nice-name: %s\nice-url: %s\nice-genre: %s\nice-bitrate: %s\nice-private: %d\nice-public: %d\nice-description: %s\nice-audio-info: %s\n\n",
+						"SOURCE %s ICE/1.0\ncontent-type: %s\nAuthorization: Basic %s\nice-name: %s\nice-url: %s\nice-genre: %s\nice-bitrate: %s\nice-private: %d\nice-public: %d\nice-description: %s\nice-audio-info: %s\n",
 					g->gMountpoint,
 						contentType,
 						puserAuthbase64,
@@ -1511,6 +1679,9 @@ int connectToServer(mcaster1Globals *g) {
 						g->gServDesc,
 						audioInfo);
 				free(puserAuthbase64);
+
+				/* Append full ICY 2.2 extended headers + blank-line terminator */
+				appendICY22Headers(g, contentString, sizeof(contentString));
 			}
 		}
 	}

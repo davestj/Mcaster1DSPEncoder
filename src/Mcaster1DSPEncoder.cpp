@@ -157,6 +157,11 @@ BOOL CMcaster1DSPEncoderApp::InitInstance()
 {
 	AfxEnableControlContainer();
 
+    // Initialize COM/OLE — required for ActiveX control hosting (DocViewer, etc.)
+    if (!AfxOleInit()) {
+        AfxMessageBox(_T("OLE initialization failed. ActiveX features may not work."));
+    }
+
 	// Standard initialization
 	// If you are not using these features and wish to reduce the size
 	//  of your final executable, you should remove from the following

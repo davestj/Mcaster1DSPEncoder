@@ -705,8 +705,15 @@ BEGIN_MESSAGE_MAP(CMainWindow, CResizableDialog)
 	ON_BN_CLICKED(IDC_MANUALEDIT_METADATA, OnManualeditMetadata)
 	ON_WM_CLOSE()
 	ON_WM_DESTROY()
-	ON_COMMAND(ID_ABOUT_ABOUT, OnAboutAbout)
-	ON_COMMAND(ID_ABOUT_HELP, OnAboutHelp)
+	ON_COMMAND(ID_ABOUT_ABOUT,            OnAboutAbout)
+	ON_COMMAND(ID_ABOUT_HELP,             OnAboutHelp)
+	ON_COMMAND(ID_HELP_DOCUMENTATION,     OnHelpDocumentation)
+	ON_COMMAND(ID_HELP_PRODUCT_ICY22,     OnHelpProductIcy22)
+	ON_COMMAND(ID_HELP_PRODUCT_ENCODER,   OnHelpProductEncoder)
+	ON_COMMAND(ID_HELP_PRODUCT_ROADMAP,   OnHelpProductRoadmap)
+	ON_COMMAND(ID_HELP_PRODUCT_ISSUES,    OnHelpProductIssues)
+	ON_COMMAND(ID_HELP_PRODUCT_WIKI,      OnHelpProductWiki)
+	ON_COMMAND(ID_HELP_PRODUCT_TECHREF,   OnHelpProductTechref)
 	ON_WM_PAINT()
 	ON_WM_TIMER()
 	ON_BN_CLICKED(IDC_METER, OnMeter)
@@ -1149,6 +1156,11 @@ BOOL CMainWindow::OnInitDialog() {
 	AddAnchor(IDCANCEL,                  TOP_LEFT,    TOP_LEFT);
 	AddAllOtherAnchors(TOP_LEFT);           // remaining statics and dB labels
 
+	// Set dialog icon from IDR_MAINFRAME (mcaster1.ico) so the title bar
+	// and taskbar button show the correct branding graphic.
+	SetIcon(hIcon_, TRUE);   // large icon (alt-tab / taskbar)
+	SetIcon(hIcon_, FALSE);  // small icon (title bar)
+
 	return TRUE;							/* return TRUE unless you set the focus to a control */
 	/* EXCEPTION: OCX Property Pages should return FALSE */
 }
@@ -1283,6 +1295,7 @@ void CMainWindow::ProcessConfigDone(int enc, CConfig *pConfig) {
 		writeConfigYAML(g[enc - 1]);
 		mcaster1_init(g[enc - 1]);
 	}
+	writeMainConfig();   /* persist NumEncoders + window state on every OK */
 
 	SetFocus();
 	m_Encoders.SetFocus();
@@ -1402,6 +1415,8 @@ void CMainWindow::CleanUp() {
 	if(gLiveRecording) {
 		stopRecording();
 	}
+	Pa_Terminate();
+
 }
 
 void CMainWindow::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar *pScrollBar) {
@@ -1455,6 +1470,7 @@ void CMainWindow::OnClose()
 	SetupTrayIcon();
 	SetupTaskBarButton();
 #else
+	writeMainConfig();   /* flush config before exit() */
 	OnDestroy();
 	EndModalLoop(1);
 	exit(1);
@@ -1515,6 +1531,17 @@ void CMainWindow::OnAboutHelp() {
 
 	HINSTANCE	ret = ShellExecute(NULL, "open", loc, NULL, NULL, SW_SHOWNORMAL);
 }
+
+/////////////////////////////////////////////////////////////////////////////
+// Help menu — open pages in the system default browser
+
+void CMainWindow::OnHelpDocumentation()  { ShellExecute(NULL,"open","https://mcaster1.com/mcaster1dspencoder/",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductIcy22()   { ShellExecute(NULL,"open","https://mcaster1.com/icy2-spec/",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductEncoder() { ShellExecute(NULL,"open","https://mcaster1.com/mcaster1dspencoder/",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductRoadmap() { ShellExecute(NULL,"open","https://mcaster1.com/mcaster1dspencoder/roadmap.html",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductIssues()  { ShellExecute(NULL,"open","https://github.com/davestj/Mcaster1DSPEncoder/issues",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductWiki()    { ShellExecute(NULL,"open","https://github.com/davestj/Mcaster1DSPEncoder/wiki",NULL,NULL,SW_SHOWNORMAL); }
+void CMainWindow::OnHelpProductTechref() { ShellExecute(NULL,"open","https://github.com/davestj/Mcaster1DSPEncoder/blob/master/MCASTER1DSPENCODER.md",NULL,NULL,SW_SHOWNORMAL); }
 
 void CMainWindow::OnPaint() {
 	CPaintDC	dc(this);					/* device context for painting */

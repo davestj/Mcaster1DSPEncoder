@@ -167,6 +167,8 @@
     <ClCompile Include="log.cpp" />
     <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="SystemTray.cpp" />
+    <ClCompile Include="ICY22Settings.cpp" />
+    <ClCompile Include="podcast_rss_gen.cpp" />
     <ClCompile Include="YPSettings.cpp" />
     <ClCompile Include="..\external\ResizableLib\ResizableDialog.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -215,6 +217,8 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="StdAfx.h" />
     <ClInclude Include="SystemTray.h" />
+    <ClInclude Include="ICY22Settings.h" />
+    <ClInclude Include="podcast_rss_gen.h" />
     <ClInclude Include="YPSettings.h" />
   </ItemGroup>
   <ItemGroup>

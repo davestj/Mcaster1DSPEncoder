@@ -1,6 +1,6 @@
 # Mcaster1DSPEncoder — Claude Session Resume File
 
-**Last Updated:** 2026-02-21
+**Last Updated:** 2026-02-22
 **Working Directory:** `C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder\`
 **Companion Project:** `C:\Users\dstjohn\dev\00_mcaster1.com\mcaster1dnas\`
 
@@ -24,9 +24,9 @@
 | 1 | VS2022 Build Fix | **COMPLETE** |
 | 2 | Rebrand AltaCast → Mcaster1DSPEncoder | **COMPLETE** |
 | 2.5 | Project Reorganization (master .sln, per-project outputs, SDK layout) | **COMPLETE** |
-| 3 | Audio Backend Modernization (Opus, HE-AAC, PortAudio) | **IN PROGRESS** — codecs integrated, pending E2E verification |
+| 3 | Audio Backend Modernization (Opus, HE-AAC, PortAudio) | **COMPLETE** — all codecs integrated, volume slider fixed |
 | 4 | YAML Multi-Station Config | **COMPLETE** — config_yaml.cpp fully integrated across all targets |
-| 5 | ICY 2.1 Enhanced Metadata Protocol | PLANNED |
+| 5 | Podcast Feature Set & ICY 2.2 Metadata | **IN PROGRESS** — Podcast tab, RSS gen, ICY 2.2 tab, header injection |
 | 6 | Mcaster1DNAS Integration | PLANNED |
 | 7 | Mcaster1Castit | PLANNED (next major project) |
 | 8 | Analytics/Metrics/Platform Engagement | PLANNED |
@@ -168,13 +168,41 @@ Long-term solution: EV code-signing cert (Sectigo, DigiCert, etc.) for public re
 
 ---
 
+## Phase 5 Progress (2026-02-22)
+
+### What Was Implemented
+
+| File | Status | Notes |
+|------|--------|-------|
+| `src/resource.h` | **DONE** | Added IDC_ 1110–1185, IDD_PROPPAGE_LARGE3=304 |
+| `src/libmcaster1dspencoder/libmcaster1dspencoder.h` | **DONE** | +11 podcast fields, +~55 gICY22* fields |
+| `src/mcaster1dspencoder.rc` | **DONE** | Reworked podcast tab (IDD_PROPPAGE_LARGE2), added ICY 2.2 tab (IDD_PROPPAGE_LARGE3) |
+| `src/AdvancedSettings.h/.cpp` | **DONE** | Podcast DDX, Browse button, EnableDisablePodcast, OnRSSUseYP |
+| `src/ICY22Settings.h/.cpp` | **NEW** | 4th config tab — all 55 ICY 2.2 fields + UUID auto-gen |
+| `src/Config.h/.cpp` | **DONE** | 4th tab wired, GlobalsToDialog/DialogToGlobals extended |
+| `src/config_yaml.cpp` | **DONE** | 75+ new YAML keys for podcast + ICY 2.2 fields |
+| `src/podcast_rss_gen.h/.cpp` | **NEW** | RSS 2.0 + iTunes NS generator (pure C, fprintf) |
+| `src/libmcaster1dspencoder/libmcaster1dspencoder.cpp` | **DONE** | Path capture in openArchiveFile, RSS call in closeArchiveFile, appendICY22Headers(), Icecast2 integration |
+| `src/MainWindow.cpp` | **DONE** | writeMainConfig in OnClose + ProcessConfigDone, Pa_Terminate in CleanUp |
+| `src/Mcaster1DSPEncoder.vcxproj` | **DONE** | Added ICY22Settings.cpp/.h, podcast_rss_gen.cpp/.h |
+| `src/mcaster1_winamp.vcxproj` | **DONE** | Same additions |
+| `src/mcaster1_foobar.vcxproj` | **DONE** | Same additions |
+
+### What Remains for Phase 5
+
+- **Build verification** — `.\build-all.ps1 -Config Release` on all 4 targets
+- **E2E test** — Connect to Mcaster1DNAS, verify ICY 2.2 headers in server log; stream, record, check .rss file
+- **REFACTOR-REPORT.html** — Phases 3/4 → COMPLETE badges, Phase 5 → IN PROGRESS sections
+
+---
+
 ## Next Session Priorities
 
-1. **Phase 3 E2E verification** — Opus stream → Icecast + VLC; HE-AAC ADTS; verify all codecs connect and stream cleanly end-to-end
-2. **`Pa_Terminate()` debt** — Add `Pa_Terminate()` to `CMainWindow::CleanUp()` before app shutdown
-3. **x64 build** — Add x64 platform configuration to all 4 targets; update deploy-wacup.ps1 back to `C:\Program Files\WACUP\`
-4. **YAML save on exit / graceful shutdown** — Verify config is written on clean exit, not just on config dialog close
-5. **Phase 5: ICY 2.1 metadata** — Integration with Mcaster1DNAS companion project
+1. **Build Phase 5** — Run `.\build-all.ps1 -Config Release`; fix any compilation errors
+2. **E2E test podcast RSS** — Enable archive, stream, disconnect, verify `.rss` file alongside audio file
+3. **E2E test ICY 2.2 headers** — Connect to Mcaster1DNAS, check server log for `icy-metadata-version: 2.2` and all metadata fields
+4. **x64 build** — Add x64 platform configuration to all 4 targets; update deploy-wacup.ps1 back to `C:\Program Files\WACUP\`
+5. **Phase 6: Mcaster1DNAS Integration** — DNAS API, listener stats, song history feed in the encoder
 6. **Code signing cert** — For public release builds (EV cert from Sectigo/DigiCert)
 7. **Mcaster1Castit** — Next major project: VC6 → VS2022 upgrade of original Castit tool
 
@@ -280,5 +308,5 @@ Mcaster1DSPEncoder\               ← repo root
 - Active branch: `windows-dev`
 - Maintained fork of Icecast 2.4
 - Recent: song history API (in-memory ring buffer), Track History pages with music service icons
-- ICY 2.1 protocol integration planned (Phase 5 for both projects)
+- ICY 2.2 protocol integration — Phase 5 encoder sends `icy-metadata-version: 2.2` + full header set to DNAS on Icecast2 SOURCE connect
 - See `CLAUDE-RESUME.md` in that directory for its session state

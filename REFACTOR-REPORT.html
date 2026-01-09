@@ -115,8 +115,10 @@
       <span><strong>Repository:</strong> <a href="https://github.com/davestj/Mcaster1DSPEncoder" target="_blank">github.com/davestj/Mcaster1DSPEncoder</a></span>
       <span><strong>Phase 1:</strong> <span class="badge badge-done">COMPLETE</span></span>
       <span><strong>Phase 2:</strong> <span class="badge badge-done">COMPLETE</span></span>
-      <span><strong>Phase 3:</strong> <span class="badge badge-next">IN PROGRESS</span></span>
-      <span><strong>Last Updated:</strong> 2026-02</span>
+      <span><strong>Phase 3:</strong> <span class="badge badge-done">COMPLETE</span></span>
+      <span><strong>Phase 4:</strong> <span class="badge badge-done">COMPLETE</span></span>
+      <span><strong>Phase 5:</strong> <span class="badge badge-next">IN PROGRESS</span></span>
+      <span><strong>Last Updated:</strong> 2026-02-22</span>
     </div>
   </header>
 
@@ -139,7 +141,7 @@
           <li><a href="#p2-resizable">2.9 ResizableLib &amp; Dialog Modernization</a></li>
         </ul>
       </li>
-      <li><a href="#phase3">Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-next">IN PROGRESS</span></a>
+      <li><a href="#phase3">Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-done">COMPLETE</span></a>
         <ul>
           <li><a href="#p3-wma">3.1 Remove WMA / basswma.dll</a></li>
           <li><a href="#p3-mp3">3.2 Dual MP3 Encoder Paths (LAME + ACM)</a></li>
@@ -150,8 +152,16 @@
           <li><a href="#p3-deliverables">3.7 Phase 3 Deliverables</a></li>
         </ul>
       </li>
-      <li><a href="#phase4">Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-pend">PLANNED</span></a></li>
-      <li><a href="#phase5">Phase 5 &mdash; ICY 2.1 Enhanced Metadata Protocol <span class="badge badge-pend">PLANNED</span></a></li>
+      <li><a href="#phase4">Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-done">COMPLETE</span></a></li>
+      <li><a href="#phase5">Phase 5 &mdash; Podcast Feature Set &amp; ICY 2.2 Metadata <span class="badge badge-next">IN PROGRESS</span></a>
+        <ul>
+          <li><a href="#p5-podcast">5.1 Podcast Settings &amp; Archive Recording</a></li>
+          <li><a href="#p5-rss">5.2 RSS 2.0 + iTunes Feed Generation</a></li>
+          <li><a href="#p5-icy22">5.3 ICY 2.2 Extended Header Integration</a></li>
+          <li><a href="#p5-save">5.4 Config Save Hardening</a></li>
+          <li><a href="#p5-deliverables">5.5 Phase 5 Deliverables</a></li>
+        </ul>
+      </li>
       <li><a href="#phase6">Phase 6 &mdash; Mcaster1DNAS Integration <span class="badge badge-pend">PLANNED</span></a></li>
       <li><a href="#phase7">Phase 7 &mdash; Mcaster1Castit <span class="badge badge-pend">PLANNED</span></a></li>
       <li><a href="#phase8">Phase 8 &mdash; Analytics, Metrics &amp; Platform Engagement <span class="badge badge-pend">PLANNED</span></a></li>
@@ -182,20 +192,20 @@
       <div class="phase-card">
         <div class="phase-num">Phase 3</div>
         <div class="phase-name">Audio Modernization</div>
-        <p>Dual MP3, Opus, HE-AAC via fdk-aac, WMA removed, PortAudio WASAPI+ASIO. Pending E2E verify.</p>
-        <br/><span class="badge badge-next">IN PROGRESS</span>
+        <p>MP3/LAME, Opus, HE-AAC/fdk-aac, OggVorbis, FLAC. PortAudio WASAPI capture. Volume slider. All codecs integrated and tested.</p>
+        <br/><span class="badge badge-done">COMPLETE</span>
       </div>
       <div class="phase-card">
         <div class="phase-num">Phase 4</div>
         <div class="phase-name">YAML Multi-Station</div>
-        <p>YAML config, multi-station, per-station encoders + archive. libyaml ready in vcpkg.</p>
-        <br/><span class="badge badge-pend">PLANNED</span>
+        <p>YAML-first init across all 4 targets. Per-encoder YAML files, legacy .cfg migration. config_yaml.cpp in all vcxproj files.</p>
+        <br/><span class="badge badge-done">COMPLETE</span>
       </div>
       <div class="phase-card">
         <div class="phase-num">Phase 5</div>
-        <div class="phase-name">ICY 2.1 Metadata</div>
-        <p>JSON metadata blocks, album art, track IDs, DNAS history API linkage, backward-compatible.</p>
-        <br/><span class="badge badge-pend">PLANNED</span>
+        <div class="phase-name">Podcast &amp; ICY 2.2</div>
+        <p>Podcast RSS feed gen, Podcast Settings tab, ICY 2.2 Extended tab (all 12 categories), header injection on Icecast2 connect, config save hardening.</p>
+        <br/><span class="badge badge-next">IN PROGRESS</span>
       </div>
       <div class="phase-card">
         <div class="phase-num">Phase 6</div>
@@ -641,7 +651,7 @@ Original project: https://www.oddsock.org/</pre>
 
   <!-- PHASE 3 -->
   <section id="phase3">
-    <h2>Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-next">IN PROGRESS</span></h2>
+    <h2>Phase 3 &mdash; Audio Backend Modernization <span class="badge badge-done">COMPLETE</span></h2>
     <p><strong>Goal:</strong> Remove WMA (end-of-life). Add dual MP3 paths (LAME built-in + ACM),
     Opus, and full HE-AAC (AAC-LC / HE-AACv1 / HE-AACv2) via fdk-aac.
     Replace bass.dll capture with statically-linked PortAudio (WASAPI / ASIO / MME / DS / WDM-KS).
@@ -791,7 +801,7 @@ aacEncClose(&amp;hEncoder);</pre>
 
   <!-- PHASE 4 -->
   <section id="phase4">
-    <h2>Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-pend">PLANNED</span></h2>
+    <h2>Phase 4 &mdash; YAML Multi-Station Configuration <span class="badge badge-done">COMPLETE</span></h2>
     <p><strong>Goal:</strong> Replace legacy flat <code>key=value</code> config with structured YAML supporting
     multiple simultaneous stations, per-station encoder chains, ICY/YP metadata, and save-to-WAV.</p>
     <div class="callout callout-success">
@@ -932,83 +942,81 @@ int mcaster1_save_yaml_config(const char *path, const mcaster1_config_t *cfg);</
 
   <!-- PHASE 5 -->
   <section id="phase5">
-    <h2>Phase 5 &mdash; ICY 2.1 Enhanced Metadata Protocol <span class="badge badge-pend">PLANNED</span></h2>
-    <p><strong>Goal:</strong> Implement the ICY 2.1 metadata extension on both the encoder (Mcaster1DSPEncoder)
-    and server (Mcaster1DNAS) sides, enabling richer stream metadata far beyond what the legacy
-    <code>StreamTitle=Artist - Title;</code> inline text block supports.</p>
+    <h2 id="phase5">Phase 5 &mdash; Podcast Feature Set &amp; ICY 2.2 Metadata <span class="badge badge-next">IN PROGRESS</span></h2>
+    <p><strong>Goal:</strong> Transform the encoder into a first-class podcast platform. When a DJ saves a live stream to a local file it becomes an archived podcast episode. Phase 5 adds a dedicated Podcast Settings UI tab, automatic RSS 2.0 + iTunes feed generation alongside each saved recording, and full ICY 2.2 extended header injection on every Icecast2 / Mcaster1DNAS connect. Config save hardening ensures settings are never lost on exit.</p>
 
-    <h3>Why ICY Metadata Needs an Upgrade</h3>
-    <p>The legacy ICY metadata protocol sends a plain-text <code>StreamTitle=...</code> string embedded in the
-    audio stream at fixed byte intervals (<code>Icy-MetaInt</code>). This works for basic now-playing display
-    but has fundamental limitations:</p>
+    <div class="callout callout-success">
+      <strong>IMPLEMENTATION COMPLETE (2026-02-22)</strong>
+      All Phase 5 code has been written. Pending: build verification + E2E test (connect to Mcaster1DNAS, verify ICY 2.2 headers; stream + record, check .rss file).
+    </div>
+
+    <h3 id="p5-podcast">5.1 Podcast Settings &amp; Archive Recording</h3>
+    <p>The existing &ldquo;Advanced Settings&rdquo; config tab has been redesigned as a proper <strong>Podcast Settings</strong> tab (<code>IDD_PROPPAGE_LARGE2</code>). Log settings are now in their own group box at the bottom. New controls:</p>
     <ul class="plain">
-      <li>No album art or cover image support</li>
-      <li>No track duration or playback position</li>
-      <li>No music service identifiers (ISRC, MusicBrainz, Spotify URI)</li>
-      <li>No listener engagement signals (likes, reactions)</li>
-      <li>No structured data — everything jammed into a single string</li>
-      <li>No multi-language metadata</li>
+      <li><strong>Generate RSS feed alongside saved file</strong> — checkbox (<code>IDC_GENERATE_RSS</code>)</li>
+      <li><strong>Populate RSS from YP Settings</strong> — auto-fills podcast fields from YP tab (<code>IDC_RSS_USE_YP</code>)</li>
+      <li><strong>Browse button</strong> for archive directory (<code>IDC_BROWSE_ARCHIVE</code>)</li>
+      <li>Podcast Title, Author/Host, Category, Language, Copyright, Website URL, Cover Art URL, Description (multiline)</li>
     </ul>
+    <p>Field resolution order (first non-empty wins): Podcast Settings &rarr; YP Settings &rarr; safe defaults.</p>
 
-    <h3>ICY 2.1 Feature Set</h3>
+    <h3 id="p5-rss">5.2 RSS 2.0 + iTunes Feed Generation</h3>
+    <p>New files <code>src/podcast_rss_gen.h</code> and <code>src/podcast_rss_gen.cpp</code> implement a pure-C RSS writer with zero extra dependencies (pure <code>fprintf</code>). Triggered automatically from <code>closeArchiveFile()</code> when <em>Generate RSS</em> is enabled.</p>
     <div class="tbl-wrap">
       <table>
-        <thead><tr><th>Feature</th><th>Description</th></tr></thead>
+        <thead><tr><th>Feature</th><th>Detail</th></tr></thead>
         <tbody>
-          <tr><td><strong>JSON metadata blocks</strong></td><td>Full JSON payload option alongside legacy <code>StreamTitle=</code> for backward compatibility with all existing players</td></tr>
-          <tr><td><strong>Album art</strong></td><td>Base64-encoded thumbnail in metadata block, or HTTP URL reference for full-resolution art</td></tr>
-          <tr><td><strong>Track identifiers</strong></td><td>ISRC, MusicBrainz Track ID, Spotify URI, Apple Music ID fields for automated service lookup</td></tr>
-          <tr><td><strong>Duration + position</strong></td><td>Track length and elapsed time for player progress bars and skip tracking</td></tr>
-          <tr><td><strong>Station branding</strong></td><td>Logo URL, station accent color, social handles in stream metadata</td></tr>
-          <tr><td><strong>Engagement signals</strong></td><td>Listener like/reaction metadata for platform integration and analytics</td></tr>
-          <tr><td><strong>History API linkage</strong></td><td><code>history_url</code> field pointing to the Mcaster1DNAS song history API endpoint for the current stream</td></tr>
-          <tr><td><strong>Backward compatibility</strong></td><td>ICY 2.1 blocks always include a legacy <code>StreamTitle=</code> field — all existing players continue working unchanged</td></tr>
+          <tr><td>Output file</td><td>Same directory + base name as audio file, <code>.rss</code> extension</td></tr>
+          <tr><td>Format</td><td>RSS 2.0 with <code>xmlns:itunes</code> + <code>xmlns:content</code> namespaces</td></tr>
+          <tr><td>MIME detection</td><td>.mp3 &rarr; audio/mpeg &nbsp;|&nbsp; .ogg/.opus &rarr; audio/ogg &nbsp;|&nbsp; .aac/.m4a &rarr; audio/aac &nbsp;|&nbsp; .wav &rarr; audio/wav</td></tr>
+          <tr><td>Duration</td><td>WAV: estimated from bytes &divide; (samplerate &times; channels &times; 2); encoded: omitted</td></tr>
+          <tr><td>iTunes tags</td><td><code>&lt;itunes:author&gt;</code>, <code>&lt;itunes:category&gt;</code>, <code>&lt;itunes:image&gt;</code>, <code>&lt;itunes:duration&gt;</code>, <code>&lt;itunes:explicit&gt;</code></td></tr>
+          <tr><td>XML safety</td><td>All text fields XML-escaped (&amp;amp; &amp;lt; &amp;gt; &amp;quot; &amp;apos;)</td></tr>
         </tbody>
       </table>
     </div>
 
-    <h3>Integration Architecture</h3>
-    <div class="callout callout-info">
-      <strong>Data Flow</strong>
-      Mcaster1DSPEncoder sends ICY 2.1 structured metadata to Mcaster1DNAS on <code>PUT /metadata</code>.
-      Mcaster1DNAS stores it in its in-memory ring buffer (the song history API introduced in v2.5.1-rc1)
-      and relays ICY 2.1 blocks to ICY 2.1-aware listeners. Legacy players receive the plain <code>StreamTitle=</code>
-      fallback automatically. Track History pages in Mcaster1DNAS consume the ring buffer and display
-      cover art, streaming service links, and track history for each mount point.
+    <h3 id="p5-icy22">5.3 ICY 2.2 Extended Header Integration</h3>
+    <p>A new 4th config tab <strong>&ldquo;ICY 2.2 Extended&rdquo;</strong> (<code>IDD_PROPPAGE_LARGE3</code>) exposes all 12 ICY 2.2 header categories from the <a href="https://mcaster1.com/icy2-spec/index.html" target="_blank">ICY 2.2 spec</a>. On every Icecast2 SOURCE connect, <code>appendICY22Headers()</code> appends all non-empty fields after the standard ICE headers.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Category</th><th>Key Fields</th></tr></thead>
+        <tbody>
+          <tr><td>Station Identity</td><td>station-id, station-logo, verify-status</td></tr>
+          <tr><td>Show / Programming</td><td>show-title, show-start/end, next-show, schedule-url, autodj, playlist-name</td></tr>
+          <tr><td>DJ / Host</td><td>dj-handle, dj-bio, dj-genre, dj-rating</td></tr>
+          <tr><td>Social &amp; Discovery</td><td>creator-handle, Twitter, Twitch, Instagram, TikTok, YouTube, Facebook, LinkedIn, Linktree, emoji, hashtags</td></tr>
+          <tr><td>Listener Engagement</td><td>request-url, chat-url, tip-url, events-url</td></tr>
+          <tr><td>Broadcast Distribution</td><td>crosspost platforms, session-id (UUID auto-gen), cdn-region, relay-origin</td></tr>
+          <tr><td>Compliance / Content</td><td>nsfw, ai-generator, geo-region, license-type, royalty-free, license-territory</td></tr>
+          <tr><td>Station Notice</td><td>notice-text, notice-url, notice-expires</td></tr>
+          <tr><td>Video / Simulcast</td><td>video-type, video-link, video-title, video-poster, platform, video-live, codec, fps, resolution, rating</td></tr>
+          <tr><td>Audio Technical</td><td>audio-codec (auto), samplerate (auto), channels (auto), encoder: Mcaster1DSPEncoder/1.0, loudness (LUFS)</td></tr>
+        </tbody>
+      </table>
     </div>
+    <p>The session-id is auto-generated as a UUID via <code>CoCreateGuid()</code> on the first connect if the field is blank. Shoutcast servers silently ignore the unknown headers &mdash; safe to send always.</p>
 
-    <h3>Sample ICY 2.1 Metadata Block</h3>
-    <pre>{
-  "StreamTitle": "Artist - Track Title",
-  "artist": "Artist Name",
-  "title": "Track Title",
-  "album": "Album Name",
-  "year": 2024,
-  "cover_url": "https://stream.example.com/art/current.jpg",
-  "cover_b64": "iVBORw0KGgo...",
-  "duration_ms": 237000,
-  "elapsed_ms": 45000,
-  "isrc": "USRC17607839",
-  "musicbrainz_id": "b9ad642e-b012-42ba-b2b5-b27c3aa99a72",
-  "spotify_uri": "spotify:track:4uLU6hMCjMI75M1A2tKUQC",
-  "history_url": "https://stream.example.com/api/history/rock",
-  "station": {
-    "name": "My Rock Station",
-    "logo_url": "https://stream.example.com/logo.png",
-    "color": "#e63946"
-  }
-}</pre>
+    <h3 id="p5-save">5.4 Config Save Hardening</h3>
+    <ul class="plain">
+      <li><strong>OnClose()</strong> — <code>writeMainConfig()</code> called before <code>exit(1)</code> to flush config on every close path</li>
+      <li><strong>CleanUp()</strong> — <code>Pa_Terminate()</code> added to pay the PortAudio shutdown debt</li>
+      <li><strong>ProcessConfigDone()</strong> — <code>writeMainConfig()</code> added so NumEncoders + window state persists whenever the encoder OK button is clicked, not only on app exit</li>
+    </ul>
 
-    <h3>Phase 5 Deliverables</h3>
+    <h3 id="p5-deliverables">5.5 Phase 5 Deliverables</h3>
     <ul class="checklist">
-      <li>ICY 2.1 JSON block serializer in <code>libmcaster1dspencoder</code></li>
-      <li>ICY 2.1 metadata PUT integrated into encoder-to-DNAS handshake</li>
-      <li>Backward-compatible <code>StreamTitle=</code> always included in block</li>
-      <li>Album art fetch from local music library metadata (ID3/Vorbis comment cover)</li>
-      <li>ISRC / MusicBrainz / Spotify URI passthrough from track metadata</li>
-      <li>Mcaster1DNAS ICY 2.1 relay to aware listeners, fallback to legacy for others</li>
-      <li>Track History pages updated with ICY 2.1 cover art and service links</li>
-      <li>ICY 2.1 verified end-to-end: Encoder &rarr; DNAS &rarr; ICY 2.1 player</li>
+      <li>Podcast Settings tab rework (<code>IDD_PROPPAGE_LARGE2</code>) — two group boxes, Browse button, RSS checkboxes, 8 podcast fields</li>
+      <li>ICY 2.2 Extended tab (<code>IDD_PROPPAGE_LARGE3</code>) — ~55 fields across 10 header categories</li>
+      <li><code>podcast_rss_gen.cpp/.h</code> — RSS 2.0 + iTunes NS feed generator (pure C)</li>
+      <li><code>ICY22Settings.cpp/.h</code> — full MFC dialog for 4th config tab, UUID auto-gen</li>
+      <li><code>libmcaster1dspencoder.h</code> — 11 podcast + ~55 ICY 2.2 fields added to <code>mcaster1Globals</code></li>
+      <li><code>libmcaster1dspencoder.cpp</code> — path capture in <code>openArchiveFile()</code>, RSS call in <code>closeArchiveFile()</code>, <code>appendICY22Headers()</code>, Icecast2 integration</li>
+      <li><code>config_yaml.cpp</code> — 75+ new YAML keys for podcast + ICY 2.2 round-trip persist</li>
+      <li><code>Config.cpp/.h</code> — 4th tab wired; <code>GlobalsToDialog</code>/<code>DialogToGlobals</code> extended</li>
+      <li><code>MainWindow.cpp</code> — 3 config save hardening fixes</li>
+      <li>All 3 main vcxproj files updated with new source files</li>
+      <li><strong>Pending:</strong> build verification + E2E test (RSS file, ICY 2.2 headers in DNAS log)</li>
     </ul>
   </section>
 
@@ -1074,7 +1082,7 @@ int mcaster1_save_yaml_config(const char *path, const mcaster1_config_t *cfg);</
           <tr><td>UI Framework</td><td>MFC VC6 dialogs (fixed-size)</td><td>MFC VS2022 + ResizableLib (matching Mcaster1DSPEncoder)</td></tr>
           <tr><td>Configuration</td><td>Legacy flat config</td><td>YAML via <code>libyaml</code> (matching Mcaster1DSPEncoder)</td></tr>
           <tr><td>Encoding integration</td><td>Castit-internal encoder</td><td>Delegates to Mcaster1DSPEncoder engine via shared lib</td></tr>
-          <tr><td>Metadata</td><td>Legacy ICY text</td><td>ICY 2.1 JSON metadata push (Phase 5)</td></tr>
+          <tr><td>Metadata</td><td>Legacy ICY text</td><td>ICY 2.2 extended headers — podcast, social, DJ, compliance, video (Phase 5)</td></tr>
         </tbody>
       </table>
     </div>
@@ -1219,7 +1227,7 @@ int mcaster1_save_yaml_config(const char *path, const mcaster1_config_t *cfg);</
     <pre>git init
 git remote add origin https://github.com/davestj/Mcaster1DSPEncoder.git
 git add .
-git commit -m "feat: initial public release — Phase 1 &amp; 2 complete, Phase 3 in progress"
+git commit -m "feat: Phase 5 — Podcast RSS, ICY 2.2 headers, Podcast + ICY 2.2 UI tabs"
 git tag v0.2.0
 git push -u origin main</pre>
 
@@ -1230,9 +1238,9 @@ git push -u origin main</pre>
         <tbody>
           <tr><td><code>v0.1.0</code></td><td>Phase 1</td><td><span class="badge badge-done">TAGGED</span></td><td>VS2022 build fixes — all 4 targets compile and run</td></tr>
           <tr><td><code>v0.2.0</code></td><td>Phase 2</td><td><span class="badge badge-done">TAGGED</span></td><td>Full rebrand, ResizableLib UI, Segoe UI, native LAME, all 4 targets clean</td></tr>
-          <tr><td><code>v0.3.0</code></td><td>Phase 3</td><td><span class="badge badge-next">IN PROGRESS</span></td><td>Dual MP3 (LAME + ACM), Opus, HE-AAC via fdk-aac, WMA removed, PortAudio WASAPI+ASIO</td></tr>
-          <tr><td><code>v0.4.0</code></td><td>Phase 4</td><td><span class="badge badge-pend">PLANNED</span></td><td>YAML multi-station config, 32 encoder slots, per-station ICY metadata</td></tr>
-          <tr><td><code>v0.5.0</code></td><td>Phase 5</td><td><span class="badge badge-pend">PLANNED</span></td><td>ICY 2.1 enhanced metadata — JSON blocks, album art, track IDs, DNAS history linkage</td></tr>
+          <tr><td><code>v0.3.0</code></td><td>Phase 3</td><td><span class="badge badge-done">COMPLETE</span></td><td>MP3/LAME, Opus, HE-AAC/fdk-aac, OggVorbis, FLAC. PortAudio WASAPI. Volume slider fixed.</td></tr>
+          <tr><td><code>v0.4.0</code></td><td>Phase 4</td><td><span class="badge badge-done">COMPLETE</span></td><td>YAML-first config across all 4 targets, per-encoder YAML files, legacy .cfg migration</td></tr>
+          <tr><td><code>v0.5.0</code></td><td>Phase 5</td><td><span class="badge badge-next">IN PROGRESS</span></td><td>Podcast RSS feed gen, ICY 2.2 extended headers (all 12 categories), Podcast + ICY 2.2 UI tabs, config save hardening</td></tr>
           <tr><td><code>v0.6.0</code></td><td>Phase 6</td><td><span class="badge badge-pend">PLANNED</span></td><td>Mcaster1DNAS deep integration — auto-discovery, shared YAML, live health, song push</td></tr>
           <tr><td><code>v1.0.0</code></td><td>Phase 7</td><td><span class="badge badge-pend">PLANNED</span></td><td>Mcaster1Castit — Castit VC6 &rarr; VS2022, full Mcaster1 platform launch</td></tr>
           <tr><td><code>v1.1.0</code></td><td>Phase 8</td><td><span class="badge badge-pend">PLANNED</span></td><td>Analytics, metrics &amp; platform engagement via ICY 2.1 signals</td></tr>

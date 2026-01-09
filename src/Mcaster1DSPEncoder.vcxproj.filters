@@ -47,6 +47,33 @@
     <ClCompile Include="YPSettings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="config_yaml.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableDialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableGrip.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableLayout.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableMinMax.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableMsgSupport.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableState.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableVersion.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\external\ResizableLib\ResizableWndState.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="mcaster1dspencoder.rc">
@@ -96,6 +123,9 @@
     <ClInclude Include="YPSettings.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="config_yaml.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="icon2.ico" />
@@ -103,5 +133,9 @@
     <None Include="live_on.bmp" />
     <None Include="oddsock_logo.bmp" />
     <None Include="oddsock_small_logo.bmp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="app-icon-v2.png" />
+    <Image Include="bitmap1.bmp" />
   </ItemGroup>
 </Project>
