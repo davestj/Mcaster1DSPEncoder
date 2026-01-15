@@ -24,7 +24,7 @@ CXXFLAGS_EXTRA="${CXXFLAGS:-}"
 
 mkdir -p "${BUILD_DIR}"
 
-echo "── Mcaster1 DSP Encoder v5.0 — HTTP browser-test build ──"
+echo "── Mcaster1 DSP Encoder v1.2.0 — HTTP browser-test build ──"
 echo "   Repo  : ${REPO_ROOT}"
 echo "   Output: ${OUT}"
 echo ""

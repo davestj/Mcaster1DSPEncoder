@@ -6,279 +6,585 @@
 
 ---
 
-## Current Status at a Glance
+## Platform Overview
+
+This project maintains two parallel codebases targeting different platforms:
+
+| Codebase | Version | Platform | Build System |
+|----------|---------|----------|--------------|
+| **Windows DSP Encoder** | v5.0 | Win32/x64, VS2022 | MSBuild (.vcxproj) |
+| **Linux CLI + Web Admin** | v1.1.1 | Linux (Debian/Ubuntu) | autotools + g++ |
+
+Windows phases 1–5 are complete. The Linux build is the active development track.
+All Linux code lives under `src/linux/` — no Windows code is modified.
+
+---
+
+## Windows Build — Phase Status
 
 | Phase | Name | Status |
 |-------|------|--------|
 | 1 | VS2022 Build Fix | **COMPLETE** |
-| 2 | Rebrand & Refactor | **COMPLETE** |
-| 3 | Audio Backend Modernization | **IN PROGRESS** |
-| 4 | YAML Multi-Station Configuration | PLANNED |
-| 5 | ICY 2.1 Enhanced Metadata Protocol | PLANNED |
-| 6 | Mcaster1DNAS Integration | PLANNED |
-| 7 | Mcaster1Castit Integration | PLANNED |
+| 2 | Rebrand AltaCast → Mcaster1DSPEncoder | **COMPLETE** |
+| 2.5 | Project Reorganization (master .sln, SDK layout) | **COMPLETE** |
+| 3 | Audio Backend (Opus, HE-AAC, PortAudio/ASIO) | **COMPLETE** |
+| 4 | YAML Multi-Station Config | **COMPLETE** |
+| 5 | ICY 2.2 Metadata + Podcast RSS | **IN PROGRESS** |
+| 6 | Mcaster1DNAS Deep Integration | PLANNED |
+| 7 | Mcaster1Castit (broadcast automation) | PLANNED |
 | 8 | Analytics, Metrics & Platform Engagement | PLANNED |
 
 ---
 
-## Phase 1 — VS2022 Build Fix `COMPLETE`
+## Linux CLI + Web Admin — Phase Status
 
-**Goal:** Get all 4 build targets compiling and running under Visual Studio 2022.
-
-All issues blocking compilation under VS2022 (v143 toolset, Windows 10 SDK) were resolved.
-
-**Completed:**
-- foobar2000 SDK: `_WIN32_WINNT` updated `0x0501` → `0x0601` — resolved `_REASON_CONTEXT` C2011
-- `pfc/alloc.h`: Fixed `alloc_fixed::alloc::move_from()` for types without `has_owned_items`
-- `foobar2000/SDK/guids.cpp`: Fixed `FOOGUIDDECL` / `__declspec(selectany)` LNK2001 mass errors
-- All vcxproj: Unified CRT to consistent `/MD` — eliminated 0xC0000409 crash on Windows 10+
-
-**Outputs:** All 4 targets building clean — `Mcaster1DSPEncoder.exe`, `dsp_mcaster1.dll`,
-`dsp_mcaster1_radiodj.dll`, `foo_mcaster1.dll`
+| Phase | Version | Name | Status |
+|-------|---------|------|--------|
+| L1 | v1.0.0 | Infrastructure (platform.h, ICY 2.2 fields, build system) | **COMPLETE** |
+| L2 | v1.1.1 | HTTP/HTTPS Admin Server + Web UI | **COMPLETE** |
+| L3 | v1.2.0 | Audio Encoding + Streaming Engine | **IN PROGRESS** |
+| L4 | v1.3.0 | DSP Chain + Pro Media Library + AI Playlist Generator | PLANNED |
+| L5 | v1.4.0 | Mcaster1DNAS Integration + Live Dashboard | PLANNED |
+| L6 | v1.5.0 | Analytics, Metrics, Listener Engagement | PLANNED |
 
 ---
 
-## Phase 2 — Rebrand & Refactor `COMPLETE`
+## Linux Phase 3 — Audio Encoding + Streaming Engine `v1.2.0` `IN PROGRESS`
 
-**Goal:** Complete rename of every AltaCast identity. No new features.
-
-**Completed:**
-- 150+ string/symbol instances renamed: AltaCast → Mcaster1DSPEncoder throughout
-- All source files, folders, vcxproj, sln files renamed
-- Native LAME MP3 (`lame.h` API) replaces obsolete `BladeMP3EncDLL.h`
-- ResizableLib integrated — all dialogs resizable with anchor-based layout
-- Modern dialog styling: Segoe UI 9pt font, `WS_THICKFRAME`, flat look
-- Full attribution to Ed Zaleski preserved in About dialog and source headers
-
-**Outputs:** Clean build with Mcaster1DSPEncoder identity throughout
+**Goal:** Wire the HTTP admin server to real audio — live device capture, playlist file
+streaming, multi-format encoding, and live broadcast to Icecast2 / Mcaster1DNAS.
 
 ---
 
-## Phase 3 — Audio Backend Modernization `IN PROGRESS`
+### 3.1 — Audio Input Abstraction
 
-**Goal:** Remove EOL dependencies. Add Opus, HE-AAC, dual MP3 paths. Replace bass.dll
-with PortAudio for full device coverage including WASAPI loopback and ASIO.
+A unified `AudioSource` interface with two backends:
 
-### Codec Work
-- [x] LAME MP3 — native C API, CBR / VBR (V0–V9) / ABR
-- [x] LAME ACM — runtime Windows ACM codec enumeration
-- [x] Opus — `libopusenc` integration, OGG container
-- [x] AAC-LC / HE-AAC v1 / HE-AAC v2 — `fdk-aac` replaces legacy `libfaac`
-- [x] WMA removed — `basswma.dll` dependency eliminated
-- [x] Ogg Vorbis updated — `libvorbis 1.3.7`
-- [x] FLAC updated — `libFLAC 1.5.0`
+#### Live Device Capture (PortAudio)
+| Backend | Library | Notes |
+|---------|---------|-------|
+| ALSA | `pa_alsa` | Native Linux kernel audio — works everywhere |
+| PulseAudio | `pa_pulse` | User-space audio server — most desktop distros |
+| PipeWire | via PulseAudio compat | Modern replacement — Fedora/Ubuntu 22+/Arch |
+| JACK | `pa_jack` | Pro audio / low-latency — DAW integrations |
+| Monitor (loopback) | PulseAudio monitor source | Capture what's playing — virtual cable equivalent |
 
-### Device Capture
-- [x] PortAudio statically linked — WASAPI / DirectSound / MME / WDM-KS / ASIO
-- [x] WASAPI loopback — capture what's playing (virtual audio cable use case)
-- [x] ASIO — professional hardware, built with Steinberg ASIO SDK
-- [x] Sample rate UI: 44100 / 48000 / 88200 / 96000 / 176400 / 192000 Hz
-- [x] Resample stage: high-rate capture → 44100/48000 encoder input
+- Device enumeration at startup → available in web UI dropdown
+- Sample rates: 44100 / 48000 / 88200 / 96000 / 176400 / 192000 Hz
+- Resample stage: high-rate capture → 44100/48000 encoder input (mc1_res_* already done)
 
-### Pending Verification
-- [ ] Opus stream end-to-end test — Icecast + VLC
-- [ ] AAC ADTS stream end-to-end test — Icecast + compatible players
-- [ ] 192kHz ASIO capture → 48kHz Opus encode verified
-- [ ] All format streams verified on both Win32 and x64 builds
+#### Playlist File Streaming
+- Decode engine: **libmpg123** (MP3) + **libavcodec** (OGG/FLAC/Opus/AAC/M4A/WAV)
+- PCM float output → same pipeline as live capture
+- Track advance: gapless or with crossfade (Phase 4)
+- TagLib metadata on track load → auto-push ICY `StreamTitle=Artist - Title`
 
----
+### 3.2 — Playlist Parser
 
-## Phase 4 — YAML Multi-Station Configuration `PLANNED`
+Support all four formats used in broadcasting:
 
-**Goal:** Replace legacy flat `key=value` config with structured YAML supporting multiple
-simultaneous stations, per-station encoder chains, and archive settings.
+| Format | Extension | Notes |
+|--------|-----------|-------|
+| Extended M3U | `.m3u`, `.m3u8` | `#EXTINF` duration + title, relative/absolute paths |
+| Winamp PLS | `.pls` | `File1=`, `Title1=`, `Length1=` |
+| XSPF | `.xspf` | XML Shareable Playlist Format, W3C |
+| Plain paths | `.txt` | One absolute file path per line |
 
-`libyaml 0.2.5` is already installed in vcpkg — ready to integrate.
+- HTTP(S) remote URLs supported in playlist entries (stream relay)
+- Shuffle, repeat-all, repeat-one modes
+- Hot-reload: reload playlist without restarting the encoder slot
 
-**Planned:**
-- YAML loader: `config_yaml.cpp` / `config_yaml.h` in `libmcaster1dspencoder`
-- Schema: `global` settings + `stations[]` array with nested `icy`, `server`,
-  `encoders[]`, and `archive` blocks
-- `MAX_ENCODERS` increased 10 → 32
-- Multi-station UI: station list in `Mcaster1DSPEncoder.exe`
-- Legacy `key=value` retained as auto-detected fallback
-- Per-station ICY metadata — no more copy-paste across numbered files
-- Save-to-WAV archive per station with filename pattern templating
+### 3.3 — Multi-Format Encoding Pipeline
 
-**Sample config shape:**
-```yaml
-global:
-  log_level: info
-  reconnect_delay: 5
-stations:
-  - id: 1
-    name: "My Rock Station"
-    server: { type: icecast2, host: stream.example.com, port: 8000 }
-    encoders:
-      - { format: mp3, bitrate: 128 }
-      - { format: opus, bitrate: 128 }
+Per-slot encoding state machine (`EncoderSlot`):
+
+```
+AudioSource (PCM float 32-bit)
+      ↓
+ [Volume Scaling]               ← g_recVolumeFactor, same as Windows
+      ↓
+ [Resample if needed]           ← mc1_res_* already ported
+      ↓
+ [Codec Encoder]                ← one of the below
+      ↓
+ [Icecast/DNAS SOURCE client]
+      ↓
+ [Archive Writer]               ← optional simultaneous WAV/MP3 file
+```
+
+| Codec | Library | Modes |
+|-------|---------|-------|
+| MP3 | `libmp3lame` | CBR (32–320), VBR (V0–V9), ABR |
+| Ogg Vorbis | `libvorbis` + `libogg` | Quality -1–10, bitrate managed |
+| Opus | `libopusenc` | 6–512 kbps, OPUS_APPLICATION_AUDIO/RESTRICTED_LOWDELAY |
+| FLAC | `libFLAC` | Lossless, compression 0–8 |
+| AAC-LC / HE-AAC v1 / v2 | `libfdk-aac` | ADTS + ADIF containers |
+
+### 3.4 — Icecast / Mcaster1DNAS SOURCE Client
+
+Full broadcast protocol stack:
+
+| Protocol | Use |
+|----------|-----|
+| **Icecast2 HTTP PUT** | Modern — HTTP PUT `/mount`, `Authorization: Basic`, ICY headers |
+| **Shoutcast v1 ICY SOURCE** | Legacy — `SOURCE /mount HTTP/1.0`, password-only |
+| **Shoutcast v2 ULTRAVOX** | Extended — for Shoutcast DNAS v2+ |
+
+Features:
+- ICY 2.2 extended headers injected at SOURCE connect time
+- Inline `StreamTitle=` metadata blocks at `Icy-MetaInt` byte boundaries
+- Auto-reconnect watchdog: configurable retry interval (default 5s), exponential backoff
+- Connection health: bytes sent, connection duration, listener count from stats endpoint
+- Multiple server targets per encoder slot (simulcast to DNAS + Icecast simultaneously)
+
+### 3.5 — Audio Archive
+
+- Simultaneous WAV/MP3 archive output alongside the live stream
+- Filename templating: `{station}_{YYYY-MM-DD}_{HH-MM-SS}.{ext}`
+- Podcast RSS generated on archive close (`podcast_rss_gen.cpp` already ported)
+- ICY 2.2 metadata embedded in RSS `<item>` on generation
+
+### 3.6 — Web Admin API — Encoder Control
+
+New endpoints added on top of the Phase L2 base:
+
+```
+POST /api/v1/encoders/{slot}/start          start encoding + streaming
+POST /api/v1/encoders/{slot}/stop           stop gracefully
+POST /api/v1/encoders/{slot}/restart        reconnect without full stop
+GET  /api/v1/encoders/{slot}/stats          listeners, bitrate, uptime, ICY info
+PUT  /api/v1/metadata                       push StreamTitle= to all live slots
+PUT  /api/v1/volume                         apply gain in audio pipeline
+GET  /api/v1/devices                        list PortAudio input devices
+GET  /api/v1/playlist                       current playlist + position
+POST /api/v1/playlist/skip                  advance to next track
+POST /api/v1/playlist/load                  load playlist file by path
+```
+
+Dashboard updates:
+- Live VU meter (via WebSocket or SSE polling)
+- Start/stop buttons per encoder slot
+- Track progress bar for file streaming
+- Real listener count from server stats API
+
+### 3.7 — New Source Files
+
+```
+src/linux/
+  audio_source.h/cpp        AudioSource interface + PortAudio backend
+  file_source.h/cpp         File streaming source (libmpg123 + libavcodec)
+  playlist_parser.h/cpp     M3U / PLS / XSPF / TXT parser
+  encoder_slot.h/cpp        Per-slot state machine (idle/connecting/live/error)
+  stream_client.h/cpp       Icecast2 / Shoutcast SOURCE client
+  archive_writer.h/cpp      WAV + MP3 simultaneous archive output
+  audio_pipeline.h/cpp      Master pipeline: source → DSP → encoders → archive
+```
+
+### 3.8 — Phase 3 Dependencies
+
+```bash
+sudo apt install \
+  libportaudio2 portaudio19-dev \
+  libmpg123-dev \
+  libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
+  libmp3lame-dev \
+  libvorbis-dev libogg-dev \
+  libopus-dev libopusenc-dev \
+  libflac-dev \
+  libfdk-aac-dev \
+  libtag1-dev
 ```
 
 ---
 
-## Phase 5 — ICY 2.1 Enhanced Metadata Protocol `PLANNED`
+## Linux Phase 4 — DSP Chain + Pro Media Library + AI Playlist `v1.3.0`
 
-**Goal:** Implement and publish the ICY 2.1 metadata extension on both encoder
-(Mcaster1DSPEncoder) and server (Mcaster1DNAS) sides, enabling richer stream metadata
-beyond what the legacy `StreamTitle=` inline metadata block supports.
-
-### Background
-
-The legacy ICY metadata protocol sends a plain text `StreamTitle=Artist - Title;` string
-embedded in the audio stream at fixed intervals (`Icy-MetaInt` byte boundaries). This
-works for basic now-playing display but has no support for:
-
-- Album art / cover images
-- Track duration and playback position
-- ISRC / MusicBrainz / Spotify identifiers for service lookup
-- Ratings, listener engagement signals
-- Multi-language metadata
-- Structured JSON payloads
-
-ICY 2.1 extends this with:
-
-### ICY 2.1 Feature Set (Planned)
-
-| Feature | Description |
-|---------|-------------|
-| **JSON metadata blocks** | Full JSON payload option alongside legacy `StreamTitle=` for backward compatibility |
-| **Album art embedding** | Base64-encoded thumbnail in metadata block, or HTTP URL reference for larger art |
-| **Track identifiers** | ISRC, MusicBrainz Track ID, Spotify URI fields for automated service lookup |
-| **Duration + position** | Track length and elapsed time for player progress bars |
-| **Station branding** | Logo URL, station color scheme, social handles |
-| **Engagement signals** | Like/reaction metadata for listener platform integration |
-| **History API linkage** | `history_url` field pointing to the Mcaster1DNAS song history API endpoint |
-| **Backward compatibility** | ICY 2.1 blocks include legacy `StreamTitle=` so all existing players continue working |
-
-### Integration Points
-
-- **Mcaster1DSPEncoder** sends ICY 2.1 metadata to Mcaster1DNAS on `PUT /metadata`
-- **Mcaster1DNAS** stores the structured metadata in its in-memory ring buffer
-  (the song history API introduced in v2.5.1-rc1)
-- **Mcaster1DNAS** relays ICY 2.1 blocks to ICY 2.1-aware listeners; falls back to
-  legacy `StreamTitle=` for legacy players
-- **Track History pages** in Mcaster1DNAS already consume the ring buffer — ICY 2.1
-  adds richer data to those pages (cover art, streaming service links, etc.)
+**Goal:** Transform the encoder from a stream relay tool into a full broadcast automation
+platform — professional DSP processing, a media library à la SAM Broadcaster / RadioBoss,
+and an AI-driven playlist engine ("Pulse") that selects tracks based on context, mood,
+news, themes, and listener engagement.
 
 ---
 
-## Phase 6 — Mcaster1DNAS Integration `PLANNED`
+### 4A — DSP Processing Chain
 
-**Goal:** First-class integration between Mcaster1DSPEncoder and the Mcaster1DNAS
-streaming server — making them a matched pair that works better together than either
-does with generic third-party tools.
-
-**Planned integrations:**
-
-- **Auto-discovery** — Mcaster1DSPEncoder detects local Mcaster1DNAS instances on the
-  LAN and offers them in a server picker (mDNS / simple UDP broadcast)
-- **Shared YAML config** — encoder and DNAS share a common `mcaster1.yaml` with
-  station definitions, eliminating duplicate configuration
-- **Live stream health** — DNAS reports listener count, bitrate stability, and buffer
-  state back to the encoder UI in real time
-- **Song history push** — encoder pushes structured now-playing data directly to the
-  DNAS ring buffer API on each track change (no polling delay)
-- **Admin API auth** — encoder uses the same API key as the DNAS admin panel; no
-  separate credential management
-- **Relay/fallback coordination** — encoder can trigger a DNAS relay switch if the
-  live source drops, and resume when the source reconnects
-
----
-
-## Phase 7 — Mcaster1Castit `PLANNED`
-
-**Goal:** Resurrect and modernize **Castit** — the original live broadcast scheduling
-and automation tool built for casterclub.com in 2001 with Ed Zaleski's guidance.
-Castit was written against VC6 and will be upgraded to Visual Studio 2022 as a new
-first-class member of the Mcaster1 ecosystem.
-
-### Castit Upgrade Plan
-
-| Component | Old | New |
-|-----------|-----|-----|
-| Compiler | VC6 | VS2022 (v143 toolset) |
-| XML processing | bundled libxml2 (VC6) | `libxml2:x86-windows` via vcpkg |
-| HTTP client | custom / early libcurl | `libcurl:x86-windows` via vcpkg (modern TLS/HTTP2) |
-| Database | MySQL (direct client) | **TBD:** `libmariadb` (preferred — open-source aligned) or `libmysql` via vcpkg |
-| UI framework | MFC VC6 dialogs | MFC VS2022 + ResizableLib (matching Mcaster1DSPEncoder) |
-| Configuration | legacy flat config | YAML via `libyaml` (matching Mcaster1DSPEncoder) |
-| Encoding integration | Castit-internal | Delegates to Mcaster1DSPEncoder encoder engine |
-
-### Mcaster1Castit Feature Goals
-
-- Playlist scheduling: time-based and event-triggered playback
-- Live source injection: connect a live source mid-schedule
-- Integration with Mcaster1DNAS for stream status and listener stats
-- Integration with Mcaster1DSPEncoder for encoding and stream health
-- ICY 2.1 metadata injection from the playlist schedule (track changes push metadata)
-
-> **Database choice:** MariaDB client (`libmariadb`) is preferred over the Oracle MySQL
-> client — it is a true open-source drop-in replacement with no Oracle license constraints,
-> active community development, and the same wire protocol. This will be revisited before
-> implementation begins.
-
----
-
-## Phase 8 — Analytics, Metrics & Platform Engagement `PLANNED`
-
-**Goal:** Leverage the ICY 2.1 protocol and the Mcaster1DNAS song history ring buffer
-to build a statistical metrics and analytics layer that gives station operators
-actionable listener engagement data — without requiring third-party analytics services.
-
-### Metrics Platform Architecture
+Inserted between the audio source and encoder pool. All DSP operates on
+PCM float32 stereo at 44100 or 48000 Hz.
 
 ```
-[Listeners] ──ICY 2.1 engagement signals──► [Mcaster1DNAS]
-                                                    │
-                                          [Analytics Ring Buffer]
-                                                    │
-                                   ┌────────────────┼─────────────────┐
-                                   ▼                ▼                 ▼
-                          [Track Play Stats]  [Listener Peaks]  [Format Stats]
-                                   │
-                          [Mcaster1Castit Scheduler]
-                                   │
-                         [Optimize playlist rotation
-                          based on engagement data]
+[AudioSource: PCM float32]
+         ↓
+┌────────────────────────────────────────────┐
+│              DSP Chain                     │
+│                                            │
+│   [10-band Parametric EQ]                 │
+│         ↓                                  │
+│   [AGC / Compressor / Limiter]            │
+│         ↓                                  │
+│   [Crossfader]  ←── next track pre-roll   │
+└────────────────────────────────────────────┘
+         ↓
+[Encoder Pool: MP3 / Opus / OGG / FLAC / AAC]
 ```
 
-### Planned Metrics
+#### 4A.1 — Parametric EQ
 
-| Metric | Source | Use |
-|--------|--------|-----|
-| Track play count | DNAS ring buffer | Most-played tracks, rotation analysis |
-| Listener count at track change | DNAS stats API | Measure which tracks retain listeners |
-| Format popularity | DNAS mount stats | Which codec/bitrate combinations listeners prefer |
-| Peak hours | DNAS listener timeseries | Schedule high-value content at peak times |
-| Tune-in / tune-out | ICY 2.1 engagement signal | Identify tracks that cause listeners to leave |
-| Music service click-through | Track History page | Which tracks generate service lookup (Spotify/Apple) |
+- **10 bands**: low shelf, 8 parametric mid bands, high shelf
+- **Per band**: center frequency (20 Hz – 20 kHz), gain (±24 dB), Q factor (0.1 – 10.0)
+- **Algorithm**: RBJ Audio EQ Cookbook biquad IIR filters — pure C++, no library needed
+- **Pre-gain compensation**: auto-attenuate input to prevent inter-stage clipping
+- **Bypass**: per-band enable/disable toggle
+- **Presets** (stored in YAML):
+  - Flat (bypass all)
+  - Spoken Word (boost 200–3kHz, cut 80Hz, cut 10kHz)
+  - Vocal Presence (+3dB 2–5kHz)
+  - Bass Boost (+6dB 60–100Hz)
+  - Treble Air (+4dB 10–16kHz)
+  - Broadcast Standard (gentle smile curve)
+  - Rock / Club / Classical / Late Night
+- **Web UI**: interactive EQ curve graph (SVG canvas), per-band sliders
 
-### Platform Engagement via ICY 2.1
+#### 4A.2 — AGC / Compressor / Limiter
 
-The ICY 2.1 metadata block includes a `history_url` field pointing to the DNAS track
-history API. Listener-side players that support ICY 2.1 can display:
+Three-stage loudness chain:
 
-- A clickable "now playing" card with album art and service links
-- A scrollable track history for the current session
-- A "add to playlist" action via Spotify / Apple Music deep link
+| Stage | Function |
+|-------|----------|
+| **AGC** | Long-term level normalization — target loudness tracking |
+| **Compressor** | Dynamic range reduction — punchy, consistent output |
+| **Limiter** | Hard ceiling — prevent clipping before encoder |
 
-This creates a direct engagement path from the audio stream to music service platforms,
-measurable through the `history_url` click analytics on the DNAS side.
+Parameters:
+- **Threshold**: -60 – 0 dBFS (compressor knee point)
+- **Ratio**: 1:1 – ∞:1 (1:1 = bypass, ∞:1 = limiter)
+- **Attack**: 1 ms – 500 ms (how fast gain reduces on loud signal)
+- **Release**: 10 ms – 5000 ms (how fast gain recovers)
+- **Makeup gain**: 0 – +24 dB (auto or manual)
+- **Target loudness**: -23 LUFS (EBU R128) / -16 LUFS (streaming) / -14 LUFS (podcasts)
+- **Lookahead**: 5–20 ms (prevents transient clipping)
+- **Limiter ceiling**: -1.0 dBFS (hard clip prevention before encoder)
+
+Library: **libebur128** (BSD-2-Clause) for integrated LUFS measurement.
+
+Web UI: Gain reduction meter, loudness histogram, LUFS readout.
+
+#### 4A.3 — Crossfader
+
+Professional track-to-track transition engine:
+
+| Setting | Range | Default |
+|---------|-------|---------|
+| Fade duration | 0 – 15 seconds | 3 s |
+| Curve type | Linear / Equal-power / S-curve | Equal-power |
+| Trigger | Auto (track end) / Silence detect / Manual | Auto |
+| Pre-roll buffer | 2 – 10 seconds | 5 s |
+| Intro protection | 0 – 30 seconds | 8 s |
+
+Features:
+- **Equal-power crossfade**: constant perceived loudness through transition
+  (`gain_out = cos(t × π/2)`, `gain_in = sin(t × π/2)`)
+- **Silence detection**: auto-trigger crossfade on trailing silence (configurable threshold)
+- **Pre-roll**: next track decoded and buffered before current track ends — zero-gap
+- **Intro protection**: don't crossfade over a track's vocal intro (configurable per-track)
+- **BPM-aware mode**: extend/compress crossfade to align beat grids (requires Phase 4B BPM data)
+- **Live assist override**: operator triggers crossfade from web UI at any time
+- **Cue point markers**: per-track `cue_in` / `cue_out` timestamps stored in media library
+
+Web UI: visual crossfade waveform preview, timeline with cue points.
+
+---
+
+### 4B — Pro Media Library Manager
+
+SQLite-backed track database with TagLib/aubio metadata extraction.
+Web UI resembles SAM Broadcaster / RadioBoss track browser.
+
+#### Database Schema (SQLite)
+
+```sql
+tracks:
+  id, file_path, title, artist, album, genre, year, track_number,
+  bpm, musical_key, energy_level (0.0–1.0), mood_tag,
+  duration_ms, bitrate, samplerate, channels, filesize,
+  intro_duration_ms, outro_duration_ms, cue_in_ms, cue_out_ms,
+  date_added, date_modified, date_last_scanned,
+  rating (1–5), play_count, last_played_at,
+  cover_art_hash, is_missing, is_jingle, is_sweeper, is_spot,
+  isrc, musicbrainz_id, custom_tags_json
+
+play_history:
+  id, track_id, played_at, slot, duration_played_ms,
+  listeners_at_play, crossfade_in, crossfade_out, skipped
+
+playlists:
+  id, name, type (static/smart/ai/clock_hour), description,
+  created_at, modified_at, rule_json, track_count
+
+playlist_tracks:
+  id, playlist_id, track_id, position, added_at, weight
+
+station_rotation_rules:
+  id, name, artist_separation, song_separation_hours,
+  genre_ratios_json, jingle_every_n, spot_on_hour, spot_on_half
+
+clock_hours:
+  id, hour (0–23), day_of_week (0–6), segment_json
+```
+
+#### Library Features
+
+| Feature | Implementation |
+|---------|---------------|
+| **Directory scan** | Recursive, inotify watch for live changes |
+| **Metadata extraction** | TagLib — ID3v1/v2 (MP3), Ogg comments, FLAC, Opus, M4A |
+| **Duration + bitrate** | libavformat probe |
+| **BPM detection** | aubio tempo analysis at scan time |
+| **Key detection** | aubio Krumhansl-Schmuckler key profile |
+| **Energy level** | RMS loudness computed at scan time (0.0 = silence, 1.0 = max) |
+| **Mood tag** | Derived: BPM + key + energy → happy/sad/energetic/calm/romantic/angry |
+| **Cover art** | Extract from tag → thumbnail cache (JPEG, 200×200px) |
+| **Duplicate detection** | MD5 file hash + metadata fingerprint comparison |
+| **Missing file detection** | Flagged at scan time, shown in UI |
+| **Intro/outro silence** | Scan first/last 15s for silence onset → auto-set cue points |
+| **Mass tag edit** | Multi-select rows → apply field values to selection |
+| **Export** | Generate M3U/PLS/XSPF/TXT from any filtered view |
+| **Import** | Bulk import from existing playlist files |
+
+#### Web UI — Library Browser
+
+- Sortable/filterable grid: Title, Artist, Album, Genre, Year, BPM, Duration, Energy, Mood, Rating, Plays
+- Cover art thumbnail column
+- Click row → detail panel: full metadata, waveform preview, cue point editor
+- Drag-to-queue: drag tracks from library directly into Pulse queue
+- Smart filter: "energy > 0.7 AND genre = rock AND NOT played_in_last_4h"
+- Batch operations: rate, tag, set cue points, exclude from rotation
+- Library statistics: total tracks, total duration, by-genre breakdown, missing files
+
+---
+
+### 4C — Pulse: AI Playlist Generator
+
+**"Pulse"** — the context-aware, edge-algorithm playlist engine.
+Selects the right track at the right moment based on multi-signal context.
+
+#### Architecture
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║                    Context Engine                            ║
+║                                                              ║
+║  Time/Season ──┐                                             ║
+║  Mood Preset ──┤                                             ║
+║  Daily Theme ──┤──► Context Vector (weighted signals)        ║
+║  News Sentiment┤                                             ║
+║  Blog/Post NLP ┤                                             ║
+║  Weather API ──┤                                             ║
+║  Engagement ───┘                                             ║
+╚════════════════════╤═════════════════════════════════════════╝
+                     ↓
+╔════════════════════╧═════════════════════════════════════════╗
+║                   Track Scorer                               ║
+║                                                              ║
+║  score = Σ wᵢ × featureᵢ                                   ║
+║                                                              ║
+║  • energy_match     (context energy vs track energy)         ║
+║  • mood_match       (context mood vs track mood tag)         ║
+║  • bpm_fit          (target BPM range match)                 ║
+║  • genre_quota      (genre ratio enforcement)                ║
+║  • artist_sep       (-∞ if artist played < N tracks ago)     ║
+║  • song_sep         (-∞ if song played < M hours ago)        ║
+║  • recency_penalty  (prefer less-recently played)            ║
+║  • rating_boost     (operator 1–5 star rating)               ║
+║  • engagement_boost (ICY 2.2 listener retention signal)      ║
+╚════════════════════╤═════════════════════════════════════════╝
+                     ↓
+           Top-N candidates → Queue (5–20 tracks ahead)
+                     ↓
+     Crossfader → Encoder Pool → Live Stream
+```
+
+#### Context Signals
+
+| Signal | Source | Notes |
+|--------|--------|-------|
+| **Time of day** | System clock | Morning: +energy; Drive time: +energy; Evening: -energy; Late night: -energy |
+| **Day of week** | System clock | Weekend = +energy; Monday morning = gentle ramp |
+| **Season** | System clock | Winter holidays override, summer upbeat |
+| **Mood preset** | Web UI selector | Party / Chill / Drive Time / Late Night / Morning Show / Worship / Oldies / News Break |
+| **Daily theme** | Web UI text field | Operator types "today we're talking about spring gardening" → NLP → calm/organic tracks |
+| **News sentiment** | RSS feed parser | Serious breaking news → lower energy, avoid upbeat pop; positive news → boost energy |
+| **Blog/post text** | URL poll or webhook | Station's daily blog post text → NLP topic + sentiment extraction |
+| **Weather** | OpenWeatherMap API | Rainy/overcast → mellower; sunny → upbeat |
+| **Listener engagement** | ICY 2.2 signals | Which tracks retained listeners → boost their score |
+
+#### Mood ↔ Music Feature Mapping
+
+| Mood | Energy | BPM Range | Preferred Keys | Genres |
+|------|--------|-----------|---------------|--------|
+| Energetic / Party | 0.8–1.0 | 120–180 | Major | Rock, Pop, Dance |
+| Drive Time | 0.6–0.85 | 100–140 | Major | Rock, Country, Pop |
+| Morning Show | 0.5–0.75 | 90–130 | Major | Pop, Light Rock, Country |
+| Chill / Late Night | 0.2–0.5 | 60–100 | Minor/Major | Soft Rock, Acoustic, Jazz |
+| Worship | 0.3–0.7 | 70–110 | Major | Christian, Gospel |
+| Oldies Hour | 0.4–0.7 | 100–140 | Major | Classic Rock, 60s/70s/80s |
+| News Break | 0.1–0.3 | 60–90 | Minor | Instrumental, Acoustic |
+| Serious / Grief | 0.1–0.3 | 50–80 | Minor | Slow Ballads, Classical |
+
+#### Rotation Rules
+
+- **Artist separation**: no same artist within N tracks (default: 3 tracks, configurable)
+- **Song separation**: same song not repeated within M hours (default: 4 hours)
+- **Genre ratios**: e.g., 60% Christian / 30% Country / 10% Pop — enforced per clock hour
+- **Jingles / sweepers**: inserted every N tracks automatically
+- **Traffic spots**: on the hour + half-hour (configurable)
+- **Clock hour templates**: define segment-by-segment for each hour of the day (Sunday 8am = worship; Friday 5pm = drive time)
+- **Intro hour rule**: first track of each clock hour = high energy, strong opener, full song (not recently played)
+
+#### LLM Integration (Optional)
+
+Two backend options, operator's choice:
+
+| Backend | Model | Cost | Quality |
+|---------|-------|------|---------|
+| **Ollama (local)** | llama3.2, mistral, gemma2 | Free — runs on same server | Good |
+| **Claude API** | claude-haiku-4-5 (fast/cheap) or claude-sonnet-4-6 | Per-token | Excellent |
+
+Use cases:
+- **Natural language playlist**: "Create a 2-hour Sunday morning gospel show with 3 worship sets"
+- **Theme analysis**: LLM reads today's blog post → extracts musical theme recommendations
+- **News sentiment**: LLM classifies news headlines → high/low energy context signal
+- **Smart rule generation**: "Play only tracks from the 90s on Friday afternoons" → auto-generates rule_json
+
+LLM receives: condensed track catalog (title/artist/genre/bpm/mood/energy), context vector, rotation rules → returns ordered track ID list with brief reasoning.
+
+#### Web UI — Pulse Dashboard
+
+- **Now Playing**: cover art, title, artist, energy bar, BPM, key, mood tag
+- **Up Next**: 5-track queue preview with drag-to-reorder
+- **Context Panel**: active mood preset, today's theme, news sentiment indicator, weather, time slot
+- **Manual Override**: operator drags tracks from library into queue, Pulse fills remaining slots
+- **Skip**: instant crossfade to next track
+- **History**: last 50 tracks played — listener count at each change, rating prompt
+- **Pulse Settings**: signal weights sliders, rotation rules config, genre ratio pie chart, LLM enable/disable
+
+---
+
+### 4D — Phase 4 New Source Files
+
+```
+src/linux/
+  dsp/
+    eq.h/cpp                10-band biquad IIR parametric EQ
+    agc.h/cpp               AGC / compressor / limiter chain
+    crossfader.h/cpp        Track crossfade engine with pre-roll
+    dsp_chain.h/cpp         Master DSP pipeline orchestrator
+
+  medialib/
+    database.h/cpp          SQLite schema + CRUD + migrations
+    scanner.h/cpp           Directory scanner + inotify watcher
+    tag_extractor.h/cpp     TagLib metadata + libavformat probe
+    bpm_analyzer.h/cpp      aubio BPM + musical key detection
+    energy_analyzer.h/cpp   RMS energy level + silence detection
+    cover_art.h/cpp         Cover art extract + thumbnail cache
+    mood_classifier.h/cpp   BPM + key + energy → mood tag
+
+  pulse/
+    context_engine.h/cpp    Multi-signal context aggregator
+    track_scorer.h/cpp      Candidate scoring (weighted features)
+    rotation_enforcer.h/cpp Artist/song separation + quota rules
+    clock_scheduler.h/cpp   Clock hour templates + segment rules
+    news_feed.h/cpp         RSS fetch + headline sentiment
+    llm_client.h/cpp        Ollama + Claude API integration
+    weather_client.h/cpp    OpenWeatherMap API (optional)
+
+  web_ui/
+    medialib.html/js        Media library browser
+    pulse.html/js           AI playlist generator + context UI
+    dsp.html/js             EQ / AGC / crossfade controls
+```
+
+### 4E — New REST API Endpoints
+
+```
+# Media Library
+GET    /api/v1/library/stats              totals, by-genre counts, missing files
+POST   /api/v1/library/scan               trigger rescan of configured directories
+GET    /api/v1/library/tracks             paginated: ?page=1&limit=50&genre=rock&sort=bpm
+GET    /api/v1/library/tracks/{id}        full track detail + play history
+PUT    /api/v1/library/tracks/{id}        update metadata, rating, cue points
+DELETE /api/v1/library/tracks/{id}        remove from library (not from disk)
+GET    /api/v1/library/search             full-text search: ?q=artist:queen
+
+# Playlists
+GET    /api/v1/playlists                  list all playlists
+POST   /api/v1/playlists                  create static/smart/ai playlist
+GET    /api/v1/playlists/{id}             playlist + tracks
+PUT    /api/v1/playlists/{id}             update rules or track order
+DELETE /api/v1/playlists/{id}
+
+# Pulse AI Engine
+GET    /api/v1/pulse/queue                current play queue (5–20 tracks ahead)
+PUT    /api/v1/pulse/queue                reorder / insert / remove from queue
+POST   /api/v1/pulse/skip                 crossfade to next track immediately
+GET    /api/v1/pulse/context              current context vector
+PUT    /api/v1/pulse/context              set mood preset, theme text, weather override
+POST   /api/v1/pulse/generate             generate N-track playlist from context
+POST   /api/v1/pulse/nlq                  natural language query → playlist
+
+# DSP Chain
+GET    /api/v1/dsp/eq                     current EQ band settings
+PUT    /api/v1/dsp/eq                     update bands / load preset
+GET    /api/v1/dsp/agc                    AGC / compressor parameters
+PUT    /api/v1/dsp/agc                    update AGC settings
+GET    /api/v1/dsp/crossfade              crossfade settings
+PUT    /api/v1/dsp/crossfade              update crossfade settings
+GET    /api/v1/dsp/meters                 real-time loudness/gain-reduction readings (SSE)
+```
+
+### 4F — Phase 4 Dependencies
+
+```bash
+sudo apt install \
+  libsqlite3-dev \
+  libtag1-dev \
+  libebur128-dev \
+  libaubio-dev \
+  libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
+  libcurl4-openssl-dev \
+  libjpeg-dev
+
+# Optional: local LLM backend
+# curl -fsSL https://ollama.com/install.sh | sh
+# ollama pull llama3.2
+```
 
 ---
 
 ## Release Version Plan
 
+### Windows
+
 | Tag | Phase | Description |
 |-----|-------|-------------|
-| `v0.1.0` | Phase 1 | VS2022 build fixes — all 4 targets compile |
-| `v0.2.0` | Phase 2 | Full rebrand, native LAME, ResizableLib UI |
-| `v0.3.0` | Phase 3 | Opus, HE-AAC, PortAudio/ASIO, WMA removed |
-| `v0.4.0` | Phase 4 | YAML multi-station config, 32 encoder slots |
-| `v0.5.0` | Phase 5 | ICY 2.1 metadata protocol |
-| `v0.6.0` | Phase 6 | Mcaster1DNAS deep integration |
-| `v1.0.0` | Phase 7 | Mcaster1Castit + full Mcaster1 platform |
-| `v1.1.0` | Phase 8 | Analytics, metrics, platform engagement |
+| `v0.1.0` | 1 | VS2022 build fixes |
+| `v0.2.0` | 2 | Full rebrand, native LAME |
+| `v0.3.0` | 3 | Opus, HE-AAC, PortAudio/ASIO |
+| `v0.4.0` | 4 | YAML multi-station config |
+| `v0.5.0` | 5 | ICY 2.2 metadata + Podcast RSS |
+| `v0.6.0` | 6 | Mcaster1DNAS deep integration |
+| `v1.0.0` | 7 | Mcaster1Castit platform |
+| `v1.1.0` | 8 | Analytics + engagement |
+
+### Linux CLI + Web Admin
+
+| Tag | Phase | Description |
+|-----|-------|-------------|
+| `v1.0.0` | L1 | Infrastructure, build system, ICY 2.2 structs |
+| `v1.1.1` | L2 | HTTP/HTTPS admin server + web UI — **current** |
+| `v1.2.0` | L3 | PortAudio capture + file streaming + encoding + Icecast client |
+| `v1.3.0` | L4 | DSP (EQ/AGC/crossfade) + Media Library + Pulse AI playlist |
+| `v1.4.0` | L5 | Mcaster1DNAS deep integration |
+| `v1.5.0` | L6 | Analytics, listener metrics, engagement platform |
 
 ---
 
