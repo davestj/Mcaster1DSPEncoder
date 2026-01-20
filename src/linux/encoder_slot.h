@@ -1,11 +1,12 @@
 // encoder_slot.h — Per-encoder-slot state machine
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #pragma once
 
 #include "audio_source.h"
 #include "stream_client.h"
 #include "archive_writer.h"
 #include "playlist_parser.h"
+#include "dsp/dsp_chain.h"
 
 #include <string>
 #include <vector>
@@ -49,6 +50,13 @@ struct EncoderConfig {
     // Archive
     bool        archive_enabled = false;
     std::string archive_dir;
+
+    // DSP chain
+    bool        dsp_eq_enabled         = false;
+    bool        dsp_agc_enabled        = false;
+    bool        dsp_crossfade_enabled  = true;
+    float       dsp_crossfade_duration = 3.0f;   // seconds
+    std::string dsp_eq_preset;                    // "flat","classic_rock","country",...
 };
 
 // ---------------------------------------------------------------------------
@@ -104,6 +112,9 @@ public:
     // Update volume (applied in audio callback before encoding)
     void set_volume(float v);
 
+    // Live-update DSP chain parameters (takes effect on the next audio buffer)
+    void reconfigure_dsp(const mc1dsp::DspChainConfig& cfg);
+
     // Push ICY metadata to the connected server
     void push_metadata(const std::string& title, const std::string& artist = "");
 
@@ -137,6 +148,9 @@ private:
     // Output
     std::unique_ptr<StreamClient>  stream_client_;
     std::unique_ptr<ArchiveWriter> archive_;
+
+    // DSP chain (EQ → AGC; crossfader applied at track boundaries)
+    std::unique_ptr<mc1dsp::DspChain> dsp_chain_;
 
     // Playlist state
     std::vector<PlaylistEntry> playlist_;

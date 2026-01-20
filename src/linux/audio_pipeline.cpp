@@ -1,5 +1,5 @@
 // audio_pipeline.cpp — Master audio pipeline
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #include "audio_pipeline.h"
 
 #include <stdexcept>
@@ -140,6 +140,21 @@ bool AudioPipeline::push_metadata(int slot_id, const std::string& title,
     auto* slot = find_slot(slot_id);
     if (!slot) return false;
     slot->push_metadata(title, artist);
+    return true;
+}
+
+bool AudioPipeline::reconfigure_dsp(int slot_id, const mc1dsp::DspChainConfig& cfg)
+{
+    std::lock_guard<std::mutex> lk(slots_mtx_);
+    auto* slot = find_slot(slot_id);
+    if (!slot) return false;
+    slot->reconfigure_dsp(cfg);
+    fprintf(stderr, "[Pipeline] Slot %d DSP reconfigured: EQ=%s AGC=%s XFade=%s preset='%s'\n",
+            slot_id,
+            cfg.eq_enabled        ? "on" : "off",
+            cfg.agc_enabled       ? "on" : "off",
+            cfg.crossfader_enabled? "on" : "off",
+            cfg.eq_preset.empty() ? "none" : cfg.eq_preset.c_str());
     return true;
 }
 

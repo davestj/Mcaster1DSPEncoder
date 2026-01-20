@@ -1,5 +1,5 @@
 // audio_pipeline.h — Master audio pipeline: manages all encoder slots
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #pragma once
 
 #include "encoder_slot.h"
@@ -54,6 +54,9 @@ public:
     bool skip_track   (int slot_id);
     bool set_volume   (int slot_id, float volume);
     bool push_metadata(int slot_id, const std::string& title, const std::string& artist = "");
+
+    // Live DSP reconfiguration — takes effect on the next audio buffer
+    bool reconfigure_dsp(int slot_id, const mc1dsp::DspChainConfig& cfg);
 
     // -------------------------------------------------------------------
     // Status queries
