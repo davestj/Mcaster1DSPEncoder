@@ -14,7 +14,6 @@
 #include "libmcaster1dspencoder.h"
 #include "libmcaster1dspencoder_socket.h"
 #ifdef WIN32
-#include <bass.h>
 #include <objbase.h>    /* CoCreateGuid — ICY 2.2 session-id auto-gen */
 #else
 #ifdef HAVE_LAME
@@ -355,7 +354,7 @@ char_t *getgLogFile(mcaster1Globals *g) {
 
 int resetResampler(mcaster1Globals *g) {
 	if(g->initializedResampler) {
-		res_clear(&(g->resampler));
+		mc1_res_clear(&(g->resampler));
 	}
 
 	g->initializedResampler = 0;
@@ -1916,7 +1915,7 @@ int initializeResampler(mcaster1Globals *g, long inSampleRate, long inNCH) {
 		long	in_nch = inNCH;
 		long	out_nch = 2;
 
-		if(res_init(&(g->resampler), out_nch, out_samplerate, in_samplerate, RES_END)) {
+		if(mc1_res_init(&(g->resampler), out_nch, out_samplerate, in_samplerate, RES_END)) {
 			LogMessage(g,LOG_ERROR, "Error initializing resampler");
 			return 0;
 		}
@@ -1928,8 +1927,8 @@ int initializeResampler(mcaster1Globals *g, long inSampleRate, long inNCH) {
 }
 
 int ocConvertAudio(mcaster1Globals *g, float *in_samples, float *out_samples, int num_in_samples, int num_out_samples) {
-	int max_num_samples = res_push_max_input(&(g->resampler), num_out_samples);
-	int ret_samples = res_push_interleaved(&(g->resampler),
+	int max_num_samples = mc1_res_push_max_input(&(g->resampler), num_out_samples);
+	int ret_samples = mc1_res_push_interleaved(&(g->resampler),
 										   (SAMPLE *) out_samples,
 										   (const SAMPLE *) in_samples,
 										   max_num_samples);

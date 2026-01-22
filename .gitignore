@@ -147,3 +147,40 @@ installer/Output/
 devenv-build*.log
 foobar-build.log
 MCASTER1DSPENCODER*.log
+
+# ---------------------------------------------------------------
+# Linux build system generated files (autotools)
+# ---------------------------------------------------------------
+configure
+config.h
+config.h.in
+config.log
+config.status
+config.sub
+config.guess
+aclocal.m4
+autom4te.cache/
+Makefile.in
+stamp-h1
+install-sh
+missing
+depcomp
+compile
+ar-lib
+*.o
+*.lo
+*.la
+.libs/
+.deps/
+INSTALL
+src/linux/.deps/
+
+# ---------------------------------------------------------------
+# Linux binary output (use build/ which is already ignored)
+# ---------------------------------------------------------------
+build/
+
+# ---------------------------------------------------------------
+# TLS certificates (generated at runtime — never commit private keys)
+# ---------------------------------------------------------------
+certs/

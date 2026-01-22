@@ -299,7 +299,7 @@ typedef struct {
 	int		gLockSongTitle;
     int     gNumEncoders;
 
-	res_state	resampler;
+	mc1_res_state	resampler;
 	int	initializedResampler;
 	void (*sourceURLCallback)(void *, void *);
 	void (*destURLCallback)(void *, void *);
@@ -406,12 +406,22 @@ typedef struct {
 	char_t  gPodcastCoverArt[1024];     /* cover art image URL */
 	char_t  gPodcastDescription[2048];  /* show description / summary */
 	char_t  gLastSavedFilePath[1024];   /* set by openArchiveFile, consumed by RSS gen */
+	/* Podcast episode-level fields (icy-meta-podcast-*) */
+	char_t  gICY22PodcastEpisode[256];  /* icy-meta-podcast-episode — episode title/ID  */
+	char_t  gICY22PodcastRating[32];    /* icy-meta-podcast-rating  — all-ages|teen|mature|explicit */
+	char_t  gICY22PodcastRSSURL[1024];  /* icy-meta-podcast-rss     — feed URL          */
+	int     gICY22PodcastDuration;      /* icy-meta-duration        — runtime in seconds */
 
 	/* ---- Phase 5: ICY 2.2 Extended metadata ---- */
 	/* Station Identity */
 	char_t  gICY22StationID[256];
 	char_t  gICY22StationLogo[1024];
 	char_t  gICY22VerifyStatus[32];     /* unverified|pending|verified|gold */
+	/* Station Certificate / PKI (icy-meta-cert*, icy-meta-ssh-pubkey) */
+	char_t  gICY22CertIssuerID[128];    /* icy-meta-certissuer-id           */
+	char_t  gICY22CertRootCA[256];      /* icy-meta-cert-rootca  — CA hash  */
+	char_t  gICY22Certificate[4096];    /* icy-meta-certificate  — Base64 PEM cert */
+	char_t  gICY22SSHPubKey[1024];      /* icy-meta-ssh-pubkey              */
 	/* Show / Programming */
 	char_t  gICY22ShowTitle[256];
 	char_t  gICY22ShowStart[64];        /* ISO8601 */
@@ -472,10 +482,97 @@ typedef struct {
 	char_t  gICY22VideoResolution[32];  /* e.g. "1920x1080" */
 	char_t  gICY22VideoRating[16];
 	int     gICY22VideoNSFW;
+	char_t  gICY22VideoChannel[128];    /* icy-meta-videochannel — creator/channel handle  */
+	char_t  gICY22VideoStart[64];       /* icy-meta-videostart   — ISO8601 scheduled start */
 	/* Audio Technical */
-	char_t  gICY22LoudnessLUFS[16];    /* EBU R128 e.g. "-14.0" */
+	char_t  gICY22LoudnessLUFS[16];    /* EBU R128 e.g. "-14.0" — icy-meta-loudness       */
+	/* Auth (icy-meta-auth-token) */
+	char_t  gICY22AuthToken[1024];      /* JWT bearer or access token                      */
+	/* Track Metadata (icy-meta-track-*) — updated per-track in playlist/file-decode mode  */
+	char_t  gICY22TrackArtwork[1024];   /* icy-meta-track-artwork  — album art URL         */
+	char_t  gICY22TrackAlbum[256];      /* icy-meta-track-album    — release/album name    */
+	char_t  gICY22TrackYear[8];         /* icy-meta-track-year     — YYYY                  */
+	char_t  gICY22TrackLabel[256];      /* icy-meta-track-label    — record label           */
+	char_t  gICY22TrackBPM[8];          /* icy-meta-track-bpm      — beats per minute       */
+	char_t  gICY22TrackKey[16];         /* icy-meta-track-key      — Camelot or std notation*/
+	char_t  gICY22TrackGenre[128];      /* icy-meta-track-genre    — per-track genre        */
+	char_t  gICY22TrackMBID[64];        /* icy-meta-track-mbid     — MusicBrainz UUID       */
+	char_t  gICY22TrackISRC[32];        /* icy-meta-track-isrc     — ISRC code              */
 } mcaster1Globals;
 
+
+/* ── HTTP Admin Server Configuration ────────────────────────────────────────
+ *
+ * Parsed from the top-level  http-admin:  block in mcaster1dspencoder.yaml.
+ * Independent of per-encoder mcaster1Globals — one instance per process.
+ *
+ * YAML shape:
+ *   http-admin:
+ *     enabled: true
+ *     listen-sockets:
+ *       - port: 8330
+ *         bind-address: "127.0.0.1"
+ *         ssl: false
+ *       - port: 8443
+ *         bind-address: "0.0.0.0"
+ *         ssl: true
+ *         ssl-cert: "/etc/mcaster1/certs/server.crt"   # overrides ssl-config
+ *         ssl-key:  "/etc/mcaster1/certs/server.key"
+ *     auth:
+ *       username:        "admin"
+ *       password:        "hackme"
+ *       api-token:       ""
+ *       htpasswd-file:   ""
+ *       session-timeout: 3600
+ *     ssl-config:
+ *       cert:     "/etc/mcaster1/certs/server.crt"
+ *       key:      "/etc/mcaster1/certs/server.key"
+ *       ca-chain: ""
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+#define MC1_MAX_LISTENERS 8
+
+typedef struct {
+	char bind_address[64];   /* "127.0.0.1", "0.0.0.0", "::", etc.           */
+	int  port;               /* TCP port number                               */
+	int  ssl_enabled;        /* 0 = plain HTTP, 1 = HTTPS                    */
+	char ssl_cert[1024];     /* per-socket cert path; empty = use ssl-config  */
+	char ssl_key[1024];      /* per-socket key path;  empty = use ssl-config  */
+} mc1ListenSocket;
+
+typedef struct {
+	int             enabled;                        /* 0/1 — run admin server  */
+
+	/* Listener sockets */
+	mc1ListenSocket sockets[MC1_MAX_LISTENERS];
+	int             num_sockets;
+
+	/* Authentication */
+	char            admin_username[128];
+	char            admin_password[256];            /* plaintext or sha256:<hex>    */
+	char            admin_api_token[256];           /* X-API-Token header for scripts*/
+	char            admin_htpasswd_file[1024];      /* Apache htpasswd path; if set  */
+	                                                /* overrides username/password   */
+	int             session_timeout_secs;           /* cookie session TTL (default 3600) */
+
+	/* Default SSL certificate (applies to every ssl-enabled listener
+	 * unless the listener has its own ssl-cert/ssl-key set)          */
+	char            ssl_cert[1024];
+	char            ssl_key[1024];
+	char            ssl_ca[1024];                   /* optional CA chain bundle      */
+} mc1AdminConfig;
+
+/* Single global instance — defined in config_yaml.cpp,
+ * populated by readAdminConfig() during startup.          */
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern mc1AdminConfig gAdminConfig;
+#ifdef __cplusplus
+}
+#endif
+
+/* ─────────────────────────────────────────────────────────────────────────── */
 
 void addConfigVariable(mcaster1Globals *g, char_t *variable);
 int initializeencoder(mcaster1Globals *g);

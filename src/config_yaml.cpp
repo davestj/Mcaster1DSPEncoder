@@ -6,13 +6,15 @@
 // + config_read() fire callbacks exactly as the INI path does.
 //
 
-#include "stdafx.h"
+#include "platform.h"       /* cross-platform shims — must come first */
 #include "config_yaml.h"
 #include <yaml.h>
-#include <windows.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+/* Global admin config instance (declared extern in libmcaster1dspencoder.h) */
+mc1AdminConfig gAdminConfig;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal helpers
@@ -22,9 +24,9 @@
 static void buildYamlPath(char *out, size_t outLen, mcaster1Globals *g)
 {
     if (strlen(g->gConfigFileName) == 0)
-        _snprintf(out, outLen - 1, "Mcaster1 DSP Encoder_%d.yaml", g->encoderNumber);
+        snprintf(out, outLen - 1, "Mcaster1 DSP Encoder_%d.yaml", g->encoderNumber);
     else
-        _snprintf(out, outLen - 1, "%s_%d.yaml", g->gConfigFileName, g->encoderNumber);
+        snprintf(out, outLen - 1, "%s_%d.yaml", g->gConfigFileName, g->encoderNumber);
     out[outLen - 1] = '\0';
 }
 
@@ -32,9 +34,9 @@ static void buildYamlPath(char *out, size_t outLen, mcaster1Globals *g)
 static void buildCfgPath(char *out, size_t outLen, mcaster1Globals *g)
 {
     if (strlen(g->gConfigFileName) == 0)
-        _snprintf(out, outLen - 1, "Mcaster1 DSP Encoder_%d.cfg", g->encoderNumber);
+        snprintf(out, outLen - 1, "Mcaster1 DSP Encoder_%d.cfg", g->encoderNumber);
     else
-        _snprintf(out, outLen - 1, "%s_%d.cfg", g->gConfigFileName, g->encoderNumber);
+        snprintf(out, outLen - 1, "%s_%d.cfg", g->gConfigFileName, g->encoderNumber);
     out[outLen - 1] = '\0';
 }
 
@@ -65,7 +67,7 @@ static int emitPair(yaml_emitter_t *e, const char *key, const char *value)
 static int emitPairInt(yaml_emitter_t *e, const char *key, long value)
 {
     char buf[32];
-    _snprintf(buf, sizeof(buf) - 1, "%ld", value);
+    snprintf(buf, sizeof(buf) - 1, "%ld", value);
     return emitPair(e, key, buf);
 }
 

@@ -12,7 +12,6 @@
 #include "resource.h"
 
 #include "MainWindow.h"
-#include <bass.h>
 CMainWindow *mainWindow;
 CWinApp			mainApp;
 
