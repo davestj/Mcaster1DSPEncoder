@@ -184,3 +184,9 @@ build/
 # TLS certificates (generated at runtime — never commit private keys)
 # ---------------------------------------------------------------
 certs/
+
+# ---------------------------------------------------------------
+# Station config files — may contain passwords / credentials.
+# Keep locally; never commit. Copy from config/*.yaml.example
+# ---------------------------------------------------------------
+src/linux/config/*.yaml
