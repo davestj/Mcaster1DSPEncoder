@@ -1,0 +1,1448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mcaster1DSPEncoder — Technical Documentation</title>
+  <style>
+    /* ── CSS Variables ── */
+    :root {
+      --bg:          #0f172a;
+      --bg-card:     #1e293b;
+      --bg-sidebar:  #0d1a2e;
+      --border:      #1e3a5f;
+      --teal:        #14b8a6;
+      --teal-dark:   #0d9488;
+      --cyan:        #0891b2;
+      --cyan-light:  #22d3ee;
+      --text:        #e2e8f0;
+      --text-muted:  #94a3b8;
+      --text-dim:    #64748b;
+      --green:       #22c55e;
+      --yellow:      #f59e0b;
+      --red:         #ef4444;
+      --purple:      #a855f7;
+      --sidebar-w:   280px;
+      --header-h:    60px;
+    }
+
+    /* ── Reset + Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; font-size: 16px; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    a { color: var(--teal); text-decoration: none; }
+    a:hover { color: var(--cyan-light); text-decoration: underline; }
+    code, pre {
+      font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.875rem;
+    }
+    pre {
+      background: #0a0f1e;
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--teal);
+      border-radius: 6px;
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+    }
+    code {
+      background: rgba(20,184,166,0.12);
+      color: var(--cyan-light);
+      padding: 0.15em 0.4em;
+      border-radius: 4px;
+    }
+    pre code {
+      background: none;
+      color: #c9d1d9;
+      padding: 0;
+      border-radius: 0;
+    }
+    h1, h2, h3, h4 {
+      line-height: 1.3;
+      font-weight: 600;
+    }
+    h2 { font-size: 1.6rem; }
+    h3 { font-size: 1.2rem; }
+    h4 { font-size: 1rem; }
+    p { margin: 0.75rem 0; }
+    ul, ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+    li { margin: 0.3rem 0; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; margin: 1rem 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th {
+      background: rgba(20,184,166,0.15);
+      color: var(--teal);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.55rem 1rem;
+      border-bottom: 1px solid rgba(30,58,95,0.5);
+      vertical-align: top;
+    }
+    tr:hover td { background: rgba(20,184,166,0.04); }
+
+    /* ── Status badges ── */
+    .badge {
+      display: inline-block;
+      padding: 0.15em 0.6em;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .badge-complete  { background: rgba(34,197,94,0.15);  color: var(--green);  border: 1px solid rgba(34,197,94,0.3);  }
+    .badge-planned   { background: rgba(100,116,139,0.2); color: var(--text-dim); border: 1px solid rgba(100,116,139,0.3); }
+    .badge-new       { background: rgba(168,85,247,0.15); color: var(--purple);  border: 1px solid rgba(168,85,247,0.3); }
+    .badge-critical  { background: rgba(239,68,68,0.15);  color: var(--red);    border: 1px solid rgba(239,68,68,0.3);  }
+    .badge-warn      { background: rgba(245,158,11,0.15); color: var(--yellow); border: 1px solid rgba(245,158,11,0.3); }
+    .badge-get       { background: rgba(34,197,94,0.12);  color: var(--green);  border: 1px solid rgba(34,197,94,0.25); min-width: 50px; text-align: center; }
+    .badge-post      { background: rgba(245,158,11,0.12); color: var(--yellow); border: 1px solid rgba(245,158,11,0.25); min-width: 50px; text-align: center; }
+    .badge-put       { background: rgba(8,145,178,0.12);  color: var(--cyan);   border: 1px solid rgba(8,145,178,0.25); min-width: 50px; text-align: center; }
+    .badge-delete    { background: rgba(239,68,68,0.12);  color: var(--red);    border: 1px solid rgba(239,68,68,0.25); min-width: 50px; text-align: center; }
+
+    /* ── Top header bar ── */
+    .top-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--header-h);
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 1.5rem;
+      z-index: 100;
+      gap: 1rem;
+    }
+    .top-bar .logo {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--teal);
+      letter-spacing: -0.02em;
+    }
+    .top-bar .logo span { color: var(--text-muted); font-weight: 400; }
+    .top-bar .version-pill {
+      background: rgba(20,184,166,0.12);
+      color: var(--teal);
+      border: 1px solid rgba(20,184,166,0.25);
+      border-radius: 9999px;
+      padding: 0.15em 0.75em;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .top-bar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .top-bar-right a {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      padding: 0.3em 0.75em;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .top-bar-right a:hover { color: var(--teal); border-color: var(--teal); text-decoration: none; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed;
+      top: var(--header-h);
+      left: 0;
+      width: var(--sidebar-w);
+      bottom: 0;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 1.25rem 0 2rem;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .nav-section {
+      padding: 0.6rem 1rem 0.2rem;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+    }
+    .nav-item {
+      display: block;
+      padding: 0.4rem 1.25rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      border-left: 2px solid transparent;
+      transition: all 0.12s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .nav-item:hover, .nav-item.active {
+      color: var(--teal);
+      border-left-color: var(--teal);
+      background: rgba(20,184,166,0.06);
+      text-decoration: none;
+    }
+    .nav-sub {
+      padding: 0.3rem 1.25rem 0.3rem 2rem;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      display: block;
+      border-left: 2px solid transparent;
+      transition: all 0.12s;
+    }
+    .nav-sub:hover {
+      color: var(--cyan-light);
+      border-left-color: var(--cyan);
+      background: rgba(8,145,178,0.05);
+      text-decoration: none;
+    }
+
+    /* ── Main content ── */
+    .main {
+      margin-left: var(--sidebar-w);
+      margin-top: var(--header-h);
+      padding: 2.5rem 3rem 4rem;
+      max-width: 1100px;
+    }
+
+    /* ── Sections ── */
+    .doc-section {
+      margin-bottom: 4rem;
+      padding-top: 1rem;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-header h2 {
+      color: var(--text);
+    }
+    .section-number {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      background: rgba(20,184,166,0.12);
+      border: 1px solid rgba(20,184,166,0.3);
+      border-radius: 6px;
+      color: var(--teal);
+      font-size: 0.8rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      margin: 1rem 0;
+    }
+    .card h4 {
+      color: var(--teal);
+      margin-bottom: 0.5rem;
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .card-small {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    .card-small .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      margin-bottom: 0.3rem;
+    }
+    .card-small .value {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--teal);
+      font-family: monospace;
+    }
+
+    /* ── Callouts ── */
+    .callout {
+      display: flex;
+      gap: 0.75rem;
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      margin: 1rem 0;
+      font-size: 0.9rem;
+      align-items: flex-start;
+    }
+    .callout-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 0.1rem; }
+    .callout-warn  { background: rgba(245,158,11,0.1);  border: 1px solid rgba(245,158,11,0.3); }
+    .callout-warn  .callout-icon, .callout-warn  strong { color: var(--yellow); }
+    .callout-danger { background: rgba(239,68,68,0.1);  border: 1px solid rgba(239,68,68,0.3); }
+    .callout-danger .callout-icon, .callout-danger strong { color: var(--red); }
+    .callout-info  { background: rgba(8,145,178,0.1);   border: 1px solid rgba(8,145,178,0.3); }
+    .callout-info  .callout-icon, .callout-info  strong { color: var(--cyan); }
+    .callout-success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); }
+    .callout-success .callout-icon, .callout-success strong { color: var(--green); }
+
+    /* ── Breadcrumb ── */
+    .breadcrumb {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+    .breadcrumb a { color: var(--text-muted); }
+    .breadcrumb a:hover { color: var(--teal); text-decoration: none; }
+    .breadcrumb .sep { color: var(--text-dim); }
+    .breadcrumb .current { color: var(--teal); }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, rgba(20,184,166,0.08) 0%, rgba(8,145,178,0.05) 100%);
+      border: 1px solid rgba(20,184,166,0.2);
+      border-radius: 12px;
+      padding: 2.5rem 2rem;
+      margin-bottom: 3rem;
+    }
+    .hero h1 {
+      font-size: 2rem;
+      color: var(--text);
+      margin-bottom: 0.5rem;
+    }
+    .hero h1 span { color: var(--teal); }
+    .hero p { color: var(--text-muted); font-size: 1rem; max-width: 640px; }
+    .hero-meta {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .hero-meta-item {
+      background: rgba(15,23,42,0.6);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35em 0.9em;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .hero-meta-item span { color: var(--teal); font-weight: 600; }
+
+    /* ── Phase timeline ── */
+    .phase-list { list-style: none; padding: 0; margin: 1.5rem 0; }
+    .phase-item {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      padding: 0.85rem 1rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid transparent;
+    }
+    .phase-item.done  { border-left-color: var(--green); }
+    .phase-item.plan  { border-left-color: var(--text-dim); opacity: 0.6; }
+    .phase-dot {
+      width: 0.75rem; height: 0.75rem;
+      border-radius: 50%;
+      margin-top: 0.35rem;
+      flex-shrink: 0;
+    }
+    .phase-item.done .phase-dot  { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+    .phase-item.plan .phase-dot  { background: var(--text-dim); }
+    .phase-meta { color: var(--text-muted); font-size: 0.85rem; }
+    .phase-meta strong { color: var(--text); }
+    .phase-meta .phase-version { color: var(--teal); font-family: monospace; font-size: 0.8rem; margin-left: 0.5rem; }
+
+    /* ── Anchor offsets ── */
+    .anchor { display: block; position: relative; top: -80px; visibility: hidden; }
+
+    /* ── Divider ── */
+    hr.section-div {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 2rem 0;
+    }
+
+    /* ── Log level table colors ── */
+    .lv1 { color: #ef4444; font-weight: 700; }
+    .lv2 { color: #f97316; }
+    .lv3 { color: var(--yellow); }
+    .lv4 { color: var(--teal); }
+    .lv5 { color: var(--purple); }
+
+    /* ── Responsive ── */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 1.5rem; }
+      .card-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 1.5rem; }
+      .main { padding: 1rem; }
+      .top-bar .logo span { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<header class="top-bar">
+  <div class="logo">Mcaster1<span>DSPEncoder</span></div>
+  <div class="version-pill">v1.4.0</div>
+  <nav class="top-bar-right">
+    <a href="../README-LINUX.md" target="_blank">README-LINUX.md</a>
+    <a href="../CLAUDE.md" target="_blank">CLAUDE.md</a>
+    <a href="https://github.com/davestj/Mcaster1DSPEncoder" target="_blank" rel="noopener">GitHub</a>
+  </nav>
+</header>
+
+<!-- ── Sidebar ── -->
+<aside class="sidebar" role="navigation" aria-label="Documentation navigation">
+
+  <div class="nav-section">Getting Started</div>
+  <a class="nav-item" href="#overview">Overview</a>
+  <a class="nav-item" href="#architecture">Architecture</a>
+  <a class="nav-item" href="#phases">Phase Status</a>
+
+  <div class="nav-section">Build &amp; Deploy</div>
+  <a class="nav-item" href="#prerequisites">Prerequisites</a>
+  <a class="nav-item" href="#build">Build Instructions</a>
+  <a class="nav-item" href="#run">Running the Encoder</a>
+  <a class="nav-item" href="#configuration">Configuration YAML</a>
+  <a class="nav-item" href="#cli">CLI Options</a>
+
+  <div class="nav-section">PHP Layer</div>
+  <a class="nav-item" href="#php-fpm">PHP-FPM Setup</a>
+  <a class="nav-item" href="#php-pages">Web Pages</a>
+  <a class="nav-item" href="#php-apis">PHP JSON APIs</a>
+  <a class="nav-item" href="#auth">Authentication</a>
+
+  <div class="nav-section">Logging</div>
+  <a class="nav-item" href="#logging">Logging System</a>
+  <a class="nav-sub" href="#log-levels">Log Levels</a>
+  <a class="nav-sub" href="#log-files">Log Files</a>
+  <a class="nav-sub" href="#log-rotation">Log Rotation</a>
+
+  <div class="nav-section">API Reference</div>
+  <a class="nav-item" href="#api-auth">Auth Endpoints</a>
+  <a class="nav-item" href="#api-status">Status &amp; Info</a>
+  <a class="nav-item" href="#api-encoders">Encoder Control</a>
+  <a class="nav-item" href="#api-dsp">DSP Control</a>
+  <a class="nav-item" href="#api-dnas">DNAS Stats</a>
+
+  <div class="nav-section">Database</div>
+  <a class="nav-item" href="#database">Database Schema</a>
+  <a class="nav-sub" href="#db-encoder">mcaster1_encoder</a>
+  <a class="nav-sub" href="#db-media">mcaster1_media</a>
+  <a class="nav-sub" href="#db-metrics">mcaster1_metrics</a>
+
+  <div class="nav-section">Reference</div>
+  <a class="nav-item" href="#gotchas">Known Gotchas</a>
+  <a class="nav-item" href="#e2e">E2E Test Flow</a>
+  <a class="nav-item" href="#windows">Windows Notes</a>
+
+</aside>
+
+<!-- ── Main content ── -->
+<main class="main" role="main">
+
+  <!-- Breadcrumb -->
+  <nav class="breadcrumb" aria-label="Breadcrumb">
+    <a href="../">Project Root</a>
+    <span class="sep">›</span>
+    <span class="current">Documentation</span>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Mcaster1<span>DSP</span>Encoder</h1>
+    <p>A dual-platform broadcast DSP encoder with embedded HTTP/HTTPS admin server,
+       full PHP web UI, DSP audio chain, and live streaming to Icecast2 / Mcaster1DNAS.</p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">Version <span>v1.4.0</span></div>
+      <div class="hero-meta-item">Platform <span>Linux / Windows</span></div>
+      <div class="hero-meta-item">Build <span>Phase L5 Complete</span></div>
+      <div class="hero-meta-item">Maintainer <span>Dave St. John</span></div>
+      <div class="hero-meta-item">Updated <span>Feb 2026</span></div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── OVERVIEW ─────────────────────── -->
+  <div class="doc-section" id="overview">
+    <span class="anchor" id="overview-anchor"></span>
+    <div class="section-header">
+      <div class="section-number">01</div>
+      <h2>Overview</h2>
+    </div>
+
+    <p>
+      <code>mcaster1-encoder</code> is the Linux CLI + web admin build of the Mcaster1DSPEncoder project.
+      It runs as a standalone binary providing a complete broadcast encoder solution:
+    </p>
+
+    <div class="card-grid">
+      <div class="card-small">
+        <div class="label">HTTP/HTTPS Admin</div>
+        <div class="value">cpp-httplib v0.18</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Embedded web server, sessions, SSL, FastCGI bridge</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Audio Engine</div>
+        <div class="value">PortAudio + libav</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Device capture + playlist streaming, MP3/Vorbis/Opus/FLAC</p>
+      </div>
+      <div class="card-small">
+        <div class="label">DSP Chain</div>
+        <div class="value">EQ + AGC + Xfade</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">10-band parametric EQ, AGC/limiter, equal-power crossfader</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Live Streaming</div>
+        <div class="value">Icecast2 / DNAS</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">ICY 2.2 extended headers, auto-reconnect, bytes tracking</p>
+      </div>
+      <div class="card-small">
+        <div class="label">PHP Web UI</div>
+        <div class="value">6 PHP pages</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Dashboard, encoders, media, playlists, metrics, settings</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Logging</div>
+        <div class="value">Level 1–5</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Apache combined format + encoder events + API bodies + stack traces</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── ARCHITECTURE ─────────────────────── -->
+  <div class="doc-section" id="architecture">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">02</div>
+      <h2>Architecture</h2>
+    </div>
+
+    <pre>
+┌─────────────────────────────────────────────────────────┐
+│                  mcaster1-encoder binary                 │
+│                                                          │
+│  ┌─────────────────┐    ┌───────────────────────────┐   │
+│  │  HTTP/S Admin   │    │      Audio Pipeline        │   │
+│  │  cpp-httplib    │    │                            │   │
+│  │                 │    │  FileSource  (libmpg123 +  │   │
+│  │  Routes:        │    │   libavcodec)              │   │
+│  │   /api/v1/*     │    │  AudioSource (PortAudio)   │   │
+│  │   /*.php        │    │       ↓                    │   │
+│  │   /app/*.php    │    │   DspChain                 │   │
+│  │   /app/api/*.php│    │   [EQ → AGC → Xfader]      │   │
+│  │                 │    │       ↓                    │   │
+│  │  FastCGI ───────┼───►│  EncoderSlot (per stream)  │   │
+│  │  Bridge         │    │   MP3/Vorbis/Opus/FLAC      │   │
+│  └─────────────────┘    │       ↓                    │   │
+│          │              │  StreamClient               │   │
+│          ▼              │   Icecast2/DNAS SOURCE      │   │
+│   php-fpm (mcaster1)    └───────────────────────────┘   │
+│   /run/php/php8.2-fpm-mc1.sock                          │
+│          │                                               │
+│          ▼                                               │
+│   PHP Web UI — dashboard/encoders/media/playlists/       │
+│               metrics/settings                          │
+│   MySQL: mcaster1_encoder / mcaster1_media /             │
+│          mcaster1_metrics                               │
+└─────────────────────────────────────────────────────────┘</pre>
+
+    <h3 style="margin-top:1.5rem;color:var(--text-muted)">Two-Layer Authentication</h3>
+
+    <pre>
+Browser ──► C++ server  ──► [mc1session valid?]
+                │                    │ Yes
+                ▼                    ▼
+         FastCGI bridge      PHP page served
+                │
+                ▼
+         php-fpm process
+                │
+                ▼
+    [mc1app_session valid?]
+                │ No
+                ▼
+    footer.php calls POST /app/api/auth.php {action:"auto_login"}
+                │
+                ▼
+    Creates PHP DB session from first active admin user
+    (C++ already authenticated — no password needed)</pre>
+  </div>
+
+  <!-- ─────────────────────── PHASES ─────────────────────── -->
+  <div class="doc-section" id="phases">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">03</div>
+      <h2>Phase Status</h2>
+    </div>
+
+    <ul class="phase-list">
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L1 — Infrastructure</strong><span class="phase-version">v1.0.0</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>platform.h, ICY 2.2 structs, build system, YAML config parser
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L2 — HTTP/HTTPS Admin Server</strong><span class="phase-version">v1.1.1</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>cpp-httplib, sessions, login page, static asset serving, SSL + gencert
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L3 — Audio Encoding + Streaming Engine</strong><span class="phase-version">v1.2.0</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>PortAudio, libavcodec, MP3/Vorbis/Opus/FLAC encoding, Icecast2 SOURCE, FastCGI bridge, PHP app
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L4 — DSP Chain + ICY2 + DNAS Stats</strong><span class="phase-version">v1.3.0</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>10-band EQ, AGC/limiter, equal-power crossfader, ICY 2.2 social headers, DNAS stats proxy
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L5 — Full PHP Frontend + Logging System</strong><span class="phase-version">v1.4.0</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <span class="badge badge-new" style="margin-left:.25rem">Latest</span>
+          <br>6 PHP pages, 5 JSON APIs, two-layer auth bridge, C++ + PHP logging, logrotate, Chart.js
+        </div>
+      </li>
+      <li class="phase-item plan">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase L6 — Analytics + Listener Metrics</strong><span class="phase-version">v1.5.0</span>
+          <span class="badge badge-planned" style="margin-left:.5rem">Planned</span>
+          <br>Extended metrics schema, GeoIP, per-track retention, engagement score, Pulse AI feedback
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ─────────────────────── BUILD ─────────────────────── -->
+  <div class="doc-section" id="prerequisites">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">04</div>
+      <h2>Build &amp; Prerequisites</h2>
+    </div>
+
+    <h3 id="build">Install Dependencies</h3>
+    <pre>sudo apt install \
+  g++ pkg-config \
+  libssl-dev \
+  libportaudio2 portaudio19-dev \
+  libmpg123-dev \
+  libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
+  libmp3lame-dev \
+  libvorbis-dev libogg-dev \
+  libopus-dev libopusenc-dev \
+  libflac-dev \
+  libtag1-dev \
+  libyaml-dev \
+  php8.2-fpm php8.2-mysql \
+  php8.2-curl php8.2-mbstring</pre>
+
+    <h3 style="margin-top:1.5rem" id="run">Build</h3>
+    <pre>cd /var/www/mcaster1.com/Mcaster1DSPEncoder
+bash src/linux/make_phase4.sh
+# Output: build/mcaster1-encoder</pre>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <strong>Build includes <code>-rdynamic</code></strong> for backtrace symbol resolution
+        when log level is set to 5 (DEBUG). Build time ~30–45s on a modern server.
+        Vendor headers (<code>httplib.h</code>, <code>nlohmann/json.hpp</code>) are already in
+        <code>external/include/</code>.
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.5rem">Run as Daemon</h3>
+    <pre>nohup ./build/mcaster1-encoder \
+  --config src/linux/config/mcaster1_rock_yolo.yaml \
+  > /tmp/mc1enc.log 2>&1 & disown $!
+
+echo "Started PID: $!"
+tail -f /tmp/mc1enc.log</pre>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠</div>
+      <div>
+        <strong>Always use <code>disown $!</code></strong> — the shell sends SIGHUP on exit which
+        shuts the encoder down. The <code>nohup ... &amp; disown</code> pattern prevents this.
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.5rem">Kill + Restart</h3>
+    <pre>pkill -9 -f 'build/mcaster1-encoder'
+sleep 2
+nohup ./build/mcaster1-encoder \
+  --config src/linux/config/mcaster1_rock_yolo.yaml \
+  > /tmp/mc1enc.log 2>&1 & disown $!</pre>
+
+    <div class="callout callout-danger">
+      <div class="callout-icon">⛔</div>
+      <div>
+        <strong>SO_REUSEPORT deadlock:</strong> cpp-httplib uses <code>SO_REUSEPORT</code>.
+        If an old instance is alive when you restart, <em>both bind to the same ports</em>.
+        Sessions from the old instance are unknown to the new one → 302 redirects to <code>/login</code>.
+        Always kill all old instances before restarting.
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.5rem" id="cli">CLI Options</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Option</th><th>Default</th><th>Description</th></tr>
+      <tr><td><code>--config PATH</code></td><td><code>./mcaster1.yaml</code></td><td>YAML config file path</td></tr>
+      <tr><td><code>--http-port PORT</code></td><td>8080</td><td>HTTP listen port</td></tr>
+      <tr><td><code>--https-port PORT</code></td><td>—</td><td>HTTPS port (requires cert + key)</td></tr>
+      <tr><td><code>--bind ADDR</code></td><td><code>127.0.0.1</code></td><td>Bind address</td></tr>
+      <tr><td><code>--ssl-cert PATH</code></td><td>—</td><td>PEM certificate file</td></tr>
+      <tr><td><code>--ssl-key PATH</code></td><td>—</td><td>PEM private key file</td></tr>
+      <tr><td><code>--ssl-gencert SUBJECT</code></td><td>—</td><td>Auto-generate self-signed cert</td></tr>
+      <tr><td><code>--log-level N</code></td><td>4</td><td>Verbosity 1–5 (1=CRIT … 5=DEBUG)</td></tr>
+      <tr><td><code>--log-dir PATH</code></td><td><code>/var/log/mcaster1</code></td><td>Log directory</td></tr>
+      <tr><td><code>-v</code></td><td>—</td><td>Verbose — same as <code>--log-level 5</code></td></tr>
+      <tr><td><code>--help</code></td><td>—</td><td>Show help</td></tr>
+    </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── CONFIGURATION ─────────────────────── -->
+  <div class="doc-section" id="configuration">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">05</div>
+      <h2>Configuration YAML</h2>
+    </div>
+
+    <p>Default search order: <code>--config PATH</code> → <code>./mcaster1.yaml</code> → <code>/etc/mcaster1/mcaster1.yaml</code></p>
+
+    <h3>Test Station — mcaster1_rock_yolo.yaml</h3>
+    <pre>http-admin:
+  username: djpulse
+  password: hackme
+  api_token: ""
+  session_timeout_secs: 3600
+  log-dir:   "/var/log/mcaster1"
+  log-level: 4              # 1=CRIT 2=ERR 3=WARN 4=INFO 5=DEBUG
+
+sockets:
+  - port: 8330
+    bind_address: "0.0.0.0"
+    ssl_enabled: false
+  - port: 8344
+    bind_address: "0.0.0.0"
+    ssl_enabled: true
+    ssl_cert: "/etc/ssl/certs/encoder.mcaster1.com.pem"
+    ssl_key:  "/etc/ssl/private/encoder.mcaster1.com.key"
+
+webroot: src/linux/web_ui
+
+encoders:
+  - slot_id: 1
+    name: "Mcaster1 Rock &amp; Roll Yolo! — Classic Rock"
+    input_type: playlist
+    playlist_path: /path/to/rock.m3u
+    codec: mp3
+    bitrate_kbps: 128
+    sample_rate: 44100
+    channels: 2
+    volume: 1.0
+    shuffle: false
+    repeat_all: true
+    eq_preset: classic_rock
+    agc_enabled: true
+    crossfade_secs: 3.0
+    stream_target:
+      host: dnas.mcaster1.com
+      port: 9443
+      mount: /yolo-rock
+      username: source
+      password: &lt;password&gt;
+      protocol: icecast2
+      icy2_twitter:   "@Mcaster1Radio"
+      icy2_language:  "en"
+      icy2_country:   "US"</pre>
+  </div>
+
+  <!-- ─────────────────────── PHP-FPM ─────────────────────── -->
+  <div class="doc-section" id="php-fpm">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">06</div>
+      <h2>PHP-FPM Setup</h2>
+    </div>
+
+    <h3>Pool Configuration</h3>
+    <p>File: <code>/etc/php/8.2/fpm/pool.d/mcaster1.conf</code></p>
+
+    <pre>[mcaster1]
+user = mediacast1
+group = www-data
+listen = /run/php/php8.2-fpm-mc1.sock
+listen.owner = mediacast1
+listen.group = www-data
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 5
+error_log = /var/log/mcaster1/php_fpm.log
+
+; Env vars available to all PHP scripts
+env[MC1_LOG_DIR]   = /var/log/mcaster1
+env[MC1_LOG_LEVEL] = 4
+
+; PHP config
+php_admin_value[error_reporting]  = E_ALL
+php_admin_flag[display_errors]    = Off
+php_admin_value[error_log]        = /var/log/mcaster1/php_error.log</pre>
+
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠</div>
+      <div>
+        <strong>uopz Extension Active:</strong> This server has the <code>uopz</code> PHP extension,
+        which intercepts all <code>exit()</code> / <code>die()</code> calls.
+        <strong>Never use <code>exit()</code> or <code>die()</code> in any PHP file.</strong>
+        Use <code>return</code> and <code>if/elseif</code> chains instead.
+      </div>
+    </div>
+
+    <h3 style="margin-top:1.5rem">PHP Pages (served via FastCGI)</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Page</th><th>URL</th><th>Description</th></tr>
+      <tr><td><code>login.html</code></td><td><code>/login</code></td><td>Pre-auth login (plain HTML, no PHP)</td></tr>
+      <tr><td><code>dashboard.php</code></td><td><code>/dashboard.php</code></td><td>Live encoder cards + Chart.js bandwidth graph</td></tr>
+      <tr><td><code>encoders.php</code></td><td><code>/encoders.php</code></td><td>Per-slot DSP controls, volume, metadata push</td></tr>
+      <tr><td><code>media.php</code></td><td><code>/media.php</code></td><td>Track library, folder scan, playlist file manager</td></tr>
+      <tr><td><code>playlists.php</code></td><td><code>/playlists.php</code></td><td>DB-backed playlist CRUD + load-to-slot</td></tr>
+      <tr><td><code>metrics.php</code></td><td><code>/metrics.php</code></td><td>Chart.js analytics: listeners, top tracks, sessions</td></tr>
+      <tr><td><code>settings.php</code></td><td><code>/settings.php</code></td><td>Server info, DNAS status, SSL cert, API token</td></tr>
+    </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── AUTH ─────────────────────── -->
+  <div class="doc-section" id="auth">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">07</div>
+      <h2>Authentication System</h2>
+    </div>
+
+    <h3>Layer 1 — C++ In-Memory Sessions</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Property</th><th>Value</th></tr>
+      <tr><td>Cookie name</td><td><code>mc1session</code></td></tr>
+      <tr><td>Token format</td><td>64-byte hex (random)</td></tr>
+      <tr><td>Storage</td><td><code>std::map&lt;string, SessionEntry&gt;</code> in memory</td></tr>
+      <tr><td>Cookie flags</td><td>HttpOnly, SameSite=Strict</td></tr>
+      <tr><td>Alt auth</td><td><code>X-API-Token: &lt;token&gt;</code> header</td></tr>
+      <tr><td>TTL</td><td>configurable (<code>session_timeout_secs</code>)</td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem">Layer 2 — PHP/MySQL Sessions</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Property</th><th>Value</th></tr>
+      <tr><td>Cookie name</td><td><code>mc1app_session</code></td></tr>
+      <tr><td>Storage</td><td><code>mcaster1_encoder.user_sessions</code> table</td></tr>
+      <tr><td>Cookie flags</td><td>HttpOnly, SameSite=Strict</td></tr>
+      <tr><td>Auth check</td><td><code>mc1_current_user()</code> in <code>user_auth.php</code></td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem">Auto-Bootstrap Bridge</h3>
+    <p>
+      <code>footer.php</code> calls <code>POST /app/api/auth.php {action:"auto_login"}</code>
+      on every page load. This transparently creates a PHP session when C++ auth is valid,
+      using a <code>sessionStorage</code> flag to avoid repeated calls per tab.
+    </p>
+    <pre>// footer.php — runs once per browser tab
+(function(){
+  if (sessionStorage.getItem('mc1php_ok')) return;
+  mc1Api('POST', '/app/api/auth.php', {action:'auto_login'}).then(function(d){
+    if (d &amp;&amp; d.ok) sessionStorage.setItem('mc1php_ok', '1');
+  });
+})();</pre>
+
+    <h3 style="margin-top:1.5rem">Test Credentials</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>System</th><th>Username</th><th>Password</th><th>Notes</th></tr>
+      <tr><td>C++ admin</td><td><code>djpulse</code></td><td><code>hackme</code></td><td>In YAML config</td></tr>
+      <tr><td>MySQL DB</td><td><code>djpulse</code></td><td><code>hackme</code></td><td>bcrypt in <code>mcaster1_encoder.users</code></td></tr>
+      <tr><td>Legacy</td><td><code>admin</code></td><td><code>changeme</code></td><td>Fallback admin</td></tr>
+    </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── LOGGING ─────────────────────── -->
+  <div class="doc-section" id="logging">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">08</div>
+      <h2>Logging System</h2>
+    </div>
+
+    <h3 id="log-levels">Log Levels</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Level</th><th>Name</th><th>Meaning</th></tr>
+      <tr><td><span class="lv1">1</span></td><td><span class="lv1">CRITICAL</span></td><td>Fatal errors, crash conditions</td></tr>
+      <tr><td><span class="lv2">2</span></td><td><span class="lv2">ERROR</span></td><td>Non-fatal errors</td></tr>
+      <tr><td><span class="lv3">3</span></td><td><span class="lv3">WARN</span></td><td>Warnings, degraded operation</td></tr>
+      <tr><td><span class="lv4">4</span></td><td><span class="lv4">INFO</span></td><td>Normal operational events (default)</td></tr>
+      <tr><td><span class="lv5">5</span></td><td><span class="lv5">DEBUG</span></td><td>Verbose: request/response bodies, stack traces, raw data</td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem">C++ Logger Macros</h3>
+    <pre>#include "mc1_logger.h"
+
+MC1_INFO("encoder starting");
+MC1_WARN("slot " + std::to_string(slot) + " not found");
+MC1_ERR("connection failed: " + msg);
+MC1_DBG("raw response: " + body);
+
+// Encoder slot events
+mc1log.encoder(slot_id, "START", "mount=/yolo-rock bitrate=128");
+mc1log.encoder(slot_id, "TRACK", "title=Highway to Hell artist=AC/DC");
+
+// Access log (called automatically via set_logger() callback)
+mc1log.access(remote_addr, method, uri, status, bytes, duration_us, referer, ua);</pre>
+
+    <h3 style="margin-top:1.5rem" id="log-files">Log Files</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>File</th><th>Location</th><th>Format / Content</th></tr>
+      <tr><td><code>access.log</code></td><td><code>/var/log/mcaster1/</code></td><td>Apache combined format — every HTTP request</td></tr>
+      <tr><td><code>error.log</code></td><td><code>/var/log/mcaster1/</code></td><td>Errors + startup messages (levels 1–4)</td></tr>
+      <tr><td><code>encoder.log</code></td><td><code>/var/log/mcaster1/</code></td><td>Slot events: start/stop/track change</td></tr>
+      <tr><td><code>api.log</code></td><td><code>/var/log/mcaster1/</code></td><td>API req/resp bodies — level 5 only</td></tr>
+      <tr><td><code>php_error.log</code></td><td><code>/var/log/mcaster1/</code></td><td>PHP application errors</td></tr>
+      <tr><td><code>php_access.log</code></td><td><code>/var/log/mcaster1/</code></td><td>PHP page request log</td></tr>
+      <tr><td><code>php_fpm.log</code></td><td><code>/var/log/mcaster1/</code></td><td>PHP-FPM pool log</td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem" id="log-rotation">Log Rotation</h3>
+    <p>Config: <code>/etc/logrotate.d/mcaster1</code></p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Setting</th><th>Value</th></tr>
+      <tr><td>Frequency</td><td>daily</td></tr>
+      <tr><td>Retention</td><td>14 days</td></tr>
+      <tr><td>Compression</td><td>compress + delaycompress</td></tr>
+      <tr><td>Postrotate</td><td><code>pkill -HUP mcaster1-encoder</code> + reload php-fpm</td></tr>
+    </table>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── API REFERENCE ─────────────────────── -->
+  <div class="doc-section" id="api-auth">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">09</div>
+      <h2>API Reference</h2>
+    </div>
+
+    <p>All <code>/api/v1/</code> endpoints require a valid <code>mc1session</code> cookie
+       or <code>X-API-Token</code> header.</p>
+
+    <h3>Authentication</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Body / Notes</th></tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/v1/auth/login</code></td>
+        <td><code>{ username, password }</code> → Set-Cookie: mc1session; 200 {ok, redirect}</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-post">POST</span></td>
+        <td><code>/api/v1/auth/logout</code></td>
+        <td>Clears session cookie → 302 /login</td>
+      </tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem" id="api-status">Status &amp; Info</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Response</th></tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/v1/status</code></td>
+        <td><code>{ version, platform, uptime, encoders_connected, encoders_total }</code></td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/v1/devices</code></td>
+        <td>Array of PortAudio input devices</td>
+      </tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem" id="api-encoders">Encoder Control</h3>
+    <div class="callout callout-danger">
+      <div class="callout-icon">⛔</div>
+      <div>
+        <strong>Never proxy encoder control from PHP.</strong>
+        Curling from PHP back to C++ port 8330/8344 causes a thread pool deadlock.
+        Browser JS must call these endpoints directly — it already has the <code>mc1session</code> cookie.
+      </div>
+    </div>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/v1/encoders</code></td><td>All slots: state, track, bytes, uptime</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/encoders/{slot}/start</code></td><td>Start encoding + streaming</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/encoders/{slot}/stop</code></td><td>Stop gracefully</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/encoders/{slot}/restart</code></td><td>Reconnect without full stop</td></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/v1/encoders/{slot}/stats</code></td><td>Single-slot live stats</td></tr>
+      <tr><td><span class="badge badge-put">PUT</span></td><td><code>/api/v1/metadata</code></td><td><code>{ title, artist, slot }</code> — push StreamTitle</td></tr>
+      <tr><td><span class="badge badge-put">PUT</span></td><td><code>/api/v1/volume</code></td><td><code>{ volume, slot }</code> — 0.0–2.0, slot=-1 for master</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/playlist/skip</code></td><td><code>{ slot }</code></td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/playlist/load</code></td><td><code>{ slot, path }</code> — load playlist file by path</td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem" id="api-dsp">DSP Control</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+      <tr><td><span class="badge badge-get">GET</span></td><td><code>/api/v1/encoders/{slot}/dsp</code></td><td>DSP config: eq_preset, agc_enabled, crossfade_secs</td></tr>
+      <tr><td><span class="badge badge-put">PUT</span></td><td><code>/api/v1/encoders/{slot}/dsp</code></td><td>Live-update DSP config (no restart needed)</td></tr>
+      <tr><td><span class="badge badge-post">POST</span></td><td><code>/api/v1/encoders/{slot}/dsp/eq/preset</code></td><td><code>{ preset }</code> — apply named EQ preset instantly</td></tr>
+    </table>
+    </div>
+
+    <p><strong>EQ Presets:</strong>
+      <code>flat</code>, <code>classic_rock</code>, <code>country</code>,
+      <code>modern_rock</code>, <code>broadcast</code>, <code>spoken_word</code>
+    </p>
+
+    <h3 style="margin-top:1.5rem" id="api-dnas">DNAS Stats</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Method</th><th>Endpoint</th><th>Response</th></tr>
+      <tr>
+        <td><span class="badge badge-get">GET</span></td>
+        <td><code>/api/v1/dnas/stats</code></td>
+        <td><code>{ ok: true, body: "&lt;?xml ...", source: "dnas.mcaster1.com:9443" }</code></td>
+      </tr>
+    </table>
+    </div>
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <strong>XML-in-JSON:</strong> The DNAS XML is wrapped in <code>d.body</code>.
+        Parse listener count with: <code>d.body.match(/&lt;listeners&gt;(\d+)&lt;\/listeners&gt;/i)</code>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── PHP APIS ─────────────────────── -->
+  <div class="doc-section" id="php-apis">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">10</div>
+      <h2>PHP JSON APIs</h2>
+    </div>
+
+    <p>All PHP APIs are POST-only, require authenticated session, and return JSON.</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>URL</th><th>Actions</th></tr>
+      <tr>
+        <td><code>/app/api/tracks.php</code></td>
+        <td><code>list</code>, <code>search</code>, <code>add</code>, <code>delete</code>, <code>scan</code>, <code>playlist_files</code></td>
+      </tr>
+      <tr>
+        <td><code>/app/api/metrics.php</code></td>
+        <td><code>summary</code>, <code>daily_stats</code>, <code>sessions</code>, <code>top_tracks</code></td>
+      </tr>
+      <tr>
+        <td><code>/app/api/playlists.php</code></td>
+        <td><code>list</code>, <code>get_tracks</code>, <code>create</code>, <code>add_track</code>, <code>remove_track</code>, <code>load</code></td>
+      </tr>
+      <tr>
+        <td><code>/app/api/encoders.php</code></td>
+        <td><code>add_user</code>, <code>delete_user</code>, <code>toggle_user</code>, <code>reset_password</code>, <code>db_stats</code></td>
+      </tr>
+      <tr>
+        <td><code>/app/api/auth.php</code></td>
+        <td><code>login</code>, <code>logout</code>, <code>auto_login</code>, <code>whoami</code></td>
+      </tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:1.5rem">playlist_files Action</h3>
+    <pre>POST /app/api/tracks.php
+{ "action": "playlist_files", "directory": "/optional/extra/path" }
+
+→ {
+    "ok": true,
+    "files": [
+      { "name": "lyndenradio-all.m3u", "path": "/var/www/.../lyndenradio-all.m3u",
+        "format": "m3u", "track_count": 1079, "size_bytes": 98432 },
+      ...
+    ],
+    "count": 4
+  }</pre>
+    <p>Scans: <code>/var/music/playlists</code>, <code>/var/music</code>,
+       <code>/var/www/mcaster1.com/Mcaster1DSPEncoder</code>, <code>/home/mediacast1</code>, <code>/tmp</code></p>
+  </div>
+
+  <!-- ─────────────────────── DATABASE ─────────────────────── -->
+  <div class="doc-section" id="database">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">11</div>
+      <h2>Database Schema</h2>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        MySQL access: <code>mysql --defaults-extra-file=~/.my.cnf</code> — never inline credentials.
+        All PDO connections run <code>SET foreign_key_checks=0, unique_checks=0, sql_mode=""</code>.
+      </div>
+    </div>
+
+    <h3 id="db-encoder">mcaster1_encoder</h3>
+    <pre id="db-encoder-schema">-- Users + roles + sessions
+CREATE TABLE roles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    label VARCHAR(100),
+    can_admin TINYINT(1) DEFAULT 0,
+    can_encode_control TINYINT(1) DEFAULT 0,
+    can_playlist TINYINT(1) DEFAULT 0,
+    can_metadata TINYINT(1) DEFAULT 0,
+    can_media_library TINYINT(1) DEFAULT 0,
+    can_metrics TINYINT(1) DEFAULT 0
+);
+
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(80) UNIQUE NOT NULL,
+    email VARCHAR(200),
+    display_name VARCHAR(200),
+    password_hash VARCHAR(255) NOT NULL,    -- bcrypt $2y$12$...
+    role_id INT NOT NULL,
+    is_active TINYINT(1) DEFAULT 1,
+    last_login DATETIME,
+    created_at DATETIME DEFAULT NOW()
+);
+
+CREATE TABLE user_sessions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    token_hash CHAR(64) NOT NULL UNIQUE,    -- SHA-256 of cookie value
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(500),
+    created_at DATETIME DEFAULT NOW(),
+    expires_at DATETIME NOT NULL
+);</pre>
+
+    <h3 id="db-media" style="margin-top:1.5rem">mcaster1_media</h3>
+    <pre>CREATE TABLE tracks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    file_path VARCHAR(1000) UNIQUE NOT NULL,
+    title VARCHAR(500),
+    artist VARCHAR(300),
+    album VARCHAR(300),
+    genre VARCHAR(100),
+    year SMALLINT,
+    duration_ms INT,
+    bitrate_kbps SMALLINT,
+    file_size_bytes BIGINT,
+    play_count INT DEFAULT 0,
+    rating TINYINT DEFAULT 3,
+    is_missing TINYINT(1) DEFAULT 0,
+    bpm DECIMAL(6,2),
+    key_sig VARCHAR(10),
+    last_played_at DATETIME,
+    date_added DATETIME DEFAULT NOW()
+);
+
+CREATE TABLE playlists (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT NOW(),
+    updated_at DATETIME DEFAULT NOW() ON UPDATE NOW()
+);
+
+CREATE TABLE playlist_tracks (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    playlist_id INT NOT NULL,
+    track_id INT NOT NULL,
+    position INT DEFAULT 0,
+    added_at DATETIME DEFAULT NOW()
+);</pre>
+
+    <h3 id="db-metrics" style="margin-top:1.5rem">mcaster1_metrics</h3>
+    <pre>CREATE TABLE listener_sessions (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    client_ip VARCHAR(45),
+    user_agent VARCHAR(500),
+    stream_mount VARCHAR(200),
+    connected_at DATETIME,
+    disconnected_at DATETIME,
+    duration_sec INT,
+    bytes_sent BIGINT
+);
+
+CREATE TABLE daily_stats (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    stat_date DATE NOT NULL,
+    mount VARCHAR(200),
+    total_sessions INT DEFAULT 0,
+    unique_ips INT DEFAULT 0,
+    total_bytes BIGINT DEFAULT 0,
+    avg_duration_sec INT DEFAULT 0
+);</pre>
+  </div>
+
+  <!-- ─────────────────────── GOTCHAS ─────────────────────── -->
+  <div class="doc-section" id="gotchas">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">12</div>
+      <h2>Known Gotchas</h2>
+    </div>
+
+    <div class="callout callout-danger">
+      <div class="callout-icon">⛔</div>
+      <div>
+        <strong>SO_REUSEPORT — Duplicate Port Binding:</strong> cpp-httplib uses <code>SO_REUSEPORT</code>.
+        If an old instance is still running when you restart, both bind successfully to the same ports.
+        Sessions from the old instance are unknown to the new one → silent 302 redirects to <code>/login</code>.
+        Always <code>pkill -9 -f mcaster1-encoder &amp;&amp; sleep 2</code> before restart.
+      </div>
+    </div>
+
+    <div class="callout callout-danger" style="margin-top:.75rem">
+      <div class="callout-icon">⛔</div>
+      <div>
+        <strong>PHP→C++ Loopback Deadlock:</strong> Never curl from PHP to C++ port 8330/8344.
+        C++ thread pool (max 8 threads) gets exhausted: each thread waiting for PHP-FPM,
+        PHP-FPM's curl waiting for C++ to respond. Browser JS must call <code>/api/v1/...</code> directly.
+      </div>
+    </div>
+
+    <div class="callout callout-warn" style="margin-top:.75rem">
+      <div class="callout-icon">⚠</div>
+      <div>
+        <strong>uopz blocks exit():</strong> The <code>uopz</code> PHP extension intercepts
+        <code>exit()</code> / <code>die()</code> calls. Never use them in PHP. Use
+        <code>return</code> and set the response code + body manually.
+      </div>
+    </div>
+
+    <div class="callout callout-warn" style="margin-top:.75rem">
+      <div class="callout-icon">⚠</div>
+      <div>
+        <strong>SIGHUP on shell exit:</strong> Running <code>nohup ./encoder ... &amp;</code>
+        without <code>disown $!</code> causes the encoder to stop when the shell exits.
+        Always add <code>disown $!</code>.
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:.75rem">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <strong>httponly cookie not readable by JS:</strong> <code>mc1app_session</code> is httponly —
+        <code>document.cookie</code> won't show it. Use <code>sessionStorage</code> flags in JS to
+        track PHP auth state.
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:.75rem">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <strong>DNAS stats XML-in-JSON:</strong> <code>GET /api/v1/dnas/stats</code> wraps XML
+        in a JSON <code>body</code> field. Parse with regex:
+        <code>d.body.match(/&lt;listeners&gt;(\d+)&lt;\/listeners&gt;/i)</code>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:.75rem">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <strong>MySQL CLI:</strong> Always use
+        <code>mysql --defaults-extra-file=~/.my.cnf</code> — never inline passwords in commands.
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── E2E TEST FLOW ─────────────────────── -->
+  <div class="doc-section" id="e2e">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">13</div>
+      <h2>E2E Test Flow</h2>
+    </div>
+
+    <ol style="counter-reset:step">
+      <li style="margin:.6rem 0"><strong>Build:</strong> <code>bash src/linux/make_phase4.sh</code></li>
+      <li style="margin:.6rem 0"><strong>Start:</strong> <code>nohup ./build/mcaster1-encoder --config ... &gt;/tmp/mc1enc.log 2&gt;&amp;1 &amp; disown $!</code></li>
+      <li style="margin:.6rem 0"><strong>Verify startup:</strong> <code>tail -f /var/log/mcaster1/error.log</code></li>
+      <li style="margin:.6rem 0"><strong>Browser:</strong> <code>https://encoder.mcaster1.com:8344</code> → login (djpulse/hackme) → redirected to <code>/dashboard.php</code></li>
+      <li style="margin:.6rem 0"><strong>Dashboard:</strong> 3 encoder cards visible with IDLE state badges</li>
+      <li style="margin:.6rem 0"><strong>Media:</strong> Playlist Files tab → finds <code>lyndenradio-all.m3u</code> (1079 tracks)</li>
+      <li style="margin:.6rem 0"><strong>Load playlist:</strong> Select Slot 1 → Load → <code>POST /api/v1/playlist/load</code></li>
+      <li style="margin:.6rem 0"><strong>Start encoder:</strong> Dashboard Slot 1 → Start button → connects to <code>dnas.mcaster1.com:9443/yolo-rock</code></li>
+      <li style="margin:.6rem 0"><strong>Metrics:</strong> Chart.js shows live bytes_sent from DNAS stats proxy</li>
+      <li style="margin:.6rem 0"><strong>DNAS admin:</strong> Verify source on <code>/yolo-rock</code> mount with ICY2 headers</li>
+    </ol>
+
+    <h3 style="margin-top:1.5rem">Curl Test Commands</h3>
+    <pre># Login
+curl -c /tmp/mc1.jar -b /tmp/mc1.jar \
+  http://127.0.0.1:8330/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"djpulse","password":"hackme"}'
+
+# Status
+curl -s -c /tmp/mc1.jar -b /tmp/mc1.jar \
+  http://127.0.0.1:8330/api/v1/status | python3 -m json.tool
+
+# Start encoder slot 1
+curl -s -c /tmp/mc1.jar -b /tmp/mc1.jar \
+  -X POST http://127.0.0.1:8330/api/v1/encoders/1/start
+
+# Get DNAS stats
+curl -s -c /tmp/mc1.jar -b /tmp/mc1.jar \
+  http://127.0.0.1:8330/api/v1/dnas/stats | python3 -m json.tool</pre>
+  </div>
+
+  <!-- ─────────────────────── WINDOWS ─────────────────────── -->
+  <div class="doc-section" id="windows">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">14</div>
+      <h2>Windows Dev Notes</h2>
+    </div>
+
+    <p>The Windows build lives in <code>src/</code> (NOT <code>src/linux/</code>).
+       Windows and Linux builds share <strong>no source code</strong>.</p>
+
+    <div class="table-wrap">
+    <table>
+      <tr><th>Aspect</th><th>Windows</th><th>Linux</th></tr>
+      <tr><td>Source root</td><td><code>src/</code></td><td><code>src/linux/</code></td></tr>
+      <tr><td>Build system</td><td>Visual Studio 2022 .sln</td><td><code>make_phase4.sh</code> (g++)</td></tr>
+      <tr><td>Audio</td><td>WASAPI / DirectSound</td><td>PortAudio (ALSA/PulseAudio/JACK)</td></tr>
+      <tr><td>Deploy</td><td>Windows service (<code>sc create</code>)</td><td>systemd service</td></tr>
+      <tr><td>Config</td><td><code>config/mcaster1.yaml</code></td><td><code>src/linux/config/*.yaml</code></td></tr>
+      <tr><td>PHP bridge</td><td>Not included</td><td>FastCGI → php-fpm</td></tr>
+    </table>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="callout-icon">ℹ</div>
+      <div>
+        <code>config/*.yaml</code> is in <code>.gitignore</code> to prevent credentials from
+        being committed. For Windows, copy from <code>config/mcaster1.yaml.example</code>.
+      </div>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <hr class="section-div">
+  <p style="color:var(--text-dim);font-size:.8rem;text-align:center;padding-bottom:2rem">
+    Mcaster1DSPEncoder v1.4.0 — Maintainer: Dave St. John &lt;davestj@gmail.com&gt; —
+    <a href="../README-LINUX.md">README-LINUX.md</a> ·
+    <a href="../CLAUDE.md">CLAUDE.md</a>
+  </p>
+
+</main>
+
+<script>
+  // Highlight active nav item based on scroll position
+  (function(){
+    var items = document.querySelectorAll('.nav-item, .nav-sub');
+    var sections = [];
+    items.forEach(function(a){
+      var href = a.getAttribute('href');
+      if (href && href.startsWith('#')) {
+        var el = document.getElementById(href.slice(1));
+        if (el) sections.push({ a: a, el: el });
+      }
+    });
+    function onScroll(){
+      var scrollY = window.scrollY + 90;
+      var current = null;
+      sections.forEach(function(s){
+        if (s.el.offsetTop <= scrollY) current = s;
+      });
+      items.forEach(function(a){ a.classList.remove('active'); });
+      if (current) current.a.classList.add('active');
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+  })();
+</script>
+</body>
+</html>

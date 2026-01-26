@@ -1,5 +1,5 @@
 // audio_pipeline.h — Master audio pipeline: manages all encoder slots
-// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
+// Phase L5.1 — Mcaster1DSPEncoder Linux v1.4.1
 #pragma once
 
 #include "encoder_slot.h"
@@ -49,6 +49,16 @@ public:
     bool start_slot  (int slot_id);
     bool stop_slot   (int slot_id);
     bool restart_slot(int slot_id);
+
+    // Wake a slot from SLEEP state (max reconnect attempts exhausted)
+    bool wake_slot   (int slot_id);
+
+    // Connect Mc1Db + start SystemHealth + ServerMonitor background threads.
+    // Call once after loading config from DB, before start_auto_slots().
+    void start_background_services();
+
+    // Start all slots that have auto_start=true (called once after loading config from DB)
+    void start_auto_slots();
 
     bool load_playlist(int slot_id, const std::string& path);
     bool skip_track   (int slot_id);

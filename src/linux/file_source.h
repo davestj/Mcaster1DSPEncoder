@@ -95,8 +95,8 @@ private:
     bool open_avcodec(const std::string& path);
 
     void decode_loop();
-    void decode_loop_mpg123();
-    void decode_loop_avcodec();
+    bool decode_loop_mpg123();   // returns true on natural EOF, false on stop_req_
+    bool decode_loop_avcodec();  // returns true on natural EOF, false on stop_req_
 
     void close_mpg123();
     void close_avcodec();

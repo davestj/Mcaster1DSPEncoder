@@ -2,11 +2,13 @@
 // api/metrics.php — Listener metrics query API (POST-only, JSON responses)
 // Note: uopz extension active — no exit() calls used.
 //
-// Actions: summary, daily_stats, sessions, top_tracks
+// Actions: summary, daily_stats, sessions, top_tracks,
+//          server_list, server_history, stream_events, track_plays
 
 define('MC1_BOOT', true);
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/../inc/metrics.datacalculate.class.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -138,6 +140,38 @@ if (!$authed) {
         http_response_code(500);
         echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
     }
+
+} elseif ($action === 'server_list') {
+
+    $data = Mc1MetricsCalculator::getServerList();
+    echo json_encode(['ok' => true, 'data' => $data]);
+
+} elseif ($action === 'server_history') {
+
+    $server_id = (int)($req['server_id'] ?? 0);
+    $hours     = min(24, max(1, (int)($req['hours'] ?? 6)));
+    if ($server_id <= 0) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'server_id required']);
+    } else {
+        $data = Mc1MetricsCalculator::getServerStatHistory($server_id, $hours);
+        echo json_encode(['ok' => true, 'data' => $data, 'server_id' => $server_id]);
+    }
+
+} elseif ($action === 'stream_events') {
+
+    $page       = max(1, (int)($req['page']       ?? 1));
+    $limit      = min(200, max(1, (int)($req['limit'] ?? 50)));
+    $slot_id    = isset($req['slot_id'])    ? (int)$req['slot_id']      : null;
+    $event_type = isset($req['event_type']) ? (string)$req['event_type'] : null;
+    $result     = Mc1MetricsCalculator::getStreamEvents($page, $limit, $slot_id, $event_type);
+    echo json_encode(array_merge(['ok' => true], $result));
+
+} elseif ($action === 'track_plays') {
+
+    $limit = min(100, max(1, (int)($req['limit'] ?? 20)));
+    $data  = Mc1MetricsCalculator::getTopTracks($limit);
+    echo json_encode(['ok' => true, 'data' => $data]);
 
 } else {
 

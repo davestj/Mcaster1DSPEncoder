@@ -1,9 +1,16 @@
 // audio_pipeline.cpp — Master audio pipeline
-// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
+// Phase L5.1 — Mcaster1DSPEncoder Linux v1.4.1
 #include "audio_pipeline.h"
+#include "mc1_logger.h"
+#include "mc1_db.h"
+#include "system_health.h"
+#include "server_monitors.h"
+#include "../libmcaster1dspencoder/libmcaster1dspencoder.h"
 
 #include <stdexcept>
 #include <cstdio>
+#include <thread>
+#include <chrono>
 
 // ---------------------------------------------------------------------------
 // Global pipeline instance
@@ -17,12 +24,18 @@ AudioPipeline::AudioPipeline() = default;
 
 AudioPipeline::~AudioPipeline()
 {
+    // Stop background monitors before stopping slots.
+    SystemHealth::instance().stop();
+    ServerMonitor::instance().stop();
+
     // Stop all slots
     std::lock_guard<std::mutex> lk(slots_mtx_);
     for (auto& [id, slot] : slots_) {
         if (slot) slot->stop();
     }
     slots_.clear();
+
+    Mc1Db::instance().disconnect();
 }
 
 // ---------------------------------------------------------------------------
@@ -85,27 +98,104 @@ int AudioPipeline::slot_count() const
 // ---------------------------------------------------------------------------
 bool AudioPipeline::start_slot(int slot_id)
 {
-    std::lock_guard<std::mutex> lk(slots_mtx_);
-    auto* slot = find_slot(slot_id);
-    return slot ? slot->start() : false;
+    // Hold slots_mtx_ only to find the slot pointer, then release before
+    // launching the background thread.  This prevents the HTTP handler thread
+    // from blocking during the TCP connect to DNAS (which can take seconds).
+    EncoderSlot* slot = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(slots_mtx_);
+        slot = find_slot(slot_id);
+    }
+    if (!slot) return false;
+    // slot->start() connects to DNAS — run it in a detached thread so the
+    // HTTP response returns immediately.  Browser JS polls GET /api/v1/encoders
+    // for live state transitions (STARTING → CONNECTING → LIVE/ERROR).
+    std::thread([slot]() { slot->start(); }).detach();
+    return true;
 }
 
 bool AudioPipeline::stop_slot(int slot_id)
 {
-    std::lock_guard<std::mutex> lk(slots_mtx_);
-    auto* slot = find_slot(slot_id);
+    // Also async: stop() joins the audio decode thread which may block briefly.
+    EncoderSlot* slot = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(slots_mtx_);
+        slot = find_slot(slot_id);
+    }
     if (!slot) return false;
-    slot->stop();
+    std::thread([slot]() { slot->stop(); }).detach();
     return true;
 }
 
 bool AudioPipeline::restart_slot(int slot_id)
 {
-    std::lock_guard<std::mutex> lk(slots_mtx_);
-    auto* slot = find_slot(slot_id);
+    EncoderSlot* slot = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(slots_mtx_);
+        slot = find_slot(slot_id);
+    }
     if (!slot) return false;
-    slot->restart();
+    std::thread([slot]() { slot->restart(); }).detach();
     return true;
+}
+
+bool AudioPipeline::wake_slot(int slot_id)
+{
+    EncoderSlot* slot = nullptr;
+    {
+        std::lock_guard<std::mutex> lk(slots_mtx_);
+        slot = find_slot(slot_id);
+    }
+    if (!slot) return false;
+    // We wake in a detached thread — wake() calls start() which blocks on TCP connect
+    std::thread([slot]() { slot->wake(); }).detach();
+    return true;
+}
+
+void AudioPipeline::start_background_services()
+{
+    // Connect shared DB singleton (used by SystemHealth, ServerMonitor, EncoderSlot writes).
+    if (!Mc1Db::instance().is_connected()) {
+        if (!Mc1Db::instance().connect(gAdminConfig.db)) {
+            MC1_WARN("[Pipeline] Mc1Db connect failed — metrics DB writes disabled");
+        } else {
+            MC1_INFO("[Pipeline] Mc1Db connected to " + std::string(gAdminConfig.db.host));
+        }
+    }
+
+    // Start streaming server relay monitor.
+    ServerMonitor::instance().start();
+    MC1_INFO("[Pipeline] ServerMonitor started");
+
+    // Start system health sampler (5s interval, this pipeline for slot stats).
+    SystemHealth::instance().start(5, this);
+    MC1_INFO("[Pipeline] SystemHealth started");
+}
+
+void AudioPipeline::start_auto_slots()
+{
+    // We iterate all configured slots and start those marked auto_start=true.
+    // Each slot starts in its own detached thread after its configured delay.
+    std::vector<std::pair<int, EncoderSlot*>> auto_slots;
+    {
+        std::lock_guard<std::mutex> lk(slots_mtx_);
+        for (auto& [id, slot] : slots_) {
+            if (slot && slot->config().auto_start)
+                auto_slots.emplace_back(id, slot.get());
+        }
+    }
+
+    for (auto& [id, slot] : auto_slots) {
+        int delay = slot->config().auto_start_delay_sec;
+        MC1_INFO("[Pipeline] Auto-start scheduled: slot " + std::to_string(id)
+                 + " delay=" + std::to_string(delay) + "s");
+        std::thread([slot, id, delay]() {
+            if (delay > 0)
+                std::this_thread::sleep_for(std::chrono::seconds(delay));
+            MC1_INFO("[Pipeline] Auto-start triggered: slot " + std::to_string(id));
+            slot->start();
+        }).detach();
+    }
 }
 
 bool AudioPipeline::load_playlist(int slot_id, const std::string& path)

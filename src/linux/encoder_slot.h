@@ -1,5 +1,5 @@
 // encoder_slot.h — Per-encoder-slot state machine
-// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
+// Phase L5.1 — Mcaster1DSPEncoder Linux v1.4.1
 #pragma once
 
 #include "audio_source.h"
@@ -31,11 +31,26 @@ struct EncoderConfig {
     std::string playlist_path;             // for InputType::PLAYLIST
 
     // Codec
-    enum class Codec { MP3, VORBIS, OPUS, FLAC } codec = Codec::MP3;
+    enum class Codec {
+        MP3,
+        VORBIS,
+        OPUS,
+        FLAC,
+        AAC_LC,    // AAC Low Complexity (ISO 14496-3)
+        AAC_HE,    // HE-AAC v1 / AAC+ (SBR)
+        AAC_HE_V2, // HE-AAC v2 / AAC++ (SBR + Parametric Stereo)
+        AAC_ELD    // AAC Enhanced Low Delay (SBR-ELD, low-latency)
+    } codec = Codec::MP3;
     int         bitrate_kbps = 128;
-    int         quality      = 5;          // VBR quality (codec-specific)
+    int         quality      = 5;          // VBR quality (codec-specific, 0-10)
     int         sample_rate  = 44100;
     int         channels     = 2;
+
+    // Encode mode (MP3: CBR/VBR/ABR; Opus: CBR/VBR; others: ignored)
+    enum class EncodeMode { CBR, VBR, ABR } encode_mode = EncodeMode::CBR;
+
+    // Channel mode (MP3: JOINT/STEREO/MONO; AAC HE-v2: must be STEREO)
+    enum class ChannelMode { JOINT, STEREO, MONO } channel_mode = ChannelMode::JOINT;
 
     // Server target
     StreamTarget stream_target;
@@ -57,6 +72,15 @@ struct EncoderConfig {
     bool        dsp_crossfade_enabled  = true;
     float       dsp_crossfade_duration = 3.0f;   // seconds
     std::string dsp_eq_preset;                    // "flat","classic_rock","country",...
+
+    // Auto-start on encoder launch
+    bool        auto_start           = false;
+    int         auto_start_delay_sec = 0;         // seconds to wait before auto-starting
+
+    // Auto-reconnect on connection loss; 0 attempts = unlimited
+    bool        auto_reconnect            = true;
+    int         reconnect_interval_sec    = 5;    // seconds between reconnect attempts
+    int         reconnect_max_attempts    = 0;    // 0 = unlimited; N > 0 = stop after N fails → SLEEP
 };
 
 // ---------------------------------------------------------------------------
@@ -70,6 +94,7 @@ public:
         CONNECTING,
         LIVE,
         RECONNECTING,
+        SLEEP,       // was LIVE, exhausted all reconnect attempts — needs manual wake()
         ERROR,
         STOPPING
     };
@@ -103,6 +128,9 @@ public:
     // Restart — reconnect without full stop
     void restart();
 
+    // Wake from SLEEP state (max reconnect attempts exhausted) — resets to IDLE and restarts
+    void wake();
+
     // Load a new playlist without restarting
     bool load_playlist(const std::string& path);
 
@@ -116,7 +144,10 @@ public:
     void reconfigure_dsp(const mc1dsp::DspChainConfig& cfg);
 
     // Push ICY metadata to the connected server
-    void push_metadata(const std::string& title, const std::string& artist = "");
+    void push_metadata(const std::string& title,
+                       const std::string& artist  = "",
+                       const std::string& album   = "",
+                       const std::string& artwork = "");
 
     // Get current runtime statistics
     Stats stats() const;
@@ -132,7 +163,10 @@ private:
     EncoderConfig   cfg_;
     mutable std::mutex mtx_;
 
-    std::atomic<State> state_{State::IDLE};
+    std::atomic<State>    state_{State::IDLE};
+    std::atomic<bool>     stopping_{false};         // set in stop(); guards detached threads
+    std::atomic<uint64_t> meta_gen_{0};             // incremented on start(); stale-thread guard
+    std::atomic<bool>     first_connect_done_{false}; // false until first CONNECTED; guards re-push
     std::string     last_error_;
 
     // Audio sources
@@ -144,9 +178,10 @@ private:
     void*   vorbis_blk_  = nullptr;   // vorbis_block*
     void*   opus_enc_    = nullptr;   // OggOpusEnc*
     void*   flac_enc_    = nullptr;   // FLAC__StreamEncoder*
+    void*   aac_enc_     = nullptr;   // AacState* (fdk-aac)
 
     // Output
-    std::unique_ptr<StreamClient>  stream_client_;
+    std::shared_ptr<StreamClient>  stream_client_;   // shared_ptr: detached threads hold a copy
     std::unique_ptr<ArchiveWriter> archive_;
 
     // DSP chain (EQ → AGC; crossfader applied at track boundaries)
@@ -157,6 +192,7 @@ private:
     int                        playlist_pos_ = 0;
     bool                       advance_requested_ = false;
     mutable std::mutex         playlist_mtx_;
+    std::mutex                 advance_mtx_;   // serializes concurrent advance_playlist() calls
 
     // Metadata
     std::string current_title_;
@@ -172,12 +208,14 @@ private:
     bool init_vorbis();
     bool init_opus();
     bool init_flac();
+    bool init_aac();    // libfdk-aac (AAC-LC / HE-AACv1 / HE-AACv2 / AAC-ELD)
 
     // Codec frame encoders — return bytes written to out_buf
     int  encode_mp3   (const float* pcm, size_t frames, uint8_t* out_buf, size_t buf_len);
     int  encode_vorbis(const float* pcm, size_t frames, uint8_t* out_buf, size_t buf_len);
     int  encode_opus  (const float* pcm, size_t frames, uint8_t* out_buf, size_t buf_len);
     int  encode_flac  (const float* pcm, size_t frames, uint8_t* out_buf, size_t buf_len);
+    int  encode_aac   (const float* pcm, size_t frames, uint8_t* out_buf, size_t buf_len);
 
     void close_codec();
 

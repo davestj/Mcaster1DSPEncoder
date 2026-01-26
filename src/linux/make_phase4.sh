@@ -20,6 +20,11 @@
 #     libmp3lame-dev libvorbis-dev libogg-dev libopus-dev libopusenc-dev \
 #     libflac-dev libtag1-dev libssl-dev libyaml-dev
 #
+# FDK-AAC (NOT in standard Debian repos — build from source):
+#   git clone --depth=1 https://github.com/mstorsjo/fdk-aac.git /tmp/fdk-aac
+#   cd /tmp/fdk-aac && autoreconf -fiv && ./configure --prefix=/usr/local
+#   make -j$(nproc) && sudo make install && sudo ldconfig
+#
 # Usage:
 #   cd /path/to/Mcaster1DSPEncoder
 #   bash src/linux/make_phase4.sh
@@ -143,6 +148,23 @@ else
     echo "   FLAC      : NOT FOUND (FLAC encoding disabled)"
 fi
 
+# ── FDK-AAC (libfdk-aac — AAC-LC / HE-AAC v1 / HE-AAC v2 / AAC-ELD) ─────────
+# Built from source to /usr/local; check PKG_CONFIG_PATH for non-standard prefix
+export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+FDKAAC_FLAGS=""
+FDKAAC_LIBS=""
+if pkg-config --exists fdk-aac 2>/dev/null; then
+    FDKAAC_FLAGS="$(pkg-config --cflags fdk-aac) -DHAVE_FDK_AAC"
+    FDKAAC_LIBS="$(pkg-config --libs fdk-aac)"
+    echo "   FDK-AAC   : $(pkg-config --modversion fdk-aac) — AAC-LC/HE-AAC v1+v2/ELD"
+elif [ -f /usr/local/include/fdk-aac/aacenc_lib.h ]; then
+    FDKAAC_FLAGS="-I/usr/local/include -DHAVE_FDK_AAC"
+    FDKAAC_LIBS="-L/usr/local/lib -lfdk-aac"
+    echo "   FDK-AAC   : found at /usr/local (no pkg-config)"
+else
+    echo "   FDK-AAC   : NOT FOUND (AAC encoding disabled — build from source: github.com/mstorsjo/fdk-aac)"
+fi
+
 # ── TagLib ───────────────────────────────────────────────────────────────────
 TAGLIB_FLAGS=""
 TAGLIB_LIBS=""
@@ -152,6 +174,23 @@ if pkg-config --exists taglib 2>/dev/null; then
     echo "   TagLib    : $(pkg-config --modversion taglib)"
 else
     echo "   TagLib    : NOT FOUND (metadata from filenames only)"
+fi
+
+# ── MariaDB / MySQL C client (required for DB slot loading) ──────────────────
+MARIADB_FLAGS=""
+MARIADB_LIBS=""
+if pkg-config --exists libmariadb 2>/dev/null; then
+    MARIADB_FLAGS="$(pkg-config --cflags libmariadb)"
+    MARIADB_LIBS="$(pkg-config --libs libmariadb)"
+    echo "   MariaDB   : $(pkg-config --modversion libmariadb)"
+elif [ -f /usr/include/mysql/mysql.h ]; then
+    MARIADB_FLAGS="-I/usr/include/mysql"
+    MARIADB_LIBS="-lmariadb"
+    echo "   MariaDB   : found at /usr/include/mysql (no pkg-config)"
+else
+    echo "ERROR: libmariadb-dev not found — encoder slot DB loading requires it"
+    echo "  Install: sudo apt install libmariadb-dev"
+    exit 1
 fi
 
 echo ""
@@ -179,7 +218,7 @@ SRCS=(
     "${REPO_ROOT}/src/linux/playlist_parser.cpp"
     "${REPO_ROOT}/src/linux/stream_client.cpp"
     "${REPO_ROOT}/src/linux/archive_writer.cpp"
-    "${REPO_ROOT}/src/linux/config_stub.cpp"
+    "${REPO_ROOT}/src/linux/config_loader.cpp"   # YAML → gAdminConfig + pipeline slots
 
     # Phase 4: DSP chain (EQ → AGC → Crossfader)
     "${REPO_ROOT}/src/linux/dsp/eq.cpp"
@@ -206,15 +245,17 @@ CXXFLAGS=(
     "${INCLUDES[@]}"
 )
 read -ra _extra <<< "$OPENSSL_CFLAGS $PORTAUDIO_FLAGS $MPG123_FLAGS $AV_FLAGS \
-$LAME_FLAGS $VORBIS_FLAGS $OPUS_FLAGS $FLAC_FLAGS $TAGLIB_FLAGS $CXXFLAGS_EXTRA"
+$LAME_FLAGS $VORBIS_FLAGS $OPUS_FLAGS $FLAC_FLAGS $FDKAAC_FLAGS $TAGLIB_FLAGS \
+$MARIADB_FLAGS $CXXFLAGS_EXTRA"
 CXXFLAGS+=("${_extra[@]}")
 
 # ── Link flags ────────────────────────────────────────────────────────────────
 LDFLAGS=()
 read -ra _ldextra <<< "$OPENSSL_LIBS $PORTAUDIO_LIBS $MPG123_LIBS $AV_LIBS \
-$LAME_LIBS $VORBIS_LIBS $OPUS_LIBS $FLAC_LIBS $TAGLIB_LIBS"
+$LAME_LIBS $VORBIS_LIBS $OPUS_LIBS $FLAC_LIBS $FDKAAC_LIBS $TAGLIB_LIBS \
+$MARIADB_LIBS"
 LDFLAGS+=("${_ldextra[@]}")
-LDFLAGS+=("-lpthread" "-lyaml" "-lm")
+LDFLAGS+=("-lpthread" "-lyaml" "-lm" "-rdynamic")
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 echo "Compiling Phase 4 (this may take ~30s)…"

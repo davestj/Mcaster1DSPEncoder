@@ -11,8 +11,10 @@ if (!defined('MC1_BOOT')) {
 }
 
 // ── Session constants ──────────────────────────────────────────────────────
-define('MC1_SESSION_TTL',    86400 * 7);   // 7 days
-define('MC1_SESSION_COOKIE', 'mc1app_session');
+// We guard with defined() because mc1_config.php (loaded via db.php) may
+// have already defined these — avoids PHP redefinition warnings.
+defined('MC1_SESSION_TTL')    || define('MC1_SESSION_TTL',    86400 * 30); /* We default to 30 days to match C++ session cookie lifetime */
+defined('MC1_SESSION_COOKIE') || define('MC1_SESSION_COOKIE', 'mc1app_session');
 
 // ── Token helpers ──────────────────────────────────────────────────────────
 
@@ -85,17 +87,30 @@ function mc1_login(string $username, string $password): array
         if (!password_verify($password, $user['password_hash']))
             return [false, 'Invalid username or password'];
 
-        // Create session
+        // Create session — we use per-user session_ttl_override if set
         $token = mc1_gen_token();
         $hash  = mc1_hash_token($token);
         $ip    = $_SERVER['REMOTE_ADDR'] ?? '';
         $ua    = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
 
+        /* We check for a per-user TTL override: NULL = system default,
+         * 0 = never expire (stored as 10-year interval), N = seconds. */
+        $ttl_row = $db->prepare('SELECT session_ttl_override FROM users WHERE id = ? LIMIT 1');
+        $ttl_row->execute([$user['id']]);
+        $ttl_val = $ttl_row->fetchColumn();
+        if ($ttl_val === false || $ttl_val === null) {
+            $effective_ttl = MC1_SESSION_TTL;
+        } elseif ((int)$ttl_val === 0) {
+            $effective_ttl = 86400 * 3650; /* We store 0-override as 10 years (never expire) */
+        } else {
+            $effective_ttl = (int)$ttl_val;
+        }
+
         $is = $db->prepare(
             "INSERT INTO user_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
              VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))"
         );
-        $is->execute([$user['id'], $hash, $ip, $ua, MC1_SESSION_TTL]);
+        $is->execute([$user['id'], $hash, $ip, $ua, $effective_ttl]);
 
         // Update last_login
         $db->prepare("UPDATE users SET last_login = NOW() WHERE id = ?")
@@ -103,7 +118,7 @@ function mc1_login(string $username, string $password): array
 
         // Set cookie (path=/ so it works across /app/ and /api/)
         setcookie(MC1_SESSION_COOKIE, $token, [
-            'expires'  => time() + MC1_SESSION_TTL,
+            'expires'  => time() + $effective_ttl,
             'path'     => '/',
             'httponly' => true,
             'samesite' => 'Strict',

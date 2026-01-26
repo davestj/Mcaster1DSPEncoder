@@ -37,9 +37,6 @@ struct StreamTarget {
     int         sample_rate  = 44100;
     int         channels     = 2;
 
-    // ICY metadata interval (bytes between inline metadata blocks, 0 = disabled)
-    int         icy_metaint  = 16384;
-
     // ICY2 extended station identity — sent as Ice-* headers at connect time
     // Leave empty to omit the header; Mcaster1DNAS / Icecast 2.4+ support these.
     std::string icy2_twitter;    // Twitter handle, e.g. "@Mcaster1Radio"
@@ -84,11 +81,16 @@ public:
     // If the socket has dropped, the watchdog will reconnect automatically.
     ssize_t write(const uint8_t* data, size_t len);
 
-    // Send an ICY inline metadata block (StreamTitle=Artist - Title)
-    // Automatically pads to ICY_META_MULTIPLEX (16 bytes) boundary.
-    bool send_icy_metadata(const std::string& title,
-                           const std::string& artist = "",
-                           const std::string& url    = "");
+    // Push track metadata to the server via HTTP GET /admin/metadata
+    // (Icecast2 / Mcaster1DNAS admin endpoint — separate TCP connection per call).
+    // For Shoutcast v1, uses /admin.cgi instead.
+    // Sends: song= (combined), title=, artist=, icy-meta-track-title=, icy-meta-track-artist=,
+    // and optionally album= / icy-meta-track-album= and icy-meta-track-artwork=.
+    // Returns true if the server acknowledged with <return>1</return>.
+    bool send_admin_metadata(const std::string& title,
+                             const std::string& artist  = "",
+                             const std::string& album   = "",
+                             const std::string& artwork = "");
 
     State       state()         const { return state_.load(); }
     bool        is_connected()  const { return state_.load() == State::CONNECTED; }
@@ -116,9 +118,6 @@ private:
     std::thread     watchdog_thread_;
     std::atomic<bool> watchdog_stop_{false};
 
-    // Bytes written since last metadata injection (for metaint tracking)
-    size_t          bytes_since_meta_ = 0;
-
     bool    do_connect();               // blocking connect attempt
     void    do_disconnect_locked();     // must hold sock_mutex_
     bool    send_icecast2_headers();
@@ -128,6 +127,9 @@ private:
     // Low-level socket helpers
     bool    tcp_connect(const std::string& host, uint16_t port);
     ssize_t tcp_write(const uint8_t* data, size_t len);
+
+    // URL-encode a string for HTTP query parameters (RFC 3986 percent-encoding)
+    static std::string url_encode(const std::string& in);
 
     void    set_error(const std::string& msg);
     void    set_state(State s);
