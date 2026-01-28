@@ -2,11 +2,14 @@
 # autogen.sh — Bootstrap autotools for Mcaster1 DSP Encoder (Linux)
 #
 # Run once after a fresh clone or after modifying configure.ac / Makefile.am.
-# Requires: autoconf >= 2.69, automake >= 1.15, m4
+# Requires: autoconf >= 2.69, automake >= 1.15, autoconf-archive, m4
 #
-# Usage:
-#   ./autogen.sh [--prefix=/opt/mcaster1]
-#   ./configure [--prefix=/opt/mcaster1] [options...]
+# FIRST TIME SETUP — install all build + audio dependencies:
+#   bash install-deps.sh
+#
+# Then bootstrap, configure, and build:
+#   ./autogen.sh
+#   ./configure [--prefix=/usr/local] [--with-webroot=/usr/share/mcaster1/web_ui]
 #   make -j$(nproc)
 #   sudo make install
 
@@ -14,26 +17,61 @@ set -euo pipefail
 
 echo "── Mcaster1 DSP Encoder — autotools bootstrap ──"
 
+# ── Tool availability check ────────────────────────────────────────────────────
+missing_tools=()
+
 check_tool() {
-    if ! command -v "$1" &>/dev/null; then
-        echo "ERROR: '$1' not found."
-        echo "  Install with:  sudo apt install $2"
-        exit 1
+    local tool="$1"
+    local pkg="$2"
+    if ! command -v "$tool" &>/dev/null; then
+        echo "  MISSING: '$tool' (package: $pkg)"
+        missing_tools+=("$tool")
     fi
 }
 
-check_tool aclocal   "automake"
-check_tool autoconf  "autoconf"
-check_tool automake  "automake"
+check_tool aclocal    "automake"
+check_tool autoconf   "autoconf"
+check_tool automake   "automake"
+check_tool m4         "m4"
 
-echo "  aclocal…"
-aclocal
+# Check for autoconf-archive (provides AX_CXX_COMPILE_STDCXX etc.)
+if ! aclocal --print-ac-dir 2>/dev/null | xargs -I{} find {} -name "ax_cxx_compile_stdcxx.m4" 2>/dev/null | grep -q .; then
+    if ! find /usr/share/aclocal /usr/local/share/aclocal 2>/dev/null \
+              -name "ax_cxx_compile_stdcxx.m4" 2>/dev/null | grep -q .; then
+        echo "  MISSING: ax_cxx_compile_stdcxx.m4 (package: autoconf-archive)"
+        missing_tools+=("autoconf-archive")
+    fi
+fi
 
-echo "  automake --add-missing --copy…"
-automake --add-missing --copy 2>/dev/null || automake --add-missing
+if [[ ${#missing_tools[@]} -gt 0 ]]; then
+    echo ""
+    echo "  ERROR: Required build tools are missing."
+    echo "  Run the dependency installer first:"
+    echo ""
+    echo "    bash install-deps.sh --build-only"
+    echo ""
+    exit 1
+fi
 
-echo "  autoconf…"
-autoconf
+if command -v autoreconf &>/dev/null; then
+    # Preferred: autoreconf handles aclocal → autoheader → automake → autoconf
+    # in the correct dependency order.
+    echo "  autoreconf -fi …"
+    autoreconf --force --install 2>&1 | grep -v "^$" | grep -v "^automake:" || true
+else
+    # Fallback: manual sequence
+    echo "  aclocal…"
+    aclocal
+
+    echo "  autoheader…"
+    autoheader
+
+    echo "  automake --add-missing --copy…"
+    automake --add-missing --copy 2>/dev/null || automake --add-missing
+
+    echo "  autoconf…"
+    autoconf
+fi
 
 echo ""
 echo "── Done. Now run:"
@@ -42,6 +80,5 @@ echo "   ./configure [--prefix=/usr/local] [--with-webroot=/usr/share/mcaster1/w
 echo "   make -j\$(nproc)"
 echo "   sudo make install"
 echo ""
-echo "   Or for a quick HTTP test (no autotools needed):"
-echo "   bash src/linux/make_http_test.sh"
+echo "   Missing libraries? Run:  bash install-deps.sh"
 echo ""

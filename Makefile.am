@@ -2,22 +2,19 @@
 #
 # Autotools entry point.  All Linux build targets live under src/linux/.
 # Windows targets are built by Visual Studio (.vcxproj) — not touched here.
+#
+# Usage:
+#   ./autogen.sh
+#   ./configure [--prefix=/usr/local] [--with-webroot=/usr/share/mcaster1/web_ui]
+#   make -j$(nproc)
+#   sudo make install
 
 SUBDIRS = src/linux
 
-# Install the web UI files
-webuidir = $(WEBROOT)
-nobase_webuiDATA = \
-    src/linux/web_ui/index.html \
-    src/linux/web_ui/login.html \
-    src/linux/web_ui/style.css \
-    src/linux/web_ui/app.js
-
 EXTRA_DIST = \
     autogen.sh \
-    src/linux/make_http_test.sh \
-    src/linux/web_ui/index.html \
-    src/linux/web_ui/login.html \
-    src/linux/web_ui/style.css \
-    src/linux/web_ui/app.js \
-    README.md
+    install-deps.sh \
+    README-LINUX.md \
+    CLAUDE.md \
+    INSTRUCTIONS.md \
+    docs/index.html
