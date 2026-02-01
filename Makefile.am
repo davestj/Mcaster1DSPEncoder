@@ -10,6 +10,9 @@
 #   sudo make install
 
 SUBDIRS = src/linux
+if ENABLE_MACOS_GUI
+SUBDIRS += src/macos
+endif
 
 EXTRA_DIST = \
     autogen.sh \

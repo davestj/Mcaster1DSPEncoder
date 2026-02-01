@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Screen/monitor frame -->
+  <rect x="2" y="3" width="20" height="15" rx="2"/>
+  <!-- Lower-third bar -->
+  <rect x="2" y="13" width="20" height="5" rx="0" fill="#00d4aa" opacity="0.15"/>
+  <line x1="2" y1="13" x2="22" y2="13"/>
+  <!-- Text lines on the bar -->
+  <line x1="5" y1="15.5" x2="14" y2="15.5" stroke-width="1.5"/>
+  <line x1="5" y1="17.5" x2="11" y2="17.5" stroke-width="1"/>
+  <!-- Monitor stand -->
+  <line x1="12" y1="18" x2="12" y2="21"/>
+  <line x1="8" y1="21" x2="16" y2="21"/>
+</svg>

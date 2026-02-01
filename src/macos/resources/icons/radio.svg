@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Radio tower -->
+  <line x1="12" y1="22" x2="12" y2="8"/>
+  <line x1="8" y1="22" x2="12" y2="12"/>
+  <line x1="16" y1="22" x2="12" y2="12"/>
+  <!-- Antenna tip -->
+  <circle cx="12" cy="6" r="1.5" fill="#00d4aa"/>
+  <!-- Radio waves left -->
+  <path d="M7 8a6 6 0 0 1 0-6" fill="none"/>
+  <!-- Radio waves right -->
+  <path d="M17 8a6 6 0 0 0 0-6" fill="none"/>
+  <!-- Outer waves left -->
+  <path d="M4 10a10 10 0 0 1 0-10" fill="none" opacity="0.5"/>
+  <!-- Outer waves right -->
+  <path d="M20 10a10 10 0 0 0 0-10" fill="none" opacity="0.5"/>
+</svg>

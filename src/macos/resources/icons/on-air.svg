@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ff3333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Broadcast tower -->
+  <line x1="12" y1="10" x2="12" y2="22"/>
+  <line x1="8" y1="22" x2="16" y2="22"/>
+  <circle cx="12" cy="10" r="1.5" fill="#ff3333"/>
+  <!-- Radio waves left -->
+  <path d="M8.5 7.5a5 5 0 010 5"/>
+  <path d="M6 5.5a8 8 0 010 9"/>
+  <path d="M3.5 3.5a11 11 0 010 13"/>
+  <!-- Radio waves right -->
+  <path d="M15.5 7.5a5 5 0 000 5"/>
+  <path d="M18 5.5a8 8 0 000 9"/>
+  <path d="M20.5 3.5a11 11 0 000 13"/>
+</svg>

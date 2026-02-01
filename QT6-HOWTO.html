@@ -1,0 +1,1187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qt 6 Cross-Platform Build &amp; Deployment Guide — Mcaster1DSPEncoder</title>
+<style>
+  :root {
+    --bg: #0a0a1e;
+    --card: #0f1028;
+    --border: #1a2a4c;
+    --text: #c8d4e8;
+    --heading: #e0e8f4;
+    --accent: #22ccaa;
+    --accent2: #3388ff;
+    --code-bg: #0c0c20;
+    --warn-bg: #2a1a00;
+    --warn-border: #cc8800;
+    --info-bg: #001a2a;
+    --info-border: #2288cc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    padding: 20px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    color: var(--accent);
+    font-size: 2em;
+    margin: 30px 0 10px;
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 10px;
+  }
+  h2 {
+    color: var(--accent2);
+    font-size: 1.5em;
+    margin: 30px 0 10px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 {
+    color: var(--heading);
+    font-size: 1.2em;
+    margin: 20px 0 8px;
+  }
+  h4 {
+    color: var(--accent);
+    font-size: 1.05em;
+    margin: 16px 0 6px;
+  }
+  p, li { margin-bottom: 8px; }
+  ul, ol { padding-left: 24px; }
+  a { color: var(--accent2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.9em;
+    color: var(--accent);
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    margin: 12px 0;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.88em;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin: 16px 0;
+  }
+  .warn {
+    background: var(--warn-bg);
+    border-left: 4px solid var(--warn-border);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  .info {
+    background: var(--info-bg);
+    border-left: 4px solid var(--info-border);
+    padding: 12px 16px;
+    margin: 12px 0;
+    border-radius: 4px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+  }
+  th { background: var(--card); color: var(--accent); }
+  td { background: var(--bg); }
+  .toc { list-style: none; padding: 0; }
+  .toc li { margin: 4px 0; }
+  .toc li a { color: var(--accent); }
+  .toc li a:hover { color: var(--accent2); }
+  .platform-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.8em;
+    font-weight: bold;
+    margin-right: 6px;
+  }
+  .tag-macos { background: #1a3a2a; color: #44cc88; border: 1px solid #44cc88; }
+  .tag-linux { background: #2a2a1a; color: #ccaa44; border: 1px solid #ccaa44; }
+  .tag-win { background: #1a1a3a; color: #6688ff; border: 1px solid #6688ff; }
+  .tag-all { background: #2a1a2a; color: #cc66cc; border: 1px solid #cc66cc; }
+  footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: #667;
+    font-size: 0.85em;
+  }
+</style>
+</head>
+<body>
+
+<h1>Qt 6 Cross-Platform Build &amp; Deployment Guide</h1>
+<p style="color:#8899aa; font-size:1.1em;">
+  Mcaster1DSPEncoder &mdash; Building, running, and distributing the Qt 6 Widgets GUI
+  on macOS, Linux, and Windows from a single codebase.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Table of Contents</h2>
+<ul class="toc">
+  <li><a href="#overview">1. Overview &mdash; How Qt 6 Cross-Platform Works</a></li>
+  <li><a href="#prerequisites">2. Prerequisites &amp; Dependencies per Platform</a></li>
+  <li><a href="#build-macos">3. Building on macOS (ARM64 / Intel)</a></li>
+  <li><a href="#build-linux">4. Building on Linux (x86_64 / ARM64)</a></li>
+  <li><a href="#build-windows">5. Building on Windows (x86_64)</a></li>
+  <li><a href="#shared-codebase">6. Shared Codebase Architecture</a></li>
+  <li><a href="#platform-abstraction">7. Platform Abstraction Layer</a></li>
+  <li><a href="#deploy-macos">8. macOS Deployment (.app Bundle + DMG)</a></li>
+  <li><a href="#deploy-linux">9. Linux Deployment (.deb, .rpm, AppImage)</a></li>
+  <li><a href="#deploy-windows">10. Windows Deployment (MSI, NSIS, portable)</a></li>
+  <li><a href="#libs-bundling">11. Library Bundling &amp; Dependencies</a></li>
+  <li><a href="#signing">12. Code Signing &amp; Notarization</a></li>
+  <li><a href="#ci-cd">13. CI/CD Pipeline (GitHub Actions)</a></li>
+  <li><a href="#qt-essentials">14. Qt 6 Essentials Cheat Sheet</a></li>
+  <li><a href="#gotchas">15. Common Gotchas &amp; Troubleshooting</a></li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="overview">1. Overview &mdash; How Qt 6 Cross-Platform Works</h2>
+
+<div class="card">
+<p>Qt 6 is a C++ GUI framework that abstracts platform-specific APIs behind a unified API.
+You write <strong>one set of C++ source files</strong> using Qt classes (<code>QMainWindow</code>,
+<code>QComboBox</code>, <code>QPushButton</code>, etc.), and the Qt libraries translate those
+calls to native platform widgets and rendering.</p>
+
+<h4>What Qt handles for you:</h4>
+<ul>
+  <li><strong>Window management</strong> &mdash; native title bars, resizing, minimize/maximize on every OS</li>
+  <li><strong>Widget rendering</strong> &mdash; native look-and-feel (Cocoa on macOS, GTK/Fusion on Linux, Windows style on Windows)</li>
+  <li><strong>Event loop</strong> &mdash; mouse, keyboard, touch, drag-and-drop, system tray</li>
+  <li><strong>File dialogs</strong> &mdash; native open/save dialogs per platform</li>
+  <li><strong>Threading</strong> &mdash; <code>QThread</code>, signals/slots across threads, <code>QTimer</code></li>
+  <li><strong>Networking</strong> &mdash; <code>QNetworkAccessManager</code> (we don't use this &mdash; we use raw sockets)</li>
+</ul>
+
+<h4>What you still handle yourself (platform-specific):</h4>
+<ul>
+  <li><strong>Audio capture</strong> &mdash; PortAudio (CoreAudio on macOS, ALSA/PulseAudio on Linux, WASAPI on Windows)</li>
+  <li><strong>Video capture</strong> &mdash; AVFoundation (macOS), V4L2 (Linux), DirectShow/MediaFoundation (Windows)</li>
+  <li><strong>System audio loopback</strong> &mdash; ScreenCaptureKit (macOS 13+), PulseAudio monitor (Linux), WASAPI loopback (Windows)</li>
+  <li><strong>Codec libraries</strong> &mdash; LAME, libvorbis, libopus, fdk-aac, FLAC (same C libraries, different install methods)</li>
+  <li><strong>Virtual camera</strong> &mdash; CMIOExtension (macOS), v4l2loopback (Linux), DirectShow virtual device (Windows)</li>
+</ul>
+</div>
+
+<h3>The Build Flow</h3>
+<pre><code>Source Code (.cpp/.h/.mm)
+    │
+    ├── MOC (Meta-Object Compiler) ─── Processes Q_OBJECT classes → moc_*.cpp
+    ├── RCC (Resource Compiler) ────── Compiles .qrc + icons/styles → qrc_*.cpp
+    ├── UIC (UI Compiler) ──────────── Compiles .ui files → ui_*.h  (we don't use .ui files)
+    │
+    └── C++ Compiler (g++ / clang++ / MSVC)
+         │
+         └── Linker → Binary + Qt libraries (dynamic or static)
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="prerequisites">2. Prerequisites &amp; Dependencies per Platform</h2>
+
+<h3>Qt 6 Modules We Use</h3>
+<table>
+  <tr><th>Module</th><th>Package Name</th><th>Purpose</th></tr>
+  <tr><td><code>Qt6::Core</code></td><td>qt6-base / qt</td><td>QString, QTimer, signals/slots, threading, I/O</td></tr>
+  <tr><td><code>Qt6::Gui</code></td><td>qt6-base / qt</td><td>QPainter, QPixmap, QImage, QFont, QScreen</td></tr>
+  <tr><td><code>Qt6::Widgets</code></td><td>qt6-base / qt</td><td>QMainWindow, QDialog, QComboBox, QTabWidget, etc.</td></tr>
+</table>
+
+<div class="info">
+  <strong>Note:</strong> We only need <code>qt6-base</code> (Core + Gui + Widgets). We do NOT need
+  Qt Multimedia, Qt Network, Qt Quick/QML, Qt WebEngine, or any other optional Qt module.
+</div>
+
+<h3><span class="platform-tag tag-macos">macOS</span> Dependencies</h3>
+<pre><code># Install everything via Homebrew
+brew install qt@6 pkg-config autoconf automake autoconf-archive \
+  libyaml portaudio lame libvorbis flac opus opusenc fdk-aac \
+  mpg123 ffmpeg taglib libssh2 curl
+
+# Qt 6 install location
+/opt/homebrew/opt/qt@6/          # Apple Silicon
+/usr/local/opt/qt@6/             # Intel Mac
+
+# Ensure Qt is in PKG_CONFIG_PATH
+export PKG_CONFIG_PATH="/opt/homebrew/opt/qt@6/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PATH="/opt/homebrew/opt/qt@6/bin:$PATH"
+</code></pre>
+
+<h4>macOS Frameworks (linked automatically by our build system):</h4>
+<ul>
+  <li><code>CoreAudio.framework</code> &mdash; audio device enumeration</li>
+  <li><code>AudioToolbox.framework</code> &mdash; audio format conversion</li>
+  <li><code>AVFoundation.framework</code> &mdash; camera capture</li>
+  <li><code>CoreMedia.framework</code> &mdash; CMSampleBuffer for video</li>
+  <li><code>CoreVideo.framework</code> &mdash; CVPixelBuffer for video frames</li>
+  <li><code>VideoToolbox.framework</code> &mdash; hardware H.264/HEVC encoding</li>
+  <li><code>ScreenCaptureKit.framework</code> &mdash; system audio loopback (macOS 13+)</li>
+  <li><code>Security.framework</code> &mdash; SSL/TLS for DNAS stats</li>
+  <li><code>Cocoa.framework</code> &mdash; NSApplication, dock badge, notifications</li>
+</ul>
+
+<h3><span class="platform-tag tag-linux">Linux</span> Dependencies</h3>
+<pre><code># Debian / Ubuntu
+sudo apt install qt6-base-dev qt6-base-dev-tools \
+  libgl1-mesa-dev pkg-config autoconf automake autoconf-archive \
+  libyaml-dev libportaudio2 portaudio19-dev \
+  libmp3lame-dev libvorbis-dev libflac-dev libopus-dev libopusenc-dev \
+  libfdk-aac-dev libmpg123-dev libavformat-dev libavcodec-dev \
+  libswresample-dev libavutil-dev libtag1-dev libssh2-1-dev libcurl4-openssl-dev
+
+# Fedora / RHEL 9+
+sudo dnf install qt6-qtbase-devel \
+  mesa-libGL-devel pkgconfig autoconf automake autoconf-archive \
+  libyaml-devel portaudio-devel \
+  lame-devel libvorbis-devel flac-devel opus-devel \
+  fdk-aac-devel mpg123-devel ffmpeg-devel taglib-devel \
+  libssh2-devel libcurl-devel
+
+# Arch Linux
+sudo pacman -S qt6-base \
+  mesa pkgconf autoconf automake autoconf-archive \
+  libyaml portaudio lame libvorbis flac opus opusenc fdk-aac \
+  mpg123 ffmpeg taglib libssh2 curl
+
+# Qt 6 install locations (varies by distro)
+/usr/lib/x86_64-linux-gnu/cmake/Qt6/     # Debian/Ubuntu
+/usr/lib64/cmake/Qt6/                     # Fedora/RHEL
+/usr/lib/cmake/Qt6/                       # Arch
+</code></pre>
+
+<div class="warn">
+  <strong>Important:</strong> Some distros package Qt 6 MOC as <code>moc-qt6</code> or
+  <code>/usr/lib/qt6/libexec/moc</code>. Our <code>configure.ac</code> searches multiple paths.
+  If MOC isn't found, set <code>QT6_MOC=/path/to/moc</code> when running configure.
+</div>
+
+<h3><span class="platform-tag tag-win">Windows</span> Dependencies</h3>
+<pre><code># Option A: Qt Online Installer (recommended)
+# Download from https://www.qt.io/download-qt-installer
+# Install: Qt 6.8+ → MSVC 2022 64-bit (or MinGW 64-bit)
+# Typical install: C:\Qt\6.8.0\msvc2022_64\
+
+# Option B: vcpkg (package manager)
+git clone https://github.com/microsoft/vcpkg.git
+cd vcpkg && bootstrap-vcpkg.bat
+vcpkg install qt6-base:x64-windows
+vcpkg install portaudio:x64-windows libyaml:x64-windows
+vcpkg install mp3lame:x64-windows libvorbis:x64-windows flac:x64-windows
+vcpkg install opus:x64-windows fdk-aac:x64-windows
+vcpkg install ffmpeg:x64-windows taglib:x64-windows
+
+# Set environment
+set Qt6_DIR=C:\Qt\6.8.0\msvc2022_64\lib\cmake\Qt6
+set PATH=%PATH%;C:\Qt\6.8.0\msvc2022_64\bin
+</code></pre>
+
+<h4>Windows Build Tools Required:</h4>
+<ul>
+  <li><strong>Visual Studio 2022</strong> (Community is free) with "Desktop development with C++" workload</li>
+  <li>Or <strong>MinGW-w64</strong> (g++ 12+) &mdash; Qt provides MinGW builds</li>
+  <li><strong>CMake 3.22+</strong> (ships with VS2022, or install separately)</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="build-macos">3. Building on macOS</h2>
+
+<div class="card">
+<h4>Current method (Autotools):</h4>
+<pre><code># One-time bootstrap
+bash autogen.sh
+
+# Configure (detects Qt 6, all codecs, macOS frameworks)
+./configure --enable-macos-gui
+
+# Build
+make -C src/macos -j$(sysctl -n hw.ncpu)
+
+# Output: src/macos/mcaster1-encoder-gui (Mach-O ARM64, ~2.1 MB)
+</code></pre>
+
+<h4>Run directly:</h4>
+<pre><code>src/macos/mcaster1-encoder-gui</code></pre>
+
+<h4>Build .app bundle:</h4>
+<pre><code>make -C src/macos app-bundle
+# Creates: src/macos/Mcaster1DSPEncoder.app/
+open src/macos/Mcaster1DSPEncoder.app</code></pre>
+</div>
+
+<h3>Future: CMake build (for all 3 platforms)</h3>
+<pre><code># CMakeLists.txt approach (when we migrate from Autotools)
+mkdir build && cd build
+cmake .. -DCMAKE_PREFIX_PATH=/opt/homebrew/opt/qt@6
+cmake --build . -j$(sysctl -n hw.ncpu)
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="build-linux">4. Building on Linux</h2>
+
+<div class="card">
+<h4>Build from source (Autotools):</h4>
+<pre><code># Install dependencies
+bash install-deps.sh
+
+# Bootstrap + configure + build
+bash autogen.sh
+./configure --enable-macos-gui   # same flag — configure detects Linux vs macOS
+make -C src/macos -j$(nproc)
+
+# Output: src/macos/mcaster1-encoder-gui (ELF x86_64 or aarch64)
+</code></pre>
+
+<div class="info">
+<strong>Note:</strong> The <code>--enable-macos-gui</code> flag name is historical. It enables the
+Qt 6 Widgets GUI build on ANY platform where Qt 6 is detected. We should rename it to
+<code>--enable-qt6-gui</code> in a future refactor.
+</div>
+
+<h4>Linux-specific adaptations needed:</h4>
+<ul>
+  <li>Replace <code>platform_macos.mm</code> with <code>platform_linux.cpp</code> (dock badge → skip, notifications → libnotify)</li>
+  <li>Replace <code>audio_capture_macos.mm</code> (ScreenCaptureKit) with PulseAudio monitor source</li>
+  <li>Replace <code>video_capture_macos.mm</code> (AVFoundation) with V4L2 camera capture</li>
+  <li>Replace <code>video_encoder.mm</code> (VideoToolbox) with FFmpeg/libx264 software encoding</li>
+  <li>All pure Qt/C++ files compile unchanged on Linux</li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="build-windows">5. Building on Windows</h2>
+
+<div class="card">
+<h4>Option A: CMake + Visual Studio 2022</h4>
+<pre><code>:: From VS2022 Developer Command Prompt
+mkdir build
+cd build
+cmake .. -G "Visual Studio 17 2022" -A x64 ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.0\msvc2022_64 ^
+  -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+
+cmake --build . --config Release -j%NUMBER_OF_PROCESSORS%
+
+:: Output: Release\mcaster1-encoder-gui.exe
+</code></pre>
+
+<h4>Option B: CMake + MinGW</h4>
+<pre><code>mkdir build && cd build
+cmake .. -G "MinGW Makefiles" ^
+  -DCMAKE_PREFIX_PATH=C:\Qt\6.8.0\mingw_64
+
+mingw32-make -j%NUMBER_OF_PROCESSORS%
+</code></pre>
+
+<h4>Option C: qmake (Qt's own build system)</h4>
+<pre><code>:: Generate .pro file or use CMake → qmake is deprecated in Qt 6
+:: Not recommended for new projects
+</code></pre>
+
+<h4>Windows-specific adaptations needed:</h4>
+<ul>
+  <li>Replace <code>platform_macos.mm</code> with <code>platform_windows.cpp</code> (system tray, notifications → Win32 API)</li>
+  <li>Replace PortAudio backend or use WASAPI directly for audio capture</li>
+  <li>Replace AVFoundation with DirectShow/MediaFoundation for camera capture</li>
+  <li>Replace VideoToolbox with MediaFoundation for hardware H.264 encoding</li>
+  <li>All pure Qt/C++ files compile unchanged on Windows</li>
+</ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="shared-codebase">6. Shared Codebase Architecture</h2>
+
+<p>The key to cross-platform Qt is separating <strong>platform-specific code</strong> from
+<strong>platform-independent code</strong>. Here's how our codebase breaks down:</p>
+
+<h3>Platform-Independent (compiles everywhere, no changes needed)</h3>
+<table>
+  <tr><th>Category</th><th>Files</th><th>Notes</th></tr>
+  <tr><td>GUI &mdash; Main Window</td><td><code>main_window.cpp/h</code></td><td>Pure Qt Widgets</td></tr>
+  <tr><td>GUI &mdash; Dialogs</td><td><code>config_dialog.cpp</code>, <code>basic_settings_tab.cpp</code>, all <code>*_dialog.cpp</code></td><td>Pure Qt Widgets</td></tr>
+  <tr><td>GUI &mdash; Custom Widgets</td><td><code>vu_meter_widget.cpp</code>, <code>eq_curve_widget.cpp</code>, <code>dsp_effects_rack.cpp</code></td><td>QPainter-based rendering</td></tr>
+  <tr><td>App Framework</td><td><code>app.cpp/h</code>, <code>main.cpp</code></td><td>QApplication, theme, settings</td></tr>
+  <tr><td>Data Models</td><td><code>encoder_list_model.cpp</code>, <code>config_types.h</code></td><td>Qt model/view</td></tr>
+  <tr><td>Config</td><td><code>config_loader.cpp</code>, <code>profile_manager.cpp</code></td><td>libyaml (C library, all platforms)</td></tr>
+  <tr><td>DSP Chain</td><td><code>dsp/*.cpp</code></td><td>Pure C++ math, no platform deps</td></tr>
+  <tr><td>Audio Pipeline</td><td><code>audio_pipeline.cpp</code>, <code>encoder_slot.cpp</code></td><td>Orchestration (platform-neutral)</td></tr>
+  <tr><td>Codecs</td><td><code>codec_validator.cpp</code></td><td>Links to portable C libraries</td></tr>
+  <tr><td>Streaming</td><td><code>stream_client.cpp</code></td><td>POSIX sockets (need winsock2 adapter on Windows)</td></tr>
+  <tr><td>File Playback</td><td><code>file_source.cpp</code>, <code>playlist_parser.cpp</code></td><td>FFmpeg/mpg123 (portable)</td></tr>
+  <tr><td>Archive</td><td><code>archive_writer.cpp</code></td><td>WAV/MP3 file output</td></tr>
+  <tr><td>Podcast</td><td><code>podcast/*.cpp</code></td><td>RSS/SFTP/HTTP (libssh2, libcurl)</td></tr>
+  <tr><td>Video &mdash; FLV</td><td><code>video/flv_muxer.cpp</code></td><td>Pure C++ byte manipulation</td></tr>
+  <tr><td>Video &mdash; Effects</td><td><code>video/video_effects.cpp</code>, <code>video/overlay_renderer.cpp</code></td><td>QPainter-based, platform-neutral</td></tr>
+  <tr><td>Video &mdash; GUI</td><td><code>video/camera_preview_widget.cpp</code>, <code>video/broadcast_monitor_window.cpp</code></td><td>Pure Qt Widgets</td></tr>
+</table>
+
+<h3>Platform-Specific (need per-platform implementations)</h3>
+<table>
+  <tr><th>Feature</th><th>macOS</th><th>Linux</th><th>Windows</th></tr>
+  <tr>
+    <td>Platform Utilities</td>
+    <td><code>platform_macos.mm</code><br>(Obj-C++, dock badge, notifications)</td>
+    <td><code>platform_linux.cpp</code><br>(libnotify, no dock badge)</td>
+    <td><code>platform_windows.cpp</code><br>(Win32 toast notifications)</td>
+  </tr>
+  <tr>
+    <td>Audio Capture (mic)</td>
+    <td colspan="3"><code>audio_source.cpp</code> — uses PortAudio, which is cross-platform. No changes needed.</td>
+  </tr>
+  <tr>
+    <td>System Audio Loopback</td>
+    <td><code>audio_capture_macos.mm</code><br>(ScreenCaptureKit)</td>
+    <td><code>audio_capture_linux.cpp</code><br>(PulseAudio monitor source)</td>
+    <td><code>audio_capture_windows.cpp</code><br>(WASAPI loopback)</td>
+  </tr>
+  <tr>
+    <td>Camera Capture</td>
+    <td><code>video_capture_macos.mm</code><br>(AVFoundation)</td>
+    <td><code>video_capture_linux.cpp</code><br>(V4L2)</td>
+    <td><code>video_capture_windows.cpp</code><br>(MediaFoundation)</td>
+  </tr>
+  <tr>
+    <td>Hardware Video Encoding</td>
+    <td><code>video_encoder.mm</code><br>(VideoToolbox H.264)</td>
+    <td><code>video_encoder_linux.cpp</code><br>(VA-API or FFmpeg/libx264)</td>
+    <td><code>video_encoder_windows.cpp</code><br>(MediaFoundation H.264)</td>
+  </tr>
+  <tr>
+    <td>SSL/TLS (DNAS stats)</td>
+    <td><code>dnas_stats.cpp</code><br>(Security.framework SecureTransport)</td>
+    <td colspan="2">OpenSSL (already linked via libcurl)</td>
+  </tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="platform-abstraction">7. Platform Abstraction Layer</h2>
+
+<div class="card">
+<p>The recommended pattern for handling platform differences:</p>
+
+<pre><code>// platform.h — abstract interface
+namespace platform {
+    void set_dock_badge(const char* text);
+    void clear_dock_badge();
+    void send_notification(const char* title, const char* body);
+    std::vector&lt;CameraDevice&gt; enumerate_cameras();
+}
+
+// platform_macos.mm — macOS implementation (Obj-C++)
+#ifdef __APPLE__
+void platform::set_dock_badge(const char* text) {
+    [[NSApp dockTile] setBadgeLabel:@(text)];
+}
+#endif
+
+// platform_linux.cpp — Linux implementation
+#ifdef __linux__
+void platform::set_dock_badge(const char* /*text*/) {
+    // No dock badge on Linux — no-op (or set Unity launcher count)
+}
+#endif
+
+// platform_windows.cpp — Windows implementation
+#ifdef _WIN32
+void platform::set_dock_badge(const char* /*text*/) {
+    // Taskbar badge via ITaskbarList3::SetOverlayIcon
+}
+#endif
+</code></pre>
+
+<p><strong>Build system selects the right file:</strong></p>
+<pre><code># In Makefile.am or CMakeLists.txt:
+if MACOS
+  PLATFORM_SRC = platform_macos.mm audio_capture_macos.mm video_capture_macos.mm
+elif LINUX
+  PLATFORM_SRC = platform_linux.cpp audio_capture_linux.cpp video_capture_linux.cpp
+elif WINDOWS
+  PLATFORM_SRC = platform_windows.cpp audio_capture_windows.cpp video_capture_windows.cpp
+endif
+</code></pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="deploy-macos">8. macOS Deployment (.app Bundle + DMG)</h2>
+
+<h3>Step 1: Build the .app bundle</h3>
+<pre><code>make -C src/macos app-bundle
+# Creates: src/macos/Mcaster1DSPEncoder.app/
+#   Contents/
+#     MacOS/mcaster1-encoder-gui     (binary)
+#     Resources/Mcaster1DSPEncoder.icns  (icon)
+#     Info.plist                     (metadata)
+</code></pre>
+
+<h3>Step 2: Bundle Qt frameworks + codec libraries</h3>
+<pre><code># macdeployqt copies Qt frameworks + rewrites @rpath
+macdeployqt Mcaster1DSPEncoder.app -verbose=2
+
+# Verify what was bundled
+ls Mcaster1DSPEncoder.app/Contents/Frameworks/
+# Should contain: QtCore.framework, QtGui.framework, QtWidgets.framework
+
+# Bundle non-Qt dylibs (codec libraries)
+# macdeployqt handles Qt but NOT third-party libs like libmp3lame, libportaudio, etc.
+# Use install_name_tool to fix rpaths:
+for lib in libportaudio.2.dylib libyaml-0.2.dylib libmp3lame.0.dylib \
+           libvorbisenc.2.dylib libvorbis.0.dylib libogg.0.dylib \
+           libFLAC.12.dylib libopusenc.0.dylib libfdk-aac.2.dylib \
+           libmpg123.0.dylib libtag.2.dylib libssh2.1.dylib; do
+  src="/opt/homebrew/lib/$lib"
+  if [ -f "$src" ]; then
+    cp "$src" Mcaster1DSPEncoder.app/Contents/Frameworks/
+    install_name_tool -change "$src" "@executable_path/../Frameworks/$lib" \
+      Mcaster1DSPEncoder.app/Contents/MacOS/mcaster1-encoder-gui
+  fi
+done
+
+# Fix FFmpeg libraries (multiple .dylib files)
+for lib in libavformat libavcodec libswresample libavutil; do
+  dylib=$(ls /opt/homebrew/lib/${lib}.*.dylib 2>/dev/null | head -1)
+  if [ -f "$dylib" ]; then
+    cp "$dylib" Mcaster1DSPEncoder.app/Contents/Frameworks/
+    install_name_tool -change "$dylib" \
+      "@executable_path/../Frameworks/$(basename $dylib)" \
+      Mcaster1DSPEncoder.app/Contents/MacOS/mcaster1-encoder-gui
+  fi
+done
+</code></pre>
+
+<h3>Step 3: Create DMG installer</h3>
+<pre><code># Simple DMG
+hdiutil create -volname "Mcaster1DSPEncoder" \
+  -srcfolder Mcaster1DSPEncoder.app \
+  -ov -format UDZO \
+  Mcaster1DSPEncoder-0.8.5-arm64.dmg
+
+# Pretty DMG with background image (using create-dmg)
+brew install create-dmg
+create-dmg \
+  --volname "Mcaster1 DSP Encoder" \
+  --volicon "resources/Mcaster1DSPEncoder.icns" \
+  --window-pos 200 120 \
+  --window-size 600 400 \
+  --icon-size 80 \
+  --icon "Mcaster1DSPEncoder.app" 175 200 \
+  --app-drop-link 425 200 \
+  "Mcaster1DSPEncoder-0.8.5-arm64.dmg" \
+  "Mcaster1DSPEncoder.app"
+</code></pre>
+
+<h3>What the user installs:</h3>
+<ul>
+  <li>Open DMG, drag <code>Mcaster1DSPEncoder.app</code> to <code>/Applications/</code></li>
+  <li>No Homebrew needed &mdash; all libraries are bundled inside the .app</li>
+  <li>No additional downloads required</li>
+</ul>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="deploy-linux">9. Linux Deployment (.deb, .rpm, AppImage)</h2>
+
+<h3>Option A: .deb package (Debian/Ubuntu)</h3>
+<pre><code># Directory structure
+mcaster1-dsp-encoder_0.8.5-1_amd64/
+  DEBIAN/
+    control              # Package metadata
+    postinst             # Post-install script (desktop icon, etc.)
+  usr/
+    bin/
+      mcaster1-encoder-gui
+    share/
+      applications/
+        mcaster1-encoder.desktop    # Desktop entry
+      icons/hicolor/256x256/apps/
+        mcaster1-encoder.png        # App icon
+      doc/mcaster1-dsp-encoder/
+        copyright
+
+# DEBIAN/control
+Package: mcaster1-dsp-encoder
+Version: 0.8.5-1
+Architecture: amd64
+Depends: libqt6widgets6 (>= 6.2), libqt6gui6, libqt6core6,
+  libportaudio2, libyaml-0-2, libmp3lame0, libvorbisenc2,
+  libflac12, libopusenc0, libfdk-aac2, libmpg123-0,
+  libavformat59, libtag1v5, libssh2-1, libcurl4
+Maintainer: David St. John &lt;davestj@gmail.com&gt;
+Description: Mcaster1 DSP Encoder — Broadcast audio/video encoder with DSP chain
+
+# Build the .deb
+dpkg-deb --build mcaster1-dsp-encoder_0.8.5-1_amd64
+</code></pre>
+
+<h3>Option B: AppImage (universal Linux)</h3>
+<pre><code># Install linuxdeployqt
+wget https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage
+chmod +x linuxdeployqt-continuous-x86_64.AppImage
+
+# Create AppDir structure
+mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons
+cp mcaster1-encoder-gui AppDir/usr/bin/
+cp mcaster1-encoder.desktop AppDir/usr/share/applications/
+cp mcaster1-encoder.png AppDir/usr/share/icons/
+
+# Bundle Qt + all dependencies into AppImage
+./linuxdeployqt-continuous-x86_64.AppImage \
+  AppDir/usr/share/applications/mcaster1-encoder.desktop \
+  -appimage -bundle-non-qt-libs
+
+# Output: Mcaster1_DSP_Encoder-x86_64.AppImage
+# User just downloads and runs — no installation needed
+</code></pre>
+
+<h3>Option C: .rpm package (Fedora/RHEL)</h3>
+<pre><code># Create RPM spec file: mcaster1-dsp-encoder.spec
+Name:    mcaster1-dsp-encoder
+Version: 0.8.5
+Release: 1%{?dist}
+Summary: Broadcast audio/video encoder with DSP chain
+License: GPL-2.0-or-later
+Requires: qt6-qtbase >= 6.2, portaudio, libyaml, lame-libs, ...
+
+# Build with rpmbuild
+rpmbuild -ba mcaster1-dsp-encoder.spec
+</code></pre>
+
+<h3>Linux Depends &mdash; what the user needs installed:</h3>
+<table>
+  <tr><th>Library</th><th>Debian/Ubuntu Package</th><th>Fedora Package</th></tr>
+  <tr><td>Qt 6 Widgets</td><td><code>libqt6widgets6</code></td><td><code>qt6-qtbase</code></td></tr>
+  <tr><td>PortAudio</td><td><code>libportaudio2</code></td><td><code>portaudio</code></td></tr>
+  <tr><td>libyaml</td><td><code>libyaml-0-2</code></td><td><code>libyaml</code></td></tr>
+  <tr><td>LAME MP3</td><td><code>libmp3lame0</code></td><td><code>lame-libs</code></td></tr>
+  <tr><td>Vorbis</td><td><code>libvorbisenc2</code></td><td><code>libvorbis</code></td></tr>
+  <tr><td>FLAC</td><td><code>libflac12</code></td><td><code>flac-libs</code></td></tr>
+  <tr><td>Opus</td><td><code>libopusenc0</code></td><td><code>opus</code></td></tr>
+  <tr><td>FDK-AAC</td><td><code>libfdk-aac2</code></td><td><code>fdk-aac</code></td></tr>
+  <tr><td>mpg123</td><td><code>libmpg123-0</code></td><td><code>mpg123-libs</code></td></tr>
+  <tr><td>FFmpeg</td><td><code>libavformat59</code></td><td><code>ffmpeg-libs</code></td></tr>
+  <tr><td>TagLib</td><td><code>libtag1v5</code></td><td><code>taglib</code></td></tr>
+  <tr><td>libssh2</td><td><code>libssh2-1</code></td><td><code>libssh2</code></td></tr>
+  <tr><td>curl</td><td><code>libcurl4</code></td><td><code>libcurl</code></td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="deploy-windows">10. Windows Deployment (MSI, NSIS, Portable)</h2>
+
+<h3>Step 1: Bundle Qt DLLs</h3>
+<pre><code>:: windeployqt copies Qt DLLs + plugins to the exe directory
+windeployqt.exe --release --no-translations --no-opengl-sw ^
+  Release\mcaster1-encoder-gui.exe
+
+:: This copies:
+::   Qt6Core.dll, Qt6Gui.dll, Qt6Widgets.dll
+::   platforms\qwindows.dll (Windows platform plugin)
+::   styles\qwindowsvistastyle.dll
+::   imageformats\qjpeg.dll, qsvg.dll, etc.
+</code></pre>
+
+<h3>Step 2: Copy third-party DLLs</h3>
+<pre><code>:: Copy codec DLLs from vcpkg or manual builds
+copy C:\vcpkg\installed\x64-windows\bin\portaudio.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\yaml.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\mp3lame.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\vorbis.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\vorbisenc.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\ogg.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\FLAC.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\opus.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\fdk-aac.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\mpg123.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\avformat*.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\avcodec*.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\swresample*.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\avutil*.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\tag.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\ssh2.dll Release\
+copy C:\vcpkg\installed\x64-windows\bin\libcurl.dll Release\
+
+:: Also need MSVC runtime (if not statically linked)
+:: vcredist_x64.exe from Microsoft
+</code></pre>
+
+<h3>Step 3: Create installer</h3>
+
+<h4>Option A: NSIS (free, widely used)</h4>
+<pre><code>;; mcaster1-installer.nsi
+!define PRODUCT_NAME "Mcaster1 DSP Encoder"
+!define PRODUCT_VERSION "0.8.5"
+
+OutFile "Mcaster1DSPEncoder-${PRODUCT_VERSION}-setup.exe"
+InstallDir "$PROGRAMFILES64\Mcaster1DSPEncoder"
+
+Section "Install"
+  SetOutPath "$INSTDIR"
+  File /r "Release\*.*"
+  CreateShortcut "$DESKTOP\Mcaster1 DSP Encoder.lnk" "$INSTDIR\mcaster1-encoder-gui.exe"
+  CreateShortcut "$SMPROGRAMS\Mcaster1 DSP Encoder.lnk" "$INSTDIR\mcaster1-encoder-gui.exe"
+  WriteUninstaller "$INSTDIR\uninstall.exe"
+SectionEnd
+
+Section "Uninstall"
+  RMDir /r "$INSTDIR"
+  Delete "$DESKTOP\Mcaster1 DSP Encoder.lnk"
+  Delete "$SMPROGRAMS\Mcaster1 DSP Encoder.lnk"
+SectionEnd
+</code></pre>
+
+<h4>Option B: WiX / MSI (enterprise-friendly)</h4>
+<pre><code>:: Install WiX Toolset v5
+dotnet tool install --global wix
+wix build -src mcaster1.wxs -o Mcaster1DSPEncoder-0.8.5.msi
+</code></pre>
+
+<h4>Option C: Portable ZIP (no install)</h4>
+<pre><code>:: Just zip the Release directory
+powershell Compress-Archive -Path Release\* ^
+  -DestinationPath Mcaster1DSPEncoder-0.8.5-win64-portable.zip
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="libs-bundling">11. Library Bundling &amp; Dependencies</h2>
+
+<h3>Complete Dependency Matrix</h3>
+<table>
+  <tr>
+    <th>Library</th>
+    <th>macOS (.dylib)</th>
+    <th>Linux (.so)</th>
+    <th>Windows (.dll)</th>
+    <th>Notes</th>
+  </tr>
+  <tr><td>Qt6Core</td><td>Framework</td><td>libQt6Core.so.6</td><td>Qt6Core.dll</td><td>bundled</td></tr>
+  <tr><td>Qt6Gui</td><td>Framework</td><td>libQt6Gui.so.6</td><td>Qt6Gui.dll</td><td>bundled</td></tr>
+  <tr><td>Qt6Widgets</td><td>Framework</td><td>libQt6Widgets.so.6</td><td>Qt6Widgets.dll</td><td>bundled</td></tr>
+  <tr><td>PortAudio</td><td>libportaudio.2.dylib</td><td>libportaudio.so.2</td><td>portaudio.dll</td><td>audio I/O</td></tr>
+  <tr><td>libyaml</td><td>libyaml-0.2.dylib</td><td>libyaml-0.so.2</td><td>yaml.dll</td><td>config</td></tr>
+  <tr><td>LAME</td><td>libmp3lame.0.dylib</td><td>libmp3lame.so.0</td><td>mp3lame.dll</td><td>MP3 codec</td></tr>
+  <tr><td>libvorbis</td><td>libvorbis.0.dylib</td><td>libvorbis.so.0</td><td>vorbis.dll</td><td>Ogg Vorbis</td></tr>
+  <tr><td>FLAC</td><td>libFLAC.12.dylib</td><td>libFLAC.so.12</td><td>FLAC.dll</td><td>lossless</td></tr>
+  <tr><td>Opus</td><td>libopusenc.0.dylib</td><td>libopusenc.so.0</td><td>opus.dll</td><td>modern codec</td></tr>
+  <tr><td>FDK-AAC</td><td>libfdk-aac.2.dylib</td><td>libfdk-aac.so.2</td><td>fdk-aac.dll</td><td>AAC family</td></tr>
+  <tr><td>mpg123</td><td>libmpg123.0.dylib</td><td>libmpg123.so.0</td><td>mpg123.dll</td><td>MP3 decode</td></tr>
+  <tr><td>FFmpeg</td><td>libavformat.*.dylib</td><td>libavformat.so.*</td><td>avformat*.dll</td><td>demuxer</td></tr>
+  <tr><td>TagLib</td><td>libtag.2.dylib</td><td>libtag.so.2</td><td>tag.dll</td><td>metadata</td></tr>
+  <tr><td>libssh2</td><td>libssh2.1.dylib</td><td>libssh2.so.1</td><td>ssh2.dll</td><td>SFTP</td></tr>
+  <tr><td>libcurl</td><td>libcurl.4.dylib</td><td>libcurl.so.4</td><td>libcurl.dll</td><td>HTTP/HTTPS</td></tr>
+</table>
+
+<div class="warn">
+  <strong>LGPL Compliance:</strong> Qt 6 is LGPL-licensed. When distributing as a binary:
+  <ul>
+    <li>Must dynamically link Qt (NOT static link) unless you purchase a commercial Qt license</li>
+    <li>Must provide ability for user to relink with different Qt version (provide object files or use dynamic linking)</li>
+    <li>Must include Qt LGPL license text in your distribution</li>
+    <li>Our app is GPL-2.0-or-later, which is compatible with LGPL</li>
+  </ul>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="signing">12. Code Signing &amp; Notarization</h2>
+
+<h3><span class="platform-tag tag-macos">macOS</span> Code Signing + Notarization</h3>
+<pre><code># Sign with Developer ID (requires Apple Developer account, $99/year)
+codesign --deep --force --verify --verbose \
+  --sign "Developer ID Application: Your Name (TEAMID)" \
+  --options runtime \
+  --entitlements entitlements.plist \
+  Mcaster1DSPEncoder.app
+
+# Notarize with Apple (required for macOS 10.15+)
+xcrun notarytool submit Mcaster1DSPEncoder-0.8.5-arm64.dmg \
+  --apple-id your@email.com \
+  --team-id YOURTEAMID \
+  --password "@keychain:AC_PASSWORD" \
+  --wait
+
+# Staple the notarization ticket
+xcrun stapler staple Mcaster1DSPEncoder-0.8.5-arm64.dmg
+
+# entitlements.plist must include:
+#   com.apple.security.cs.allow-unsigned-executable-memory  (for FFmpeg JIT)
+#   com.apple.security.device.audio-input                   (microphone)
+#   com.apple.security.device.camera                        (webcam)
+</code></pre>
+
+<div class="info">
+<strong>Without signing:</strong> Users will see "cannot be opened because the developer
+cannot be verified." They can bypass with: right-click → Open → Open.
+Or: <code>xattr -d com.apple.quarantine Mcaster1DSPEncoder.app</code>
+</div>
+
+<h3><span class="platform-tag tag-win">Windows</span> Code Signing</h3>
+<pre><code>:: Sign with Authenticode certificate (EV cert recommended, ~$300/year)
+signtool sign /f certificate.pfx /p password /tr http://timestamp.digicert.com ^
+  /td sha256 /fd sha256 mcaster1-encoder-gui.exe
+
+:: Sign the installer too
+signtool sign /f certificate.pfx /p password /tr http://timestamp.digicert.com ^
+  /td sha256 /fd sha256 Mcaster1DSPEncoder-0.8.5-setup.exe
+</code></pre>
+
+<h3><span class="platform-tag tag-linux">Linux</span></h3>
+<p>Linux apps are typically not code-signed. Package signing (GPG-signed .deb/.rpm repos) provides integrity verification.</p>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="ci-cd">13. CI/CD Pipeline (GitHub Actions)</h2>
+
+<pre><code># .github/workflows/build.yml
+name: Build All Platforms
+on: [push, pull_request]
+
+jobs:
+  build-macos:
+    runs-on: macos-14  # Apple Silicon runner
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: brew install qt@6 portaudio libyaml lame libvorbis flac opus opusenc fdk-aac mpg123 ffmpeg taglib libssh2
+      - name: Build
+        run: |
+          bash autogen.sh
+          ./configure --enable-macos-gui
+          make -C src/macos -j$(sysctl -n hw.ncpu)
+      - name: Create DMG
+        run: |
+          make -C src/macos app-bundle
+          # ... macdeployqt + create-dmg steps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: src/macos/Mcaster1DSPEncoder-*.dmg
+
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: bash install-deps.sh
+      - name: Build
+        run: |
+          bash autogen.sh
+          ./configure --enable-macos-gui
+          make -C src/macos -j$(nproc)
+      - name: Create AppImage
+        run: |
+          # ... linuxdeployqt steps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: Mcaster1_DSP_Encoder-*.AppImage
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.0'
+          arch: 'win64_msvc2022_64'
+      - name: Install vcpkg deps
+        run: |
+          vcpkg install portaudio:x64-windows libyaml:x64-windows ...
+      - name: Build
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_PREFIX_PATH=$env:Qt6_DIR
+          cmake --build . --config Release -j$env:NUMBER_OF_PROCESSORS
+      - name: Package
+        run: |
+          windeployqt.exe --release build\Release\mcaster1-encoder-gui.exe
+          # ... NSIS or zip steps
+</code></pre>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="qt-essentials">14. Qt 6 Essentials Cheat Sheet</h2>
+
+<h3>Qt Build Tools</h3>
+<table>
+  <tr><th>Tool</th><th>Purpose</th><th>When It Runs</th></tr>
+  <tr>
+    <td><code>moc</code></td>
+    <td>Meta-Object Compiler — generates signal/slot dispatch code from <code>Q_OBJECT</code> classes</td>
+    <td>Every header with <code>Q_OBJECT</code> macro → produces <code>moc_filename.cpp</code></td>
+  </tr>
+  <tr>
+    <td><code>rcc</code></td>
+    <td>Resource Compiler — embeds icons, stylesheets, images into the binary</td>
+    <td>Compiles <code>.qrc</code> XML → produces <code>qrc_name.cpp</code></td>
+  </tr>
+  <tr>
+    <td><code>uic</code></td>
+    <td>UI Compiler — converts Qt Designer <code>.ui</code> files to C++ headers</td>
+    <td>We don't use <code>.ui</code> files — we build UI in C++ code</td>
+  </tr>
+  <tr>
+    <td><code>macdeployqt</code></td>
+    <td>Copies Qt frameworks into .app bundle, rewrites library paths</td>
+    <td>macOS deployment only</td>
+  </tr>
+  <tr>
+    <td><code>windeployqt</code></td>
+    <td>Copies Qt DLLs + plugins next to .exe</td>
+    <td>Windows deployment only</td>
+  </tr>
+</table>
+
+<h3>Key Qt 6 Concepts</h3>
+
+<h4>Signals &amp; Slots (Qt's event system)</h4>
+<pre><code>// Define signal in header (Q_SIGNALS section):
+Q_SIGNALS:
+    void codecChanged(EncoderConfig::Codec codec);
+
+// Define slot in header:
+private Q_SLOTS:
+    void onCodecChanged(int index);
+
+// Connect signal to slot (type-safe):
+connect(combo_codec_, QOverload&lt;int&gt;::of(&amp;QComboBox::currentIndexChanged),
+        this, &amp;BasicSettingsTab::onCodecChanged);
+
+// Connect with lambda:
+connect(btn, &amp;QPushButton::clicked, this, [this]() {
+    doSomething();
+});
+</code></pre>
+
+<h4>Q_OBJECT Macro (required for signals/slots)</h4>
+<pre><code>class MyWidget : public QWidget {
+    Q_OBJECT   // MUST be first line after opening brace
+               // Triggers MOC to generate moc_mywidget.cpp
+public:
+    explicit MyWidget(QWidget *parent = nullptr);
+    // ...
+};
+</code></pre>
+
+<h4>Resource System (.qrc)</h4>
+<pre><code>&lt;!-- resources/mcaster1.qrc --&gt;
+&lt;RCC&gt;
+  &lt;qresource prefix="/"&gt;
+    &lt;file alias="icons/dsp.svg"&gt;icons/dsp.svg&lt;/file&gt;
+    &lt;file alias="styles/dark_theme.qss"&gt;styles/dark_theme.qss&lt;/file&gt;
+    &lt;file alias="images/dsp-encoder.png"&gt;images/dsp-encoder.png&lt;/file&gt;
+  &lt;/qresource&gt;
+&lt;/RCC&gt;
+
+// Access in code:
+QIcon icon(":/icons/dsp.svg");
+QPixmap px(":/images/dsp-encoder.png");
+QFile qss(":/styles/dark_theme.qss");
+</code></pre>
+
+<h4>Qt Widgets Layout System</h4>
+<pre><code>// Layouts manage widget geometry automatically
+auto *vbox = new QVBoxLayout(parent);   // vertical stack
+auto *hbox = new QHBoxLayout;           // horizontal row
+auto *grid = new QGridLayout;           // grid
+auto *form = new QFormLayout;           // label + field pairs
+
+vbox->addWidget(combo);        // add widget
+vbox->addLayout(hbox);         // nest layout
+vbox->addStretch();            // flexible space
+vbox->addSpacing(16);          // fixed space
+vbox->setContentsMargins(8, 8, 8, 8);
+</code></pre>
+
+<h4>Common Widget Classes</h4>
+<table>
+  <tr><th>Class</th><th>Purpose</th></tr>
+  <tr><td><code>QMainWindow</code></td><td>Top-level window with menubar, toolbar, statusbar, central widget</td></tr>
+  <tr><td><code>QDialog</code></td><td>Modal or modeless dialog</td></tr>
+  <tr><td><code>QTabWidget</code></td><td>Tabbed container</td></tr>
+  <tr><td><code>QGroupBox</code></td><td>Labeled group with border</td></tr>
+  <tr><td><code>QScrollArea</code></td><td>Scrollable viewport for content larger than the widget</td></tr>
+  <tr><td><code>QComboBox</code></td><td>Dropdown selector</td></tr>
+  <tr><td><code>QSpinBox</code></td><td>Integer input with up/down arrows</td></tr>
+  <tr><td><code>QLineEdit</code></td><td>Single-line text input</td></tr>
+  <tr><td><code>QCheckBox</code></td><td>Boolean toggle</td></tr>
+  <tr><td><code>QPushButton</code></td><td>Clickable button</td></tr>
+  <tr><td><code>QLabel</code></td><td>Text or image display</td></tr>
+  <tr><td><code>QSlider</code></td><td>Draggable range slider</td></tr>
+  <tr><td><code>QTableView</code></td><td>Table with model/view architecture</td></tr>
+  <tr><td><code>QSystemTrayIcon</code></td><td>System tray / menu bar extra icon</td></tr>
+</table>
+
+<h3>Qt 6 vs Qt 5 Key Differences</h3>
+<table>
+  <tr><th>Change</th><th>Qt 5</th><th>Qt 6</th></tr>
+  <tr><td>Minimum C++</td><td>C++11</td><td><strong>C++17</strong></td></tr>
+  <tr><td>Build system</td><td>qmake (default)</td><td><strong>CMake</strong> (primary), qmake deprecated</td></tr>
+  <tr><td>High-DPI</td><td>Opt-in</td><td><strong>Always on</strong> (automatic scaling)</td></tr>
+  <tr><td>QRegExp</td><td>Available</td><td><strong>Removed</strong> — use QRegularExpression</td></tr>
+  <tr><td>Graphics</td><td>OpenGL-focused</td><td><strong>RHI</strong> (Metal, Vulkan, D3D12, OpenGL)</td></tr>
+  <tr><td>Qt5Compat</td><td>n/a</td><td>Optional module for porting Qt 5 code</td></tr>
+  <tr><td>pkg-config</td><td>Qt5Core, Qt5Widgets</td><td><strong>Qt6Core, Qt6Widgets</strong></td></tr>
+</table>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="gotchas">15. Common Gotchas &amp; Troubleshooting</h2>
+
+<div class="card">
+<h4>1. MOC not finding Q_OBJECT</h4>
+<p>If signals/slots don't work, the class likely wasn't MOC-processed. Ensure:</p>
+<ul>
+  <li>Header has <code>Q_OBJECT</code> as the first macro inside the class</li>
+  <li>Makefile.am has the header listed in <code>MOC_INPUTS</code></li>
+  <li>Corresponding <code>moc_filename.cpp</code> is in <code>MOC_GENERATED</code></li>
+  <li>Explicit MOC rule exists: <code>moc_foo.cpp: $(srcdir)/foo.h</code></li>
+</ul>
+
+<h4>2. "Plugin platform 'cocoa' not found" / "Could not find the Qt platform plugin"</h4>
+<p>Qt needs platform plugins at runtime. For development builds (not bundled), set:</p>
+<pre><code># macOS
+export QT_PLUGIN_PATH=/opt/homebrew/opt/qt@6/share/qt/plugins
+
+# Linux
+export QT_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/qt6/plugins
+
+# Or copy plugins into the binary directory:
+# platforms/libqcocoa.dylib  (macOS)
+# platforms/libqxcb.so       (Linux)
+# platforms/qwindows.dll     (Windows)
+</code></pre>
+
+<h4>3. Obj-C++ (.mm) files must not have @interface inside C++ namespace</h4>
+<pre><code>// WRONG — linker error:
+namespace mc1 {
+@interface Foo : NSObject  // Obj-C inside C++ namespace = broken
+@end
+}
+
+// CORRECT — Obj-C at file scope:
+@interface Foo : NSObject
+@end
+
+namespace mc1 {
+  // C++ code that calls Foo
+}
+</code></pre>
+
+<h4>4. MOC flags must NOT include -fPIC</h4>
+<p>MOC interprets <code>-f</code> as "force include" and tries to include <code>PIC</code> as a header.
+Use separate <code>MOC_CPPFLAGS</code> without <code>-fPIC</code>.</p>
+
+<h4>5. Qt on Linux needs OpenGL development headers</h4>
+<pre><code># Without this, Qt6Gui fails to link
+sudo apt install libgl1-mesa-dev    # Debian/Ubuntu
+sudo dnf install mesa-libGL-devel   # Fedora
+</code></pre>
+
+<h4>6. Windows: MSVC vs MinGW must match Qt build</h4>
+<p>If you installed "Qt 6.8 MSVC 2022 64-bit", you MUST build with MSVC 2022.
+If you installed "Qt 6.8 MinGW 64-bit", you MUST build with the matching MinGW.
+Mixing them causes linker errors.</p>
+
+<h4>7. macOS: Universal binary (ARM64 + x86_64)</h4>
+<pre><code># Build for both architectures
+cmake .. -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+# Or with autotools:
+CXXFLAGS="-arch arm64 -arch x86_64" ./configure --enable-macos-gui
+# Note: all dependencies must also be universal binaries
+</code></pre>
+
+<h4>8. Static vs Dynamic Qt linking</h4>
+<p>Dynamic linking (default) is required for LGPL compliance. Static linking requires
+a Qt commercial license ($5,500/year). Dynamic linking means shipping ~20-40 MB of
+Qt libraries with your app.</p>
+
+<h4>9. High-DPI scaling</h4>
+<p>Qt 6 enables high-DPI scaling by default. Do NOT use <code>QT_SCALE_FACTOR</code> or
+<code>AA_EnableHighDpiScaling</code> (removed in Qt 6). If UI looks wrong on Retina/4K:</p>
+<ul>
+  <li>Use <code>QPixmap::devicePixelRatio()</code> for custom painting</li>
+  <li>Use SVG icons instead of PNG (they scale perfectly)</li>
+  <li>Use layout managers, not fixed pixel positions</li>
+</ul>
+
+<h4>10. Thread safety with Qt signals</h4>
+<p>Signals emitted from non-GUI threads must use <code>Qt::QueuedConnection</code> to safely
+update GUI widgets on the main thread:</p>
+<pre><code>// From audio thread → GUI thread:
+connect(pipeline, &amp;AudioPipeline::levelChanged,
+        vu_meter_, &amp;VuMeterWidget::setLevel,
+        Qt::QueuedConnection);
+</code></pre>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2>Summary: Build Command per Platform</h2>
+
+<table>
+  <tr><th>Platform</th><th>Build Command</th><th>Output</th></tr>
+  <tr>
+    <td><span class="platform-tag tag-macos">macOS</span></td>
+    <td><code>./configure --enable-macos-gui && make -C src/macos -j$(sysctl -n hw.ncpu)</code></td>
+    <td><code>src/macos/mcaster1-encoder-gui</code></td>
+  </tr>
+  <tr>
+    <td><span class="platform-tag tag-linux">Linux</span></td>
+    <td><code>./configure --enable-macos-gui && make -C src/macos -j$(nproc)</code></td>
+    <td><code>src/macos/mcaster1-encoder-gui</code></td>
+  </tr>
+  <tr>
+    <td><span class="platform-tag tag-win">Windows</span></td>
+    <td><code>cmake .. -DCMAKE_PREFIX_PATH=C:\Qt\6.8.0\msvc2022_64 && cmake --build . --config Release</code></td>
+    <td><code>Release\mcaster1-encoder-gui.exe</code></td>
+  </tr>
+</table>
+
+<table>
+  <tr><th>Platform</th><th>Deploy Tool</th><th>Installer Format</th></tr>
+  <tr>
+    <td><span class="platform-tag tag-macos">macOS</span></td>
+    <td><code>macdeployqt</code> + <code>install_name_tool</code></td>
+    <td>.app bundle → DMG</td>
+  </tr>
+  <tr>
+    <td><span class="platform-tag tag-linux">Linux</span></td>
+    <td><code>linuxdeployqt</code> or system packages</td>
+    <td>AppImage / .deb / .rpm</td>
+  </tr>
+  <tr>
+    <td><span class="platform-tag tag-win">Windows</span></td>
+    <td><code>windeployqt</code></td>
+    <td>NSIS .exe / WiX .msi / portable .zip</td>
+  </tr>
+</table>
+
+<footer>
+  <p>Mcaster1DSPEncoder &mdash; Qt 6 Cross-Platform Build Guide</p>
+  <p>Version 0.8.5 (Phase M8.5) &mdash; Copyright &copy; 2026 David St. John</p>
+  <p>Last updated: March 2026</p>
+</footer>
+
+</body>
+</html>
