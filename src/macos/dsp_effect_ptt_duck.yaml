@@ -1,0 +1,10 @@
+# Mcaster1 DSP Encoder — Per-Unit Effect Config
+# Auto-generated — do not edit while encoder is running
+
+unit_id: ptt_duck
+
+ptt_duck:
+  duck_level_db: -12
+  attack_ms: 5
+  release_ms: 100
+  mic_gain_db: 0

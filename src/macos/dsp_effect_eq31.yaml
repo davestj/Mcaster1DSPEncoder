@@ -1,0 +1,70 @@
+# Mcaster1 DSP Encoder — Per-Unit Effect Config
+# Auto-generated — do not edit while encoder is running
+
+unit_id: eq31
+preset: "flat"
+
+eq31:
+  linked: true
+  gain_l_0: 0
+  gain_r_0: 0
+  gain_l_1: 0
+  gain_r_1: 0
+  gain_l_2: 0
+  gain_r_2: 0
+  gain_l_3: 0
+  gain_r_3: 0
+  gain_l_4: 0
+  gain_r_4: 0
+  gain_l_5: 0
+  gain_r_5: 0
+  gain_l_6: 0
+  gain_r_6: 0
+  gain_l_7: 0
+  gain_r_7: 0
+  gain_l_8: 0
+  gain_r_8: 0
+  gain_l_9: 0
+  gain_r_9: 0
+  gain_l_10: 0
+  gain_r_10: 0
+  gain_l_11: 0
+  gain_r_11: 0
+  gain_l_12: 0
+  gain_r_12: 0
+  gain_l_13: 0
+  gain_r_13: 0
+  gain_l_14: 0
+  gain_r_14: 0
+  gain_l_15: 0
+  gain_r_15: 0
+  gain_l_16: 0
+  gain_r_16: 0
+  gain_l_17: 0
+  gain_r_17: 0
+  gain_l_18: 0
+  gain_r_18: 0
+  gain_l_19: 0
+  gain_r_19: 0
+  gain_l_20: 0
+  gain_r_20: 0
+  gain_l_21: 0
+  gain_r_21: 0
+  gain_l_22: 0
+  gain_r_22: 0
+  gain_l_23: 0
+  gain_r_23: 0
+  gain_l_24: 0
+  gain_r_24: 0
+  gain_l_25: 0
+  gain_r_25: 0
+  gain_l_26: 0
+  gain_r_26: 0
+  gain_l_27: 0
+  gain_r_27: 0
+  gain_l_28: 0
+  gain_r_28: 0
+  gain_l_29: 0
+  gain_r_29: 0
+  gain_l_30: 0
+  gain_r_30: 0

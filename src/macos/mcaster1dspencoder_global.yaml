@@ -1,0 +1,20 @@
+# Mcaster1 DSP Encoder — Global Settings
+# Auto-generated — do not edit while encoder is running
+
+global:
+  audio_device_index: -1
+  audio_device_uid: "com.rogueamoeba.Loopback:D843FC05-223C-4202-8EB9-5CB849C5828D"
+  video_device_index: 0
+  window_x: 1
+  window_y: 63
+  window_width: 1350
+  window_height: 763
+  window_maximized: true
+  theme: 0
+  log_level: 4
+  log_dir: ""
+  dnas_poll_sec: 15
+  auto_start: false
+  tray_on_close: true
+  playlist_dir: ""
+  archive_dir: ""

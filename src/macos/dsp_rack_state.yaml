@@ -1,0 +1,9 @@
+# Mcaster1 DSP Encoder — Rack Enable State
+# Auto-generated — do not edit while encoder is running
+
+eq10_enabled: true
+eq31_enabled: false
+sonic_enabled: true
+ptt_duck_enabled: false
+agc_enabled: false
+dbx_voice_enabled: false

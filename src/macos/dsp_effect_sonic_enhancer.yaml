@@ -1,0 +1,10 @@
+# Mcaster1 DSP Encoder — Per-Unit Effect Config
+# Auto-generated — do not edit while encoder is running
+
+unit_id: sonic_enhancer
+preset: "flat"
+
+sonic:
+  lo_contour: 7
+  process: 7
+  output_gain: 1.5
