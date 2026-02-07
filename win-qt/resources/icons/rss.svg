@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#ff8800" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- RSS dot -->
+  <circle cx="5" cy="19" r="2" fill="#ff8800"/>
+  <!-- Inner arc -->
+  <path d="M3 13a6 6 0 0 1 8 8" fill="none"/>
+  <!-- Outer arc -->
+  <path d="M3 7a12 12 0 0 1 14 14" fill="none"/>
+</svg>

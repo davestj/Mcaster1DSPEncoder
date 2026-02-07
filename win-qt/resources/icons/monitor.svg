@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- TV/monitor body -->
+  <rect x="2" y="3" width="20" height="14" rx="2"/>
+  <!-- Signal wave inside -->
+  <path d="M6 10Q8 6 10 10Q12 14 14 10Q16 6 18 10" stroke-width="1.5"/>
+  <!-- Monitor stand -->
+  <line x1="12" y1="17" x2="12" y2="20"/>
+  <line x1="7" y1="20" x2="17" y2="20"/>
+  <!-- Small antenna/dot indicator -->
+  <circle cx="12" cy="5.5" r="0.8" fill="#00d4aa"/>
+</svg>

@@ -1,0 +1,39 @@
+1
+00:00:01,000 --> 00:00:05,000
+Welcome to Mcaster1 DSP Encoder
+
+2
+00:00:06,000 --> 00:00:10,000
+Broadcasting live with professional video effects
+
+3
+00:00:11,000 --> 00:00:15,000
+Real-time color correction and filters
+
+4
+00:00:16,000 --> 00:00:20,000
+Chroma key for green screen compositing
+
+5
+00:00:22,000 --> 00:00:27,000
+Add text overlays and logo watermarks
+
+6
+00:00:28,000 --> 00:00:33,000
+News ticker scrolling across the bottom
+
+7
+00:00:35,000 --> 00:00:40,000
+Lower-third graphics for professional broadcasts
+
+8
+00:00:42,000 --> 00:00:48,000
+SRT subtitle injection from standard files
+
+9
+00:00:50,000 --> 00:01:00,000
+Hardware H.264 encoding via VideoToolbox
+
+10
+00:01:05,000 --> 00:02:00,000
+Mcaster1 DSP Encoder - Professional Broadcasting

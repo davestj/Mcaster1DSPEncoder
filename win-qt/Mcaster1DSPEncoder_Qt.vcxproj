@@ -1,0 +1,589 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- ================================================================== -->
+  <!-- Mcaster1DSPEncoder_Qt — Windows Qt 6 Build                         -->
+  <!-- Visual Studio 2022 (v143) | C++17 | x64 only                       -->
+  <!-- ================================================================== -->
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}</ProjectGuid>
+    <RootNamespace>Mcaster1DSPEncoderQt</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Mcaster1DSPEncoder_Qt</ProjectName>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!-- ================================================================== -->
+  <!-- Configuration Properties                                            -->
+  <!-- ================================================================== -->
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+  <!-- ================================================================== -->
+  <!-- Output Directories                                                  -->
+  <!-- ================================================================== -->
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)build\win-qt\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build\win-qt\obj\$(Configuration)\</IntDir>
+    <TargetName>Mcaster1DSPEncoder_Qt</TargetName>
+    <TargetExt>.exe</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)build\win-qt\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)build\win-qt\obj\$(Configuration)\</IntDir>
+    <TargetName>Mcaster1DSPEncoder_Qt</TargetName>
+    <TargetExt>.exe</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+
+  <!-- ================================================================== -->
+  <!-- Compiler Settings — Debug|x64                                       -->
+  <!-- ================================================================== -->
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Qt6Cored.lib;Qt6Widgetsd.lib;Qt6Guid.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- ================================================================== -->
+  <!-- Compiler Settings — Release|x64                                     -->
+  <!-- ================================================================== -->
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Qt6Core.lib;Qt6Widgets.lib;Qt6Gui.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <!-- ================================================================== -->
+  <!-- Source Files (.cpp)                                                  -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <!-- Root source files -->
+    <ClCompile Include="about_dialog.cpp" />
+    <ClCompile Include="advanced_settings_tab.cpp" />
+    <ClCompile Include="agc_settings_dialog.cpp" />
+    <ClCompile Include="app.cpp" />
+    <ClCompile Include="archive_writer.cpp" />
+    <ClCompile Include="audio_pipeline.cpp" />
+    <ClCompile Include="audio_source.cpp" />
+    <ClCompile Include="basic_settings_tab.cpp" />
+    <ClCompile Include="codec_validator.cpp" />
+    <ClCompile Include="config_dialog.cpp" />
+    <ClCompile Include="config_loader.cpp" />
+    <ClCompile Include="dbx_voice_dialog.cpp" />
+    <ClCompile Include="dnas_slot_poller.cpp" />
+    <ClCompile Include="dnas_stats.cpp" />
+    <ClCompile Include="dsp_effects_rack.cpp" />
+    <ClCompile Include="dsp_presets.cpp" />
+    <ClCompile Include="edit_metadata_dialog.cpp" />
+    <ClCompile Include="effects_rack_tab.cpp" />
+    <ClCompile Include="encoder_list_model.cpp" />
+    <ClCompile Include="encoder_presets.cpp" />
+    <ClCompile Include="encoder_slot.cpp" />
+    <ClCompile Include="encoder_type_chooser.cpp" />
+    <ClCompile Include="eq_curve_widget.cpp" />
+    <ClCompile Include="eq_graphic_dialog.cpp" />
+    <ClCompile Include="file_source.cpp" />
+    <ClCompile Include="global_config_manager.cpp" />
+    <ClCompile Include="icy22_settings_tab.cpp" />
+    <ClCompile Include="input_level_monitor.cpp" />
+    <ClCompile Include="log_viewer_dialog.cpp" />
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="main_window.cpp" />
+    <ClCompile Include="overlay_settings_dialog.cpp" />
+    <ClCompile Include="playlist_parser.cpp" />
+    <ClCompile Include="podcast_settings_tab.cpp" />
+    <ClCompile Include="preferences_dialog.cpp" />
+    <ClCompile Include="preset_browser_dialog.cpp" />
+    <ClCompile Include="profile_manager.cpp" />
+    <ClCompile Include="sonic_enhancer_dialog.cpp" />
+    <ClCompile Include="stream_client.cpp" />
+    <ClCompile Include="video_effects_panel.cpp" />
+    <ClCompile Include="vu_meter_widget.cpp" />
+    <ClCompile Include="yp_settings_tab.cpp" />
+
+    <!-- Windows platform files (replacements for macOS .mm files) -->
+    <ClCompile Include="platform_windows.cpp" />
+    <ClCompile Include="audio_capture_windows.cpp" />
+
+    <!-- DSP source files -->
+    <ClCompile Include="dsp\agc.cpp" />
+    <ClCompile Include="dsp\crossfader.cpp" />
+    <ClCompile Include="dsp\dbx_voice.cpp" />
+    <ClCompile Include="dsp\dsp_chain.cpp" />
+    <ClCompile Include="dsp\eq.cpp" />
+    <ClCompile Include="dsp\eq31.cpp" />
+    <ClCompile Include="dsp\ptt_duck.cpp" />
+    <ClCompile Include="dsp\sonic_enhancer.cpp" />
+
+    <!-- Video source files -->
+    <ClCompile Include="video\amf0.cpp" />
+    <ClCompile Include="video\broadcast_monitor_window.cpp" />
+    <ClCompile Include="video\camera_preview_widget.cpp" />
+    <ClCompile Include="video\camera_preview_window.cpp" />
+    <ClCompile Include="video\flv_muxer.cpp" />
+    <ClCompile Include="video\hls_segmenter.cpp" />
+    <ClCompile Include="video\image_source.cpp" />
+    <ClCompile Include="video\live_video_studio.cpp" />
+    <ClCompile Include="video\overlay_renderer.cpp" />
+    <ClCompile Include="video\rtmp_client.cpp" />
+    <ClCompile Include="video\stream_target_editor.cpp" />
+    <ClCompile Include="video\transition_engine.cpp" />
+    <ClCompile Include="video\video_effects.cpp" />
+    <ClCompile Include="video\video_stream_pipeline.cpp" />
+    <ClCompile Include="video\vpx_encoder.cpp" />
+    <ClCompile Include="video\webm_muxer.cpp" />
+
+    <!-- Windows video platform files (replacements for macOS .mm files) -->
+    <ClCompile Include="video\video_capture_windows.cpp" />
+    <ClCompile Include="video\video_encoder_windows.cpp" />
+    <ClCompile Include="video\screen_capture_windows.cpp" />
+    <ClCompile Include="video\video_file_source_windows.cpp" />
+
+    <!-- Podcast source files -->
+    <ClCompile Include="podcast\http_client.cpp" />
+    <ClCompile Include="podcast\podcast_publisher.cpp" />
+    <ClCompile Include="podcast\rss_generator.cpp" />
+    <ClCompile Include="podcast\sftp_uploader.cpp" />
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- Header Files (.h)                                                   -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <!-- Root header files -->
+    <ClInclude Include="about_dialog.h" />
+    <ClInclude Include="advanced_settings_tab.h" />
+    <ClInclude Include="agc_settings_dialog.h" />
+    <ClInclude Include="app.h" />
+    <ClInclude Include="archive_writer.h" />
+    <ClInclude Include="audio_pipeline.h" />
+    <ClInclude Include="audio_source.h" />
+    <ClInclude Include="basic_settings_tab.h" />
+    <ClInclude Include="codec_validator.h" />
+    <ClInclude Include="config_dialog.h" />
+    <ClInclude Include="config_loader.h" />
+    <ClInclude Include="config_types.h" />
+    <ClInclude Include="dbx_voice_dialog.h" />
+    <ClInclude Include="dnas_slot_poller.h" />
+    <ClInclude Include="dnas_stats.h" />
+    <ClInclude Include="dsp_effects_rack.h" />
+    <ClInclude Include="dsp_presets.h" />
+    <ClInclude Include="edit_metadata_dialog.h" />
+    <ClInclude Include="effects_rack_tab.h" />
+    <ClInclude Include="encoder_list_model.h" />
+    <ClInclude Include="encoder_presets.h" />
+    <ClInclude Include="encoder_slot.h" />
+    <ClInclude Include="encoder_type_chooser.h" />
+    <ClInclude Include="eq_curve_widget.h" />
+    <ClInclude Include="eq_graphic_dialog.h" />
+    <ClInclude Include="file_source.h" />
+    <ClInclude Include="global_config_manager.h" />
+    <ClInclude Include="icy22_settings_tab.h" />
+    <ClInclude Include="input_level_monitor.h" />
+    <ClInclude Include="log_viewer_dialog.h" />
+    <ClInclude Include="main_window.h" />
+    <ClInclude Include="overlay_settings_dialog.h" />
+    <ClInclude Include="playlist_parser.h" />
+    <ClInclude Include="podcast_settings_tab.h" />
+    <ClInclude Include="preferences_dialog.h" />
+    <ClInclude Include="preset_browser_dialog.h" />
+    <ClInclude Include="profile_manager.h" />
+    <ClInclude Include="sonic_enhancer_dialog.h" />
+    <ClInclude Include="stream_client.h" />
+    <ClInclude Include="video_effects_panel.h" />
+    <ClInclude Include="vu_meter_widget.h" />
+    <ClInclude Include="yp_settings_tab.h" />
+
+    <!-- Windows platform headers -->
+    <ClInclude Include="platform_windows.h" />
+    <ClInclude Include="audio_capture_windows.h" />
+
+    <!-- DSP header files -->
+    <ClInclude Include="dsp\agc.h" />
+    <ClInclude Include="dsp\crossfader.h" />
+    <ClInclude Include="dsp\dbx_voice.h" />
+    <ClInclude Include="dsp\dsp_chain.h" />
+    <ClInclude Include="dsp\eq.h" />
+    <ClInclude Include="dsp\eq31.h" />
+    <ClInclude Include="dsp\ptt_duck.h" />
+    <ClInclude Include="dsp\sonic_enhancer.h" />
+
+    <!-- Video header files -->
+    <ClInclude Include="video\amf0.h" />
+    <ClInclude Include="video\broadcast_monitor_window.h" />
+    <ClInclude Include="video\camera_preview_widget.h" />
+    <ClInclude Include="video\camera_preview_window.h" />
+    <ClInclude Include="video\flv_muxer.h" />
+    <ClInclude Include="video\hls_segmenter.h" />
+    <ClInclude Include="video\image_source.h" />
+    <ClInclude Include="video\live_video_studio.h" />
+    <ClInclude Include="video\overlay_renderer.h" />
+    <ClInclude Include="video\rtmp_client.h" />
+    <ClInclude Include="video\screen_capture_source.h" />
+    <ClInclude Include="video\stream_target_editor.h" />
+    <ClInclude Include="video\transition_engine.h" />
+    <ClInclude Include="video\video_effects.h" />
+    <ClInclude Include="video\video_encoder.h" />
+    <ClInclude Include="video\video_file_source.h" />
+    <ClInclude Include="video\video_source.h" />
+    <ClInclude Include="video\video_stream_pipeline.h" />
+    <ClInclude Include="video\vpx_encoder.h" />
+    <ClInclude Include="video\webm_muxer.h" />
+
+    <!-- Windows video platform headers -->
+    <ClInclude Include="video\video_capture_windows.h" />
+    <ClInclude Include="video\video_encoder_windows.h" />
+    <ClInclude Include="video\screen_capture_windows.h" />
+    <ClInclude Include="video\video_file_source_windows.h" />
+
+    <!-- Podcast header files -->
+    <ClInclude Include="podcast\http_client.h" />
+    <ClInclude Include="podcast\podcast_publisher.h" />
+    <ClInclude Include="podcast\rss_generator.h" />
+    <ClInclude Include="podcast\sftp_uploader.h" />
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- Qt MOC — Custom Build Tool for Q_OBJECT Headers                     -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <!-- Root Q_OBJECT headers -->
+    <CustomBuild Include="about_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC about_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="advanced_settings_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC advanced_settings_tab.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="agc_settings_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC agc_settings_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="app.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC app.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="basic_settings_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC basic_settings_tab.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="config_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC config_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="dbx_voice_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC dbx_voice_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="dsp_effects_rack.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC dsp_effects_rack.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="edit_metadata_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC edit_metadata_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="effects_rack_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC effects_rack_tab.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="encoder_list_model.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC encoder_list_model.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="encoder_type_chooser.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC encoder_type_chooser.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="eq_curve_widget.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC eq_curve_widget.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="eq_graphic_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC eq_graphic_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="icy22_settings_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC icy22_settings_tab.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="log_viewer_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC log_viewer_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="main_window.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC main_window.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="overlay_settings_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC overlay_settings_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="podcast_settings_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC podcast_settings_tab.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="preferences_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC preferences_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="preset_browser_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC preset_browser_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="sonic_enhancer_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC sonic_enhancer_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video_effects_panel.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC video_effects_panel.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="vu_meter_widget.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC vu_meter_widget.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="yp_settings_tab.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC yp_settings_tab.h</Message>
+    </CustomBuild>
+
+    <!-- Video Q_OBJECT headers -->
+    <CustomBuild Include="video\broadcast_monitor_window.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC broadcast_monitor_window.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video\camera_preview_widget.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC camera_preview_widget.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video\camera_preview_window.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC camera_preview_window.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video\live_video_studio.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC live_video_studio.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video\stream_target_editor.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC stream_target_editor.h</Message>
+    </CustomBuild>
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- Qt RCC — Resource Compiler                                          -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <CustomBuild Include="resources\mcaster1.qrc">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\rcc.exe --name mcaster1 "%(FullPath)" -o "$(IntDir)\qrc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\qrc_%(Filename).cpp</Outputs>
+      <Message>RCC mcaster1.qrc</Message>
+    </CustomBuild>
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- MOC + RCC Generated Sources (compiled into the binary)              -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <!-- Root MOC outputs -->
+    <ClCompile Include="$(IntDir)\moc_about_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_advanced_settings_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_agc_settings_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_app.cpp" />
+    <ClCompile Include="$(IntDir)\moc_basic_settings_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_config_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_dbx_voice_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_dsp_effects_rack.cpp" />
+    <ClCompile Include="$(IntDir)\moc_edit_metadata_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_effects_rack_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_encoder_list_model.cpp" />
+    <ClCompile Include="$(IntDir)\moc_encoder_type_chooser.cpp" />
+    <ClCompile Include="$(IntDir)\moc_eq_curve_widget.cpp" />
+    <ClCompile Include="$(IntDir)\moc_eq_graphic_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_icy22_settings_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_log_viewer_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_main_window.cpp" />
+    <ClCompile Include="$(IntDir)\moc_overlay_settings_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_podcast_settings_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_preferences_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_preset_browser_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_sonic_enhancer_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_video_effects_panel.cpp" />
+    <ClCompile Include="$(IntDir)\moc_vu_meter_widget.cpp" />
+    <ClCompile Include="$(IntDir)\moc_yp_settings_tab.cpp" />
+
+    <!-- Video MOC outputs -->
+    <ClCompile Include="$(IntDir)\moc_broadcast_monitor_window.cpp" />
+    <ClCompile Include="$(IntDir)\moc_camera_preview_widget.cpp" />
+    <ClCompile Include="$(IntDir)\moc_camera_preview_window.cpp" />
+    <ClCompile Include="$(IntDir)\moc_live_video_studio.cpp" />
+    <ClCompile Include="$(IntDir)\moc_stream_target_editor.cpp" />
+
+    <!-- RCC output -->
+    <ClCompile Include="$(IntDir)\qrc_mcaster1.cpp" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
