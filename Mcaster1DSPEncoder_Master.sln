@@ -25,6 +25,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Qt Build", "Qt Build", "{D1
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Mcaster1DSPEncoder_Qt", "win-qt\Mcaster1DSPEncoder_Qt.vcxproj", "{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Mcaster1AMP Plugins", "Mcaster1AMP Plugins", "{E5F6A7B8-C9D0-1234-5678-901234ABCDEF}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mcaster1amp_plugin", "src\mcaster1amp_plugin\mcaster1amp_plugin.vcxproj", "{C3D4E5F6-A7B8-9012-CDEF-012345678901}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -87,6 +91,12 @@ Global
 		{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}.Release|Win32.ActiveCfg = Release|x64
 		{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}.Release|x64.ActiveCfg = Release|x64
 		{A1B2C3D4-E5F6-7890-ABCD-EF0123456789}.Release|x64.Build.0 = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Debug|Win32.ActiveCfg = Debug|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Debug|x64.ActiveCfg = Debug|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Debug|x64.Build.0 = Debug|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Release|Win32.ActiveCfg = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Release|x64.ActiveCfg = Release|x64
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -97,6 +107,7 @@ Global
 		{E8091321-D79D-4575-86EF-064EA1A4A20D} = {A3B4C5D6-E7F8-9012-3456-7890ABCDEF12}
 		{EBFFFB4E-261D-44D3-B89C-957B31A0BF9C} = {A3B4C5D6-E7F8-9012-3456-7890ABCDEF12}
 		{A1B2C3D4-E5F6-7890-ABCD-EF0123456789} = {D1E2F3A4-B5C6-7890-1234-567890ABCDEF}
+		{C3D4E5F6-A7B8-9012-CDEF-012345678901} = {E5F6A7B8-C9D0-1234-5678-901234ABCDEF}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B1C2D3E4-F5A6-7890-BCDE-F01234567890}

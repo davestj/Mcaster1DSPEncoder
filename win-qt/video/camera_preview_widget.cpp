@@ -39,8 +39,12 @@ CameraPreviewWidget::CameraPreviewWidget(QWidget *parent)
 void CameraPreviewWidget::pushFrame(const uint8_t* bgra_data, int width,
                                       int height, int stride)
 {
-    /* Copy frame data into QImage — thread-safe via mutex */
-    QImage img(width, height, QImage::Format_ARGB32);
+    /* Copy frame data into QImage — thread-safe via mutex.
+     * MFVideoFormat_RGB32 outputs BGRA with alpha=0x00.
+     * Format_RGB32 ignores alpha (always opaque); Format_ARGB32
+     * would honour the 0x00 alpha and produce a transparent image.
+     * Bottom-up frames are already flipped to top-down by capture_loop. */
+    QImage img(width, height, QImage::Format_RGB32);
 
     for (int row = 0; row < height; ++row) {
         const uint8_t *src = bgra_data + row * stride;

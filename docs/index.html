@@ -424,7 +424,7 @@
 <!-- ── Top bar ── -->
 <header class="top-bar">
   <div class="logo">Mcaster1<span>DSPEncoder</span></div>
-  <div class="version-pill">v1.4.0</div>
+  <div class="version-pill">v1.4.0 · Win-Qt v1.2.5</div>
   <nav class="top-bar-right">
     <a href="../README-LINUX.md" target="_blank">README-LINUX.md</a>
     <a href="../CLAUDE.md" target="_blank">CLAUDE.md</a>
@@ -475,7 +475,19 @@
   <div class="nav-section">Reference</div>
   <a class="nav-item" href="#gotchas">Known Gotchas</a>
   <a class="nav-item" href="#e2e">E2E Test Flow</a>
-  <a class="nav-item" href="#windows">Windows Notes</a>
+
+  <div class="nav-section">Windows Qt Build</div>
+  <a class="nav-item" href="#winqt-overview">Win-Qt Overview</a>
+  <a class="nav-item" href="#winqt-phases">Win-Qt Phase Status</a>
+  <a class="nav-item" href="#winqt-build">Build &amp; Deploy</a>
+  <a class="nav-sub" href="#winqt-prerequisites">Prerequisites</a>
+  <a class="nav-sub" href="#winqt-buildinstr">Build Instructions</a>
+  <a class="nav-sub" href="#winqt-deploy">DLL Deploy (mandatory)</a>
+  <a class="nav-item" href="#winqt-features">Features</a>
+  <a class="nav-sub" href="#winqt-preview-studio">Preview Audio Studio</a>
+  <a class="nav-sub" href="#winqt-icy">ICY1/ICY2.2 Protocol</a>
+  <a class="nav-sub" href="#winqt-dsp">DSP Chain</a>
+  <a class="nav-item" href="#winqt-gotchas">Win-Qt Gotchas</a>
 
 </aside>
 
@@ -492,14 +504,15 @@
   <!-- Hero -->
   <div class="hero">
     <h1>Mcaster1<span>DSP</span>Encoder</h1>
-    <p>A dual-platform broadcast DSP encoder with embedded HTTP/HTTPS admin server,
-       full PHP web UI, DSP audio chain, and live streaming to Icecast2 / Mcaster1DNAS.</p>
+    <p>A triple-platform broadcast DSP encoder with embedded HTTP/HTTPS admin server,
+       full PHP web UI, DSP audio chain, live streaming to Icecast2 / Mcaster1DNAS,
+       and a native Qt 6 GUI for Windows &amp; macOS.</p>
     <div class="hero-meta">
-      <div class="hero-meta-item">Version <span>v1.4.0</span></div>
-      <div class="hero-meta-item">Platform <span>Linux / Windows</span></div>
-      <div class="hero-meta-item">Build <span>Phase L5 Complete</span></div>
+      <div class="hero-meta-item">Linux Build <span>v1.4.0 · L5 Complete</span></div>
+      <div class="hero-meta-item">Win-Qt Build <span>v1.2.5 · Phase W1.2.5</span></div>
+      <div class="hero-meta-item">Platforms <span>Linux · Windows · macOS</span></div>
       <div class="hero-meta-item">Maintainer <span>Dave St. John</span></div>
-      <div class="hero-meta-item">Updated <span>Feb 2026</span></div>
+      <div class="hero-meta-item">Updated <span>Mar 2026</span></div>
     </div>
   </div>
 
@@ -655,7 +668,6 @@ Browser ──► C++ server  ──► [mc1session valid?]
         <div class="phase-meta">
           <strong>Phase L5 — Full PHP Frontend + Logging System</strong><span class="phase-version">v1.4.0</span>
           <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
-          <span class="badge badge-new" style="margin-left:.25rem">Latest</span>
           <br>6 PHP pages, 5 JSON APIs, two-layer auth bridge, C++ + PHP logging, logrotate, Chart.js
         </div>
       </li>
@@ -665,6 +677,59 @@ Browser ──► C++ server  ──► [mc1session valid?]
           <strong>Phase L6 — Analytics + Listener Metrics</strong><span class="phase-version">v1.5.0</span>
           <span class="badge badge-planned" style="margin-left:.5rem">Planned</span>
           <br>Extended metrics schema, GeoIP, per-track retention, engagement score, Pulse AI feedback
+        </div>
+      </li>
+    </ul>
+
+    <h3 style="margin-top:2rem;color:var(--text-muted)">Windows Qt Build Phases <span style="font-size:.75rem;font-weight:400;color:var(--text-dim)">(branch: winqt-dev · source: win-qt/)</span></h3>
+    <ul class="phase-list" style="margin-top:.75rem">
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase W0.1–W1.1 — Qt 6 Port Foundation</strong><span class="phase-version">v1.1.5</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>Main window, encoder list model, VU meter, tray icon, config dialogs (4 tabs),
+          DSP chain (10-band EQ, AGC, crossfader, 31-band EQ, Sonic Enhancer, DBX Voice, PTT ducking),
+          PortAudio device enumeration, stream client, YAML config, presets, log viewer,
+          video pipeline (RTMP/HLS/WebM), DNAS slot poller, ICY2.2 settings tab
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase W1.2 — Preview Audio Studio + ICY2.2 Stream Monitor</strong><span class="phase-version">v1.2.0</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <br>Preview Audio Studio dialog, PortAudio passthrough (mic/line → output device),
+          encoder slot PCM eavesdrop tap, live stream monitor (QMediaPlayer + IcyStreamReader),
+          full ICY1/ICY2.2 protocol parser (all icy2-* social/extended headers),
+          mini player controls (▶/⏸/■), Protocol Log tab, ICY Metadata tab,
+          Icecast2 JSON stats polling, feedback loop detection, USB audio interface scan,
+          Sleep→IDLE config fix, deploy_release.ps1 DLL automation
+        </div>
+      </li>
+      <li class="phase-item done">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase W1.2.5 — Metadata Persistence, PTT Quality, Save-on-Exit</strong><span class="phase-version">v1.2.5</span>
+          <span class="badge badge-complete" style="margin-left:.5rem">Complete</span>
+          <span class="badge badge-new" style="margin-left:.25rem">Latest</span>
+          <br>PTT mic linear-interpolation resampling (fixes garbled audio when mic Hz ≠ encoder Hz),
+          PTT Rate/Channel combos saved to global YAML,
+          global metadata settings persisted across sessions (GlobalConfig.global_metadata),
+          per-encoder metadata always written to profile YAML (survives use_global toggle),
+          metadata file browser in EditMetadataDialog (starts at C:\),
+          save-on-exit via QApplication::aboutToQuit (covers tray-quit, Ctrl+Q, all exit paths),
+          event logging system (event_log.h/cpp, MC1_INFO/WARN/ERR macros, colored Event Log tab),
+          build system standardized on build_winqt.ps1 (no .bat, guarded DLL deploy)
+        </div>
+      </li>
+      <li class="phase-item plan">
+        <div class="phase-dot"></div>
+        <div class="phase-meta">
+          <strong>Phase W1.3 — WASAPI Loopback VU + Advanced Monitoring</strong><span class="phase-version">v1.3.0</span>
+          <span class="badge badge-planned" style="margin-left:.5rem">Planned</span>
+          <br>WASAPI loopback capture for VU metering on decoded stream output,
+          stream health dashboard, bitrate graph, reconnect watchdog UI, installer/NSIS packaging
         </div>
       </li>
     </ul>
@@ -1377,42 +1442,395 @@ curl -s -c /tmp/mc1.jar -b /tmp/mc1.jar \
   http://127.0.0.1:8330/api/v1/dnas/stats | python3 -m json.tool</pre>
   </div>
 
-  <!-- ─────────────────────── WINDOWS ─────────────────────── -->
-  <div class="doc-section" id="windows">
+  <!-- ─────────────────────── WIN-QT OVERVIEW ─────────────────────── -->
+  <div class="doc-section" id="winqt-overview">
     <span class="anchor"></span>
     <div class="section-header">
       <div class="section-number">14</div>
-      <h2>Windows Dev Notes</h2>
+      <h2>Windows Qt Build — Overview</h2>
     </div>
 
-    <p>The Windows build lives in <code>src/</code> (NOT <code>src/linux/</code>).
-       Windows and Linux builds share <strong>no source code</strong>.</p>
+    <p>
+      The <strong>win-qt</strong> branch is a native Windows Qt 6 GUI application built with
+      Visual Studio 2022. It is a full port of the macOS Qt GUI, adapted for Windows
+      audio APIs and packaging. Source lives in <code>win-qt/</code> with <strong>no shared
+      code</strong> with the Linux or macOS builds.
+    </p>
 
     <div class="table-wrap">
     <table>
-      <tr><th>Aspect</th><th>Windows</th><th>Linux</th></tr>
-      <tr><td>Source root</td><td><code>src/</code></td><td><code>src/linux/</code></td></tr>
-      <tr><td>Build system</td><td>Visual Studio 2022 .sln</td><td><code>make_phase4.sh</code> (g++)</td></tr>
-      <tr><td>Audio</td><td>WASAPI / DirectSound</td><td>PortAudio (ALSA/PulseAudio/JACK)</td></tr>
-      <tr><td>Deploy</td><td>Windows service (<code>sc create</code>)</td><td>systemd service</td></tr>
-      <tr><td>Config</td><td><code>config/mcaster1.yaml</code></td><td><code>src/linux/config/*.yaml</code></td></tr>
-      <tr><td>PHP bridge</td><td>Not included</td><td>FastCGI → php-fpm</td></tr>
+      <tr><th>Aspect</th><th>Windows Qt (win-qt)</th><th>Linux CLI</th></tr>
+      <tr><td>Source root</td><td><code>win-qt/</code></td><td><code>src/linux/</code></td></tr>
+      <tr><td>Build system</td><td>VS2022 vcxproj + MSBuild</td><td>Autotools / make_phase4.sh</td></tr>
+      <tr><td>Qt version</td><td>Qt 6.9.3 msvc2022_64</td><td>—</td></tr>
+      <tr><td>Audio API</td><td>PortAudio (WASAPI/DS) via vcpkg</td><td>PortAudio (ALSA/PulseAudio/JACK)</td></tr>
+      <tr><td>Codecs</td><td>vcpkg: lame, vorbis, opus, FLAC, fdk-aac</td><td>apt/system libs</td></tr>
+      <tr><td>UI framework</td><td>Qt 6 Widgets</td><td>PHP web UI (FastCGI)</td></tr>
+      <tr><td>Network</td><td>Qt6Network + QTcpSocket</td><td>cpp-httplib v0.18</td></tr>
+      <tr><td>Multimedia</td><td>Qt6Multimedia + FFmpeg via windeployqt</td><td>libavcodec/libavformat</td></tr>
+      <tr><td>Deploy</td><td>windeployqt + deploy_release.ps1</td><td>systemd service</td></tr>
+      <tr><td>Branch</td><td><code>winqt-dev</code></td><td><code>linux-dev</code></td></tr>
     </table>
     </div>
 
+    <div class="card-grid" style="margin-top:1.5rem">
+      <div class="card-small">
+        <div class="label">Main Window</div>
+        <div class="value">Qt 6 Widgets</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Encoder list, VU meter, rec bar, tray icon, system menu</p>
+      </div>
+      <div class="card-small">
+        <div class="label">DSP Chain</div>
+        <div class="value">Full stack</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">31-band EQ, AGC, crossfader, Sonic Enhancer, DBX Voice, PTT duck</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Preview Audio Studio</div>
+        <div class="value">v1.2.0</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Passthrough monitor, slot eavesdrop, stream monitor, ICY2.2 parser</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Stream Monitor</div>
+        <div class="value">ICY1 + ICY2.2</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Live stream decode + protocol event log + metadata display</p>
+      </div>
+      <div class="card-small">
+        <div class="label">PTT Mic Quality</div>
+        <div class="value">v1.2.5</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Linear interpolation resampling — fixes garbled audio when mic Hz ≠ encoder Hz</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Metadata Persistence</div>
+        <div class="value">v1.2.5</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">Global + per-encoder metadata YAML persistence; file browser in dialog; save-on-exit</p>
+      </div>
+      <div class="card-small">
+        <div class="label">Event Logging</div>
+        <div class="value">v1.2.5</div>
+        <p style="font-size:.8rem;color:var(--text-muted);margin-top:.3rem">event_log.h/cpp — thread-safe, colored Event Log tab, MC1_INFO/WARN/ERR macros</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────────────────── WIN-QT BUILD ─────────────────────── -->
+  <div class="doc-section" id="winqt-build">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">15</div>
+      <h2>Windows Qt — Build &amp; Deploy</h2>
+    </div>
+
+    <h3 id="winqt-prerequisites">Prerequisites</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Requirement</th><th>Version / Path</th><th>Notes</th></tr>
+      <tr><td>Visual Studio 2022</td><td>v17.x, workload: C++ Desktop</td><td>MSBuild, MSVC v143 toolset</td></tr>
+      <tr><td>Qt 6.9.3</td><td><code>C:\Qt\6.9.3\msvc2022_64</code></td><td>Install via Qt Online Installer; include Qt Multimedia &amp; Qt Network</td></tr>
+      <tr><td>vcpkg (x64-windows)</td><td><code>C:\vcpkg\installed\x64-windows</code></td><td>portaudio, libmp3lame, vorbis, opus, opusenc, FLAC, fdk-aac, yaml, openssl</td></tr>
+      <tr><td>Git Bash / PowerShell</td><td>Any recent version</td><td>For running deploy_release.ps1</td></tr>
+    </table>
+    </div>
+
+    <h3 id="winqt-buildinstr" style="margin-top:1.5rem">Build Instructions</h3>
     <div class="callout callout-info">
       <div class="callout-icon">ℹ</div>
       <div>
-        <code>config/*.yaml</code> is in <code>.gitignore</code> to prevent credentials from
-        being committed. For Windows, copy from <code>config/mcaster1.yaml.example</code>.
+        <strong>Always use <code>build_winqt.ps1</code> — never use <code>.bat</code> scripts.</strong>
+        The ps1 script harvests the MSVC environment from <code>vcvars64.bat</code>, sets QTDIR,
+        runs MSBuild, and conditionally deploys Qt DLLs only when missing. It never deletes
+        existing DLLs, YAML, XML, or config files.
       </div>
     </div>
+    <pre>powershell.exe -NoProfile -ExecutionPolicy Bypass -File win-qt\build_winqt.ps1</pre>
+    <p>Output: <code>win-qt\build\win-qt\Debug\Mcaster1DSPEncoder_Qt.exe</code></p>
+    <p style="margin-top:.75rem">Qt DLLs are deployed automatically by <code>build_winqt.ps1</code>
+    on first build (when <code>Qt6Cored.dll</code> is absent). Subsequent builds skip windeployqt —
+    no manual DLL copy needed.</p>
+
+    <h3 id="winqt-deploy" style="margin-top:1.5rem">Config File Location</h3>
+    <div class="callout callout-warn">
+      <div class="callout-icon">⚠</div>
+      <div>
+        All YAML config files (encoder profiles, DSP effects, global config) are saved
+        <strong>next to the running executable</strong>. Never save to AppData or any other path.
+        Debug: <code>win-qt\build\win-qt\Debug\</code> — Release: <code>win-qt\build\win-qt\Release\</code>.
+        Copy YAML files manually when switching between Debug and Release builds.
+      </div>
+    </div>
+
+    <p><code>deploy_release.ps1</code> performs these steps automatically:</p>
+    <ol style="margin:.75rem 0 .75rem 1.5rem;line-height:2">
+      <li>Runs <code>windeployqt.exe --release</code> → copies <code>Qt6Core</code>, <code>Qt6Gui</code>,
+          <code>Qt6Widgets</code>, <code>Qt6Multimedia</code>, <code>Qt6Network</code>, <code>Qt6Pdf</code>,
+          <code>Qt6Svg</code> DLLs plus plugin subdirs:
+          <code>platforms\</code>, <code>multimedia\</code>, <code>imageformats\</code>,
+          <code>styles\</code>, <code>tls\</code>, <code>networkinformation\</code>,
+          <code>iconengines\</code>, <code>generic\</code></li>
+      <li>windeployqt also pulls in FFmpeg DLLs:
+          <code>avcodec-61</code>, <code>avformat-61</code>, <code>avutil-59</code>,
+          <code>swresample-5</code>, <code>swscale-8</code></li>
+      <li>Copies vcpkg DLLs: <code>portaudio</code>, <code>libmp3lame</code>, <code>ogg</code>,
+          <code>vorbis</code>, <code>vorbisenc</code>, <code>opus</code>, <code>opusenc</code>,
+          <code>FLAC</code>, <code>yaml</code>, <code>libcrypto-3-x64</code>, <code>libssl-3-x64</code></li>
+      <li>Copies MSVC CRT DLLs: <code>msvcp140</code>, <code>vcruntime140</code>, <code>vcruntime140_1</code></li>
+    </ol>
+  </div>
+
+  <!-- ─────────────────────── WIN-QT FEATURES ─────────────────────── -->
+  <div class="doc-section" id="winqt-features">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">16</div>
+      <h2>Windows Qt — Feature Reference</h2>
+    </div>
+
+    <!-- Preview Audio Studio -->
+    <h3 id="winqt-preview-studio">Preview Audio Studio  <span style="font-size:.75rem;font-weight:400;color:var(--text-dim)">(v1.2.0 — preview_audio_studio.h/cpp)</span></h3>
+    <p>
+      A non-modal floating tool dialog opened via the <strong>Preview Audio</strong> button in the
+      main window rec bar. Provides three independent monitoring modes:
+    </p>
+
+    <div class="table-wrap" style="margin-top:.75rem">
+    <table>
+      <tr><th>Mode</th><th>How it works</th><th>VU Meter source</th></tr>
+      <tr>
+        <td><strong>Capture Live Monitor</strong><br><small>(Passthrough)</small></td>
+        <td>PortAudio input device → SPSC ring buffer (65536 floats) → PortAudio output device.
+            Mono→stereo upmix. Feedback loop detection by device name similarity.</td>
+        <td>Peak measured in <code>paInputCb</code> on each input block</td>
+      </tr>
+      <tr>
+        <td><strong>Slot Eavesdrop</strong></td>
+        <td>Taps pre-encode PCM from any running <code>EncoderSlot</code> via
+            <code>set_pcm_tap()</code> callback. Feeds same ring buffer → output.</td>
+        <td>Peak measured from PCM tap callback</td>
+      </tr>
+      <tr>
+        <td><strong>Stream Monitor</strong></td>
+        <td><code>QMediaPlayer</code> decodes the live HTTP stream to the selected output
+            device. A separate <code>IcyStreamReader</code> TCP connection monitors the ICY
+            protocol (no audio decode). Icecast2 JSON stats polled every 8 seconds.</td>
+        <td>WASAPI loopback (planned W1.3)</td>
+      </tr>
+    </table>
+    </div>
+
+    <h4 style="margin-top:1.25rem;color:var(--teal)">Output Device Panel</h4>
+    <p>Label: <em>"Headphones, Speakers and USB Output Devices"</em>. Devices are enumerated
+       via PortAudio and categorised automatically:</p>
+    <ul style="margin:.5rem 0 .5rem 1.5rem;line-height:1.8">
+      <li><strong>USB Audio</strong> — Focusrite, Scarlett, Behringer, M-Audio, PreSonus, Steinberg, Audient, MOTU, Roland, Native Instruments, etc.</li>
+      <li><strong>Bluetooth</strong> — AirPods, A2DP, wireless headsets</li>
+      <li><strong>System</strong> — all other WASAPI/DirectSound devices</li>
+    </ul>
+    <p>The <strong>Scan USB</strong> button re-enumerates all PortAudio devices and refreshes
+       the dropdown without restarting the app.</p>
+
+    <h4 style="margin-top:1.25rem;color:var(--teal)">Mini Player Controls (Stream Monitor)</h4>
+    <p>The stream monitor section provides embedded player controls once tuned in:</p>
+    <ul style="margin:.5rem 0 .5rem 1.5rem;line-height:1.8">
+      <li><strong>Tune In / Disconnect</strong> — starts/stops both QMediaPlayer and IcyStreamReader</li>
+      <li><strong>▶ / ⏸</strong> — play/pause toggle (enabled only when tuned in)</li>
+      <li><strong>■</strong> — stop stream completely</li>
+    </ul>
+
+    <h4 style="margin-top:1.25rem;color:var(--teal)">Bottom Tab Widget</h4>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Tab</th><th>Contents</th></tr>
+      <tr>
+        <td><strong>Protocol Log</strong></td>
+        <td>Scrolling monospace event log (max 2000 lines, auto-scroll). Shows every ICY
+            header received, metadata block, connection events, errors, and player state
+            changes with <code>[HH:mm:ss]</code> timestamps. Cleared on each new tune-in.</td>
+      </tr>
+      <tr>
+        <td><strong>ICY Metadata</strong></td>
+        <td>Populated once on header receipt: ICY1 fields (name, genre, URL, description,
+            content-type, server, bitrate, metaint), all ICY2.2 extended fields, then
+            a raw "all headers" dump. StreamTitle updates are appended as timestamped
+            entries below the header block as they arrive.</td>
+      </tr>
+    </table>
+    </div>
+
+    <!-- ICY protocol section -->
+    <h3 id="winqt-icy" style="margin-top:2rem">ICY1/ICY2.2 Protocol Reader  <span style="font-size:.75rem;font-weight:400;color:var(--text-dim)">(icy_stream_reader.h/cpp)</span></h3>
+    <p>
+      <code>IcyStreamReader</code> is a QObject-based TCP client that opens an independent
+      connection to a stream URL (separate from the QMediaPlayer audio connection), sends
+      <code>Icy-MetaData: 1</code>, parses the full response header block, then tracks
+      audio-byte interleaving to extract metadata blocks (per the ICY protocol spec).
+    </p>
+
+    <h4 style="margin-top:1rem;color:var(--teal)">ICY2.2 Extended Headers Supported</h4>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Header</th><th>Field</th><th>Example</th></tr>
+      <tr><td><code>icy-name</code></td><td>Station name</td><td>Mcaster1 Rock</td></tr>
+      <tr><td><code>icy-genre</code></td><td>Genre</td><td>Classic Rock</td></tr>
+      <tr><td><code>icy-url</code></td><td>Station website URL</td><td>https://mcaster1.com</td></tr>
+      <tr><td><code>icy-description</code></td><td>Station description</td><td>—</td></tr>
+      <tr><td><code>icy-br</code> / <code>icy-bitrate</code></td><td>Bitrate kbps</td><td>128</td></tr>
+      <tr><td><code>icy-metaint</code></td><td>Metadata interval (bytes)</td><td>8192</td></tr>
+      <tr><td><code>icy-audio-info</code></td><td>Codec/rate/channel info</td><td>bitrate=128;samplerate=44100;channels=2</td></tr>
+      <tr><td><code>icy-pub</code></td><td>Public listing flag</td><td>1</td></tr>
+      <tr><td><code>icy2-twitter</code></td><td>Twitter/X handle</td><td>@mcaster1radio</td></tr>
+      <tr><td><code>icy2-facebook</code></td><td>Facebook page</td><td>mcaster1radio</td></tr>
+      <tr><td><code>icy2-instagram</code></td><td>Instagram handle</td><td>@mcaster1radio</td></tr>
+      <tr><td><code>icy2-email</code></td><td>Contact email</td><td>dj@mcaster1.com</td></tr>
+      <tr><td><code>icy2-language</code></td><td>Broadcast language (ISO 639)</td><td>en</td></tr>
+      <tr><td><code>icy2-country</code></td><td>Country code (ISO 3166)</td><td>US</td></tr>
+      <tr><td><code>icy2-timezone</code></td><td>IANA timezone</td><td>America/New_York</td></tr>
+      <tr><td><code>icy2-logo</code></td><td>Station logo URL</td><td>https://…/logo.png</td></tr>
+      <tr><td><code>icy2-irc</code></td><td>IRC channel</td><td>#mcaster1</td></tr>
+      <tr><td><code>icy2-aim</code></td><td>AIM handle</td><td>—</td></tr>
+      <tr><td><code>icy2-icq</code></td><td>ICQ number</td><td>—</td></tr>
+    </table>
+    </div>
+
+    <h4 style="margin-top:1rem;color:var(--teal)">Metadata Block Parsing</h4>
+    <p>After headers, the reader tracks audio bytes vs <code>icy-metaint</code>. At each
+       boundary, it reads a 1-byte length prefix (actual bytes = raw × 16), then the
+       metadata block. The block is parsed with a regex for <code>Key='Value';</code> pairs
+       per the ICY spec. <code>StreamTitle</code> and <code>StreamUrl</code> are extracted
+       and emitted via the <code>metaUpdated</code> signal.</p>
+
+    <h4 style="margin-top:1rem;color:var(--teal)">Signals</h4>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Signal</th><th>When emitted</th></tr>
+      <tr><td><code>connected(IcyHeaders)</code></td><td>Full header block parsed — triggers ICY Metadata tab population</td></tr>
+      <tr><td><code>metaUpdated(title, url, raw)</code></td><td>Each ICY metadata block with a StreamTitle</td></tr>
+      <tr><td><code>protocolEvent(line)</code></td><td>Every received header line, metadata block, connection event (timestamped)</td></tr>
+      <tr><td><code>disconnected()</code></td><td>TCP connection closed</td></tr>
+      <tr><td><code>streamError(msg)</code></td><td>Socket error</td></tr>
+    </table>
+    </div>
+
+    <!-- DSP -->
+    <h3 id="winqt-dsp" style="margin-top:2rem">DSP Chain</h3>
+    <p>The Windows Qt build implements the full DSP stack from the macOS port:</p>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Component</th><th>Source file</th><th>Description</th></tr>
+      <tr><td>10-band Parametric EQ</td><td><code>dsp/eq.cpp</code></td><td>RBJ biquad IIR, named presets (classic rock, country, modern rock, …)</td></tr>
+      <tr><td>31-band Graphic EQ</td><td><code>dsp/eq31.cpp</code></td><td>ISO 1/3-octave bands, 20 Hz – 20 kHz</td></tr>
+      <tr><td>AGC / Compressor / Limiter</td><td><code>dsp/agc.cpp</code></td><td>Attack/release/threshold/ratio, hard limiter at 0 dBFS</td></tr>
+      <tr><td>Equal-Power Crossfader</td><td><code>dsp/crossfader.cpp</code></td><td>Cosine-law crossfade, used for source transitions</td></tr>
+      <tr><td>Sonic Enhancer</td><td><code>dsp/sonic_enhancer.cpp</code></td><td>Harmonic exciter + stereo widener</td></tr>
+      <tr><td>DBX Voice Processor</td><td><code>dsp/dbx_voice.cpp</code></td><td>Noise gate, de-esser, voice compander</td></tr>
+      <tr><td>PTT Ducking</td><td><code>dsp/ptt_duck.cpp</code></td><td>Auto-duck music on PTT mic key</td></tr>
+      <tr><td>DSP Chain</td><td><code>dsp/dsp_chain.cpp</code></td><td>EQ → AGC orchestrator per encoder slot</td></tr>
+    </table>
+    </div>
+
+    <h3 style="margin-top:2rem">Encoder Slot State Machine</h3>
+    <p>Each <code>EncoderSlot</code> follows this state machine:</p>
+    <pre>IDLE ──start()──► CONNECTING ──► STREAMING
+  ▲                                   │
+  └──stop()────────────────────────────┘
+  │
+SLEEP ──wake()──► IDLE  (auto-triggered after config change in SLEEP state)</pre>
+    <p>When a slot is in <strong>SLEEP</strong> state and the user edits its config, the slot
+       is automatically woken to <strong>IDLE</strong> so it can be restarted without manual
+       intervention.</p>
+  </div>
+
+  <!-- ─────────────────────── WIN-QT GOTCHAS ─────────────────────── -->
+  <div class="doc-section" id="winqt-gotchas">
+    <span class="anchor"></span>
+    <div class="section-header">
+      <div class="section-number">17</div>
+      <h2>Windows Qt — Known Gotchas</h2>
+    </div>
+
+    <ul style="line-height:2.2">
+      <li>
+        <strong>Qt macro <code>slots</code> conflict (C4091 / C2059):</strong>
+        Qt defines <code>#define slots Q_SLOTS</code> which expands to nothing.
+        Any variable named <code>slots</code> disappears after preprocessing.
+        <strong>Never name a variable <code>slots</code>, <code>signals</code>, or <code>emit</code></strong>
+        in Qt code — rename to e.g. <code>slot_entries</code>.
+      </li>
+      <li>
+        <strong>Nested type in out-of-line function parameter (C2059 on <code>&lt;</code>):</strong>
+        MSVC requires <code>ClassName::NestedType</code> in parameter lists of out-of-class
+        function definitions. <code>std::vector&lt;SlotInfo&gt;</code> → must be
+        <code>std::vector&lt;PreviewAudioStudio::SlotInfo&gt;</code> in the <code>.cpp</code>.
+      </li>
+      <li>
+        <strong>DLLs missing after build:</strong>
+        <code>build\win-qt\Release\</code> only contains the <code>.exe</code> and vcpkg DLLs
+        after a build. Qt DLLs and plugin subdirectories are <strong>not copied automatically</strong>.
+        Always run <code>deploy_release.ps1</code> — otherwise the app exits silently on launch
+        with a missing DLL error.
+      </li>
+      <li>
+        <strong>MOC custom build requires QTDIR:</strong>
+        Running MSBuild outside a VS2022 Developer Command Prompt with <code>QTDIR</code> unset
+        causes all MOC steps to fail with "The system cannot find the path specified" (exit code 3).
+        Set <code>QTDIR=C:\Qt\6.9.3\msvc2022_64</code> and call <code>vcvars64.bat</code> first.
+      </li>
+      <li>
+        <strong><code>gai_strerror</code> Unicode conflict:</strong>
+        With <code>UNICODE</code>/<code>_UNICODE</code> defined, <code>gai_strerror</code> maps to
+        <code>gai_strerrorW</code> (returns <code>wchar_t*</code>). Add
+        <code>#define gai_strerror gai_strerrorA</code> in a <code>#ifdef _WIN32</code> block in
+        any file that uses it.
+      </li>
+      <li>
+        <strong><code>localtime_r</code> not available on Windows:</strong>
+        Use <code>localtime_s(&amp;tm, &amp;t)</code> in a <code>#ifdef _WIN32</code> guard.
+      </li>
+      <li>
+        <strong><code>opusenc.h</code> vcpkg path:</strong>
+        vcpkg installs opusenc under <code>opus/opusenc.h</code> — use
+        <code>#include &lt;opus/opusenc.h&gt;</code> not <code>#include &lt;opusenc.h&gt;</code>.
+      </li>
+      <li>
+        <strong>IcyStreamReader is a protocol monitor only:</strong>
+        It opens a separate TCP connection to the stream URL alongside QMediaPlayer.
+        It reads and discards audio bytes — it does NOT decode audio. Audio decoding
+        is handled entirely by QMediaPlayer + Qt Multimedia (FFmpeg backend).
+      </li>
+      <li>
+        <strong>PTT mic sample rate mismatch causes garbled audio:</strong>
+        When the mic captures at 48000 Hz and the encoder runs at 44100 Hz (or vice versa),
+        mixing the raw buffers directly produces pitch-shifted/garbled output.
+        Fix: <code>DspPttDuck::process()</code> performs linear interpolation resampling
+        when <code>mic_sample_rate_ != sample_rate_</code>. Pass the capture rate via
+        <code>set_mic_buffer(..., mic_sample_rate)</code>.
+      </li>
+      <li>
+        <strong>per_encoder_metadata lost when toggling use_global_metadata:</strong>
+        Previously, <code>profile_manager.cpp</code> only wrote the <code>per_encoder_metadata:</code>
+        YAML section when <code>use_global_metadata = false</code>. Settings were silently discarded
+        when switching to global mode and back. Fix: always write the section unconditionally.
+      </li>
+      <li>
+        <strong>Save-on-exit requires <code>aboutToQuit</code>, not just <code>closeEvent</code>:</strong>
+        When the window is minimized to the system tray, closing the window hides it and
+        calls <code>event-&gt;ignore()</code>. Subsequent quit via tray menu or Ctrl+Q calls
+        <code>QApplication::quit()</code> which exits the event loop without triggering
+        <code>closeEvent</code> again. Connect <code>QApplication::aboutToQuit</code> to
+        <code>saveSettings()</code> and <code>saveAllEncoderProfiles()</code> to cover all exit paths.
+      </li>
+      <li>
+        <strong>MSYS2 bash converts <code>nul</code> → <code>/dev/null</code>:</strong>
+        When writing PowerShell scripts via bash heredoc or Python string literals,
+        the Windows null device <code>&gt;nul</code> gets silently translated to
+        <code>&gt;/dev/null</code>. Use the Edit tool on the written file to fix it, or omit
+        the <code>&gt;nul</code> redirect and use only <code>2&gt;&amp;1</code>.
+      </li>
+    </ul>
   </div>
 
   <!-- footer -->
   <hr class="section-div">
   <p style="color:var(--text-dim);font-size:.8rem;text-align:center;padding-bottom:2rem">
-    Mcaster1DSPEncoder v1.4.0 — Maintainer: Dave St. John &lt;davestj@gmail.com&gt; —
+    Mcaster1DSPEncoder v1.4.0 (Linux) · Win-Qt v1.2.5 — Maintainer: Dave St. John &lt;davestj@gmail.com&gt; —
     <a href="../README-LINUX.md">README-LINUX.md</a> ·
     <a href="../CLAUDE.md">CLAUDE.md</a>
   </p>

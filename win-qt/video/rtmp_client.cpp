@@ -30,6 +30,10 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #define close(fd) closesocket(fd)
+#ifdef gai_strerror
+#  undef gai_strerror
+#endif
+#define gai_strerror gai_strerrorA
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>

@@ -1,8 +1,10 @@
 /*
- * Mcaster1DSPEncoder — macOS Qt 6 Build
- * video/transition_engine.h — A/B frame blending engine for video transitions
+ * Mcaster1DSPEncoder — Windows Qt 6 Build
+ * video/transition_engine.h — Professional A/B frame blending engine
  *
- * Supports: Cut, Crossfade, Fade to Black, Wipe Left, Wipe Right.
+ * Broadcast-grade video transitions with gamma-correct blending,
+ * feathered edges, and 12 transition types.
+ *
  * All operations on BGRA pixel data.
  *
  * Copyright (c) 2026 David St. John <davestj@gmail.com>
@@ -20,7 +22,20 @@ namespace mc1 {
 
 class TransitionEngine {
 public:
-    enum class Type { CUT, CROSSFADE, FADE_TO_BLACK, WIPE_LEFT, WIPE_RIGHT };
+    enum class Type {
+        CUT,
+        CROSSFADE,         /* Smooth gamma-correct dissolve */
+        FADE_TO_BLACK,     /* A → black → B */
+        DIP_TO_WHITE,      /* A → white → B */
+        WIPE_LEFT,         /* Feathered wipe left-to-right */
+        WIPE_RIGHT,        /* Feathered wipe right-to-left */
+        WIPE_UP,           /* Feathered wipe bottom-to-top */
+        WIPE_DOWN,         /* Feathered wipe top-to-bottom */
+        PUSH_LEFT,         /* B pushes A off-screen to the left */
+        PUSH_RIGHT,        /* B pushes A off-screen to the right */
+        IRIS_CIRCLE,       /* Circular reveal from center */
+        DISSOLVE,          /* Random pixel dissolve pattern */
+    };
 
     TransitionEngine() = default;
 
@@ -49,18 +64,37 @@ public:
     bool render(uint8_t* out_bgra, int w, int h, int stride);
 
 private:
+    /* Transition blend functions */
     void blend_crossfade(uint8_t* out, const uint8_t* a, const uint8_t* b,
                          int w, int h, int stride, float t);
-    void blend_fade_to_black(uint8_t* out, const uint8_t* a, const uint8_t* b,
-                             int w, int h, int stride, float t);
-    void blend_wipe_horizontal(uint8_t* out, const uint8_t* a, const uint8_t* b,
-                               int w, int h, int stride, float t, bool left_to_right);
+    void blend_dip_to_color(uint8_t* out, const uint8_t* a, const uint8_t* b,
+                            int w, int h, int stride, float t,
+                            uint8_t cr, uint8_t cg, uint8_t cb);
+    void blend_wipe(uint8_t* out, const uint8_t* a, const uint8_t* b,
+                    int w, int h, int stride, float t,
+                    bool horizontal, bool forward);
+    void blend_push(uint8_t* out, const uint8_t* a, const uint8_t* b,
+                    int w, int h, int stride, float t, bool left);
+    void blend_iris_circle(uint8_t* out, const uint8_t* a, const uint8_t* b,
+                           int w, int h, int stride, float t);
+    void blend_dissolve(uint8_t* out, const uint8_t* a, const uint8_t* b,
+                        int w, int h, int stride, float t);
+
+    /* sRGB gamma helpers for broadcast-quality blending */
+    static float srgb_to_linear(uint8_t v);
+    static uint8_t linear_to_srgb(float v);
+
+    /* Easing for smooth transition feel */
+    static float ease_in_out(float t);
 
     Type type_ = Type::CROSSFADE;
     float duration_sec_ = 1.0f;
     bool transitioning_ = false;
     float progress_ = 0.0f;
     double elapsed_ = 0.0;
+
+    /* Feather width for wipe edges (pixels) */
+    static constexpr int kFeatherWidth = 24;
 
     /* Double-buffered frame storage */
     mutable std::mutex mtx_;
@@ -69,6 +103,12 @@ private:
     int frame_w_ = 0;
     int frame_h_ = 0;
     int frame_stride_ = 0;
+
+    /* Pre-computed dissolve pattern (seeded hash per pixel) */
+    std::vector<float> dissolve_threshold_;
+    int dissolve_w_ = 0;
+    int dissolve_h_ = 0;
+    void ensure_dissolve_pattern(int w, int h);
 };
 
 } // namespace mc1

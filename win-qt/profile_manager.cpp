@@ -18,6 +18,9 @@
 
 #include <yaml.h>
 #include <cstring>
+#ifdef _WIN32
+#  define strcasecmp _stricmp
+#endif
 #include <algorithm>
 #include <cctype>
 
@@ -336,13 +339,14 @@ static float yfloat(yaml_document_t* doc, yaml_node_t* map, const char* key, flo
 std::string ProfileManager::profiles_dir()
 {
     /* Save encoder configs in the SAME directory as dsp_effect_*.yaml and
-     * mcaster1dspencoder_global.yaml — next to the .app bundle.
+     * mcaster1dspencoder_global.yaml — next to the running executable.
      * applicationDirPath() returns e.g. .../Foo.app/Contents/MacOS
-     * We want the directory containing the .app bundle. */
+     * We want the directory containing the .app bundle on macOS. */
     QString dir = QCoreApplication::applicationDirPath();
     if (dir.isEmpty())
         dir = QStringLiteral(".");
 
+#ifndef _WIN32
     /* Strip .app/Contents/MacOS suffix if running from a bundle */
     if (dir.contains(QStringLiteral(".app/Contents/MacOS"))) {
         int idx = dir.lastIndexOf(QStringLiteral(".app/Contents/MacOS"));
@@ -351,6 +355,7 @@ std::string ProfileManager::profiles_dir()
         if (slash >= 0)
             dir = dir.left(slash);
     }
+#endif
 
     QDir().mkpath(dir);
     fprintf(stderr, "[M11.5] ProfileManager::profiles_dir() => '%s'\n",
@@ -452,24 +457,33 @@ std::string ProfileManager::save_profile(EncoderConfig& cfg)
     emit_kv(ts, "repeat_all", cfg.repeat_all);
     emit_kv(ts, "auto_start", cfg.auto_start);
     emit_kv(ts, "auto_reconnect", cfg.auto_reconnect);
+
+    /* Input type — always written so config_loader defaults correctly on reload.
+     * Win-Qt is always DEVICE (live audio capture); Linux may be PLAYLIST. */
+    {
+        const char* it_str = (cfg.input_type == EncoderConfig::InputType::URL)     ? "url"
+                           : (cfg.input_type == EncoderConfig::InputType::PLAYLIST) ? "playlist"
+                           :                                                           "device";
+        emit_kv(ts, "input_type", std::string(it_str));
+    }
+    emit_kv(ts, "device_index", cfg.device_index);
     if (!cfg.playlist_path.empty())
         emit_kv(ts, "playlist_path", cfg.playlist_path);
 
     /* Per-encoder audio device override */
     emit_kv(ts, "per_encoder_device_index", cfg.per_encoder_device_index);
 
-    /* Per-encoder metadata */
+    /* Per-encoder metadata — always written so settings survive use_global_metadata toggle */
     emit_kv(ts, "use_global_metadata", cfg.use_global_metadata);
-    if (!cfg.use_global_metadata) {
-        ts << "\nper_encoder_metadata:\n";
-        emit_kv(ts, "source", std::string(metadata_source_tag(cfg.per_encoder_metadata.source)));
-        emit_kv(ts, "lock_metadata", cfg.per_encoder_metadata.lock_metadata);
-        emit_kv(ts, "manual_text", cfg.per_encoder_metadata.manual_text);
-        emit_kv(ts, "append_string", cfg.per_encoder_metadata.append_string);
-        emit_kv(ts, "meta_url", cfg.per_encoder_metadata.meta_url);
-        emit_kv(ts, "meta_file", cfg.per_encoder_metadata.meta_file);
-        emit_kv(ts, "update_interval_sec", cfg.per_encoder_metadata.update_interval_sec);
-    }
+
+    ts << "\nper_encoder_metadata:\n";
+    emit_kv(ts, "source", std::string(metadata_source_tag(cfg.per_encoder_metadata.source)));
+    emit_kv(ts, "lock_metadata", cfg.per_encoder_metadata.lock_metadata);
+    emit_kv(ts, "manual_text", cfg.per_encoder_metadata.manual_text);
+    emit_kv(ts, "append_string", cfg.per_encoder_metadata.append_string);
+    emit_kv(ts, "meta_url", cfg.per_encoder_metadata.meta_url);
+    emit_kv(ts, "meta_file", cfg.per_encoder_metadata.meta_file);
+    emit_kv(ts, "update_interval_sec", cfg.per_encoder_metadata.update_interval_sec);
 
     /* DSP */
     ts << "\ndsp:\n";
@@ -578,6 +592,8 @@ std::string ProfileManager::save_profile(EncoderConfig& cfg)
     emit_kv(ts, "mount", cfg.stream_target.mount);
     emit_kv(ts, "username", cfg.stream_target.username);
     emit_kv(ts, "password", cfg.stream_target.password);
+    emit_kv(ts, "admin_username", cfg.stream_target.admin_username);
+    emit_kv(ts, "admin_password", cfg.stream_target.admin_password);
     emit_kv(ts, "station_name", cfg.stream_target.station_name);
     emit_kv(ts, "description", cfg.stream_target.description);
     emit_kv(ts, "genre", cfg.stream_target.genre);
@@ -672,6 +688,23 @@ bool ProfileManager::load_profile(const std::string& path, EncoderConfig& cfg)
         cfg.playlist_path = ystr(&yd.doc, enc, "playlist_path");
         cfg.per_encoder_device_index = yint(&yd.doc, enc, "per_encoder_device_index", -1);
         cfg.use_global_metadata = ybool(&yd.doc, enc, "use_global_metadata", true);
+
+        /* input_type and device_index — must be read so saved profiles reload correctly.
+         * Win-Qt defaults to DEVICE when key is missing (live audio capture only). */
+        {
+            std::string it = ystr(&yd.doc, enc, "input_type");
+            if (it == "url")          cfg.input_type = EncoderConfig::InputType::URL;
+            else if (it == "playlist") cfg.input_type = EncoderConfig::InputType::PLAYLIST;
+            else {
+#ifdef _WIN32
+                cfg.input_type = EncoderConfig::InputType::DEVICE;
+#else
+                cfg.input_type = it.empty() ? EncoderConfig::InputType::PLAYLIST
+                                            : EncoderConfig::InputType::DEVICE;
+#endif
+            }
+        }
+        cfg.device_index = yint(&yd.doc, enc, "device_index", -1);
     }
 
     /* per_encoder_metadata section */
@@ -828,6 +861,10 @@ bool ProfileManager::load_profile(const std::string& path, EncoderConfig& cfg)
         cfg.stream_target.mount = ystr(&yd.doc, st, "mount");
         cfg.stream_target.username = ystr(&yd.doc, st, "username");
         cfg.stream_target.password = ystr(&yd.doc, st, "password");
+        cfg.stream_target.admin_username = ystr(&yd.doc, st, "admin_username");
+        cfg.stream_target.admin_password = ystr(&yd.doc, st, "admin_password");
+        if (cfg.stream_target.admin_username.empty())
+            cfg.stream_target.admin_username = "admin";
         cfg.stream_target.station_name = ystr(&yd.doc, st, "station_name");
         cfg.stream_target.description = ystr(&yd.doc, st, "description");
         cfg.stream_target.genre = ystr(&yd.doc, st, "genre");

@@ -219,6 +219,51 @@ src/macos/Makefile
 *~
 
 # ---------------------------------------------------------------
-# Claude Code session files (user-specific, not project code)
+# Claude Code session files and settings (user-specific)
 # ---------------------------------------------------------------
+.claude/
 resume-claude-cmd.txt
+resume-session.txt
+resume-*.txt
+
+# ---------------------------------------------------------------
+# Steinberg ASIO SDK (proprietary — cannot redistribute)
+# Download from https://www.steinberg.net/developers/
+# ---------------------------------------------------------------
+external/ASIOSDK/
+external/ASIOSDK
+
+# ---------------------------------------------------------------
+# Stale .bat build scripts (superseded by .ps1)
+# ---------------------------------------------------------------
+build_winqt.bat
+win-qt/build_winqt.bat
+
+# ---------------------------------------------------------------
+# Qt MOC generated files outside the build tree
+# ---------------------------------------------------------------
+src/mcaster1amp_plugin/moc_*.cpp
+
+# ---------------------------------------------------------------
+# Plugin build output directories
+# ---------------------------------------------------------------
+src/mcaster1amp_plugin/Mcaster1AMP_Plugin/Debug/
+src/mcaster1amp_plugin/Mcaster1AMP_Plugin/obj/
+
+# ---------------------------------------------------------------
+# Python bytecode (from make_ico.py etc.)
+# ---------------------------------------------------------------
+__pycache__/
+*.pyc
+
+# ---------------------------------------------------------------
+# Win-Qt runtime-generated config/profile YAMLs next to exe
+# (these are user-specific — never commit)
+# ---------------------------------------------------------------
+build/win-qt/
+
+# ---------------------------------------------------------------
+# macOS .app code signing artifacts
+# ---------------------------------------------------------------
+*.xcent
+CodeResources

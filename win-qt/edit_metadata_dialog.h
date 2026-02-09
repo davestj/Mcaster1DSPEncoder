@@ -12,6 +12,7 @@
 #include <QDialog>
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QSpinBox>
 #include "config_types.h"
@@ -40,6 +41,7 @@ private:
     QRadioButton *radio_disabled_;
     QLineEdit    *edit_meta_url_;
     QLineEdit    *edit_meta_file_;
+    QPushButton  *btn_browse_file_;
     QSpinBox     *spin_interval_;
 };
 

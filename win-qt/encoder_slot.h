@@ -12,6 +12,9 @@
 #include "config_types.h"
 #include "stream_client.h"
 #include "audio_source.h"
+#ifdef _WIN32
+#include "audio_capture_windows.h"
+#endif
 #include "archive_writer.h"
 #include "playlist_parser.h"
 #include "dsp/dsp_chain.h"
@@ -107,6 +110,12 @@ public:
     void set_audio_tap(AudioTapCallback cb);
     void clear_audio_tap();
 
+    // Preview Audio Studio: pre-encode PCM tap (called from audio thread)
+    using PcmTapCallback = std::function<void(const float* pcm, size_t frames,
+                                               int channels, int sample_rate)>;
+    void set_pcm_tap(PcmTapCallback cb);
+    void clear_pcm_tap();
+
     // Push ICY metadata to the connected server
     // Phase M4: will forward to StreamClient::send_admin_metadata()
     void push_metadata(const std::string& title,
@@ -156,6 +165,10 @@ private:
     AudioTapCallback audio_tap_;
     std::mutex       audio_tap_mtx_;
 
+    // Preview Audio Studio: pre-encode PCM tap
+    PcmTapCallback   pcm_tap_;
+    std::mutex       pcm_tap_mtx_;
+
     // DSP chain (EQ -> AGC; crossfader applied at track boundaries)
     std::unique_ptr<mc1dsp::DspChain> dsp_chain_;
 
@@ -178,6 +191,9 @@ private:
     // Stats
     uint64_t    start_time_     = 0;   // unix epoch seconds
     uint64_t    bytes_encoded_  = 0;
+
+    // PTT diagnostics (throttled — log at most once per ~100 callbacks)
+    mutable int ptt_diag_counter_ = 0;
 
     // Codec initializers
     bool init_lame();

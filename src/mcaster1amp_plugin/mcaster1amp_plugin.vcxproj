@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- ================================================================== -->
+  <!-- mcaster1amp_plugin — Mcaster1 DSP Encoder for Mcaster1AMP          -->
+  <!-- DLL implementing AMP Plugin SDK v2 (DSP type)                      -->
+  <!-- Visual Studio 2022 (v143) | C++17 | x64 only                       -->
+  <!-- ================================================================== -->
+
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{C3D4E5F6-A7B8-9012-CDEF-012345678901}</ProjectGuid>
+    <RootNamespace>mcaster1amp_plugin</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>mcaster1amp_plugin</ProjectName>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <!-- ================================================================== -->
+  <!-- Configuration Properties                                            -->
+  <!-- ================================================================== -->
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+
+  <PropertyGroup Label="UserMacros" />
+
+  <!-- ================================================================== -->
+  <!-- Output Directories                                                  -->
+  <!-- ================================================================== -->
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)Mcaster1AMP_Plugin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Mcaster1AMP_Plugin\obj\$(Configuration)\</IntDir>
+    <TargetName>dsp_mcaster1encoder</TargetName>
+    <TargetExt>.dll</TargetExt>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)Mcaster1AMP_Plugin\$(Configuration)\</OutDir>
+    <IntDir>$(SolutionDir)Mcaster1AMP_Plugin\obj\$(Configuration)\</IntDir>
+    <TargetName>dsp_mcaster1encoder</TargetName>
+    <TargetExt>.dll</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+
+  <!-- ================================================================== -->
+  <!-- Compiler Settings — Debug|x64                                       -->
+  <!-- ================================================================== -->
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;_USE_MATH_DEFINES;HAVE_LAME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <AdditionalOptions>/Zc:__cplusplus /utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Qt6Cored.lib;Qt6Widgetsd.lib;Qt6Guid.lib;libmp3lame.lib;yaml.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if not exist "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins" mkdir "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins"
+copy /Y "$(TargetPath)" "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins\$(TargetFileName)"</Command>
+      <Message>Deploying $(TargetFileName) to Mcaster1AMP plugins directory</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+
+  <!-- ================================================================== -->
+  <!-- Compiler Settings — Release|x64                                     -->
+  <!-- ================================================================== -->
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;_USE_MATH_DEFINES;HAVE_LAME;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <AdditionalOptions>/Zc:__cplusplus /utf-8 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Qt6Core.lib;Qt6Widgets.lib;Qt6Gui.lib;libmp3lame.lib;yaml.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PostBuildEvent>
+      <Command>if not exist "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins" mkdir "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins"
+copy /Y "$(TargetPath)" "C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1AMP\build\windows-debug\Debug\Plugins\$(TargetFileName)"</Command>
+      <Message>Deploying $(TargetFileName) to Mcaster1AMP plugins directory</Message>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+
+  <!-- ================================================================== -->
+  <!-- Source Files                                                        -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <ClCompile Include="dsp_mcaster1encoder.cpp" />
+    <ClCompile Include="encoder_widget.cpp" />
+    <!-- MOC-generated file (created by CustomBuild below) -->
+    <ClCompile Include="moc_encoder_widget.cpp" />
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- Header Files                                                        -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <ClInclude Include="plugin_api.h" />
+  </ItemGroup>
+
+  <!-- ================================================================== -->
+  <!-- Qt MOC — generate moc_encoder_widget.cpp from encoder_widget.h      -->
+  <!-- ================================================================== -->
+
+  <ItemGroup>
+    <CustomBuild Include="encoder_widget.h">
+      <FileType>Document</FileType>
+      <Command>"$(QTDIR)\bin\moc.exe" "%(FullPath)" -o "%(RootDir)%(Directory)moc_%(Filename).cpp" -DNOMINMAX -DWIN32_LEAN_AND_MEAN</Command>
+      <Outputs>%(RootDir)%(Directory)moc_%(Filename).cpp</Outputs>
+      <Message>Running Qt MOC on %(Filename).h</Message>
+    </CustomBuild>
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

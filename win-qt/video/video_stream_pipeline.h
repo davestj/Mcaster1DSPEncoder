@@ -96,13 +96,17 @@ public:
     void feed_audio(const uint8_t* data, size_t len,
                     uint32_t timestamp_ms, bool is_aac);
 
+    /* Push a video frame from an external source (e.g. studio preview tap).
+     * Use when the source is already running and the pipeline cannot restart it. */
+    void push_video_frame(const VideoFrame& frame);
+
     /* Get pipeline statistics */
     PipelineStats stats() const;
 
     bool is_running() const { return running_.load(); }
 
 private:
-    /* Video frame callback from the source */
+    /* Video frame callback from the source (same as push_video_frame) */
     void on_video_frame(const VideoFrame& frame);
 
     /* Encoded NALU callback from VideoEncoder */
@@ -139,6 +143,7 @@ private:
     /* SPS/PPS sent flag for FLV/RTMP */
     bool sps_pps_sent_ = false;
     bool aac_header_sent_ = false;
+    bool source_started_ = false;  /* true only if WE started the source */
 };
 
 } // namespace mc1

@@ -33,14 +33,18 @@ void DnasSlotPoller::register_slot(int slot_id, const StreamTarget& target)
 {
     std::lock_guard<std::mutex> lk(mtx_);
     SlotReg reg;
-    reg.slot_id  = slot_id;
-    reg.host     = target.host;
-    reg.port     = target.port;
-    reg.mount    = target.mount;
-    reg.username = target.username;
-    reg.password = target.password;
-    reg.ssl      = false; // TODO: detect from port (9443 → ssl)
-    reg.protocol = target.protocol;
+    reg.slot_id        = slot_id;
+    reg.host           = target.host;
+    reg.port           = target.port;
+    reg.mount          = target.mount;
+    reg.admin_username = target.admin_username;
+    reg.admin_password = target.admin_password;
+    reg.protocol       = target.protocol;
+
+    /* Auto-detect SSL from port: common HTTPS ports for streaming servers */
+    reg.ssl = (target.port == 443  || target.port == 8443 ||
+               target.port == 9443 || target.port == 8243);
+
     slots_[slot_id] = reg;
 }
 
@@ -108,12 +112,12 @@ void DnasSlotPoller::poll_once()
 
     if (regs.empty()) return;
 
-    // Group slots by server (host:port), pick credentials from first slot
+    // Group slots by server (host:port), pick admin credentials from first slot
     struct ServerGroup {
         std::string             host;
         uint16_t                port;
-        std::string             username;
-        std::string             password;
+        std::string             admin_username;
+        std::string             admin_password;
         bool                    ssl;
         StreamTarget::Protocol  protocol;
         std::vector<std::pair<int, std::string>> slot_mounts; // slot_id → mount
@@ -125,12 +129,12 @@ void DnasSlotPoller::poll_once()
         auto& grp = groups[key];
         if (grp.slot_mounts.empty()) {
             // First slot for this server — set connection info
-            grp.host     = reg.host;
-            grp.port     = reg.port;
-            grp.username = reg.username;
-            grp.password = reg.password;
-            grp.ssl      = reg.ssl;
-            grp.protocol = reg.protocol;
+            grp.host           = reg.host;
+            grp.port           = reg.port;
+            grp.admin_username = reg.admin_username;
+            grp.admin_password = reg.admin_password;
+            grp.ssl            = reg.ssl;
+            grp.protocol       = reg.protocol;
         }
         grp.slot_mounts.emplace_back(sid, reg.mount);
     }
@@ -139,10 +143,17 @@ void DnasSlotPoller::poll_once()
     for (const auto& [key, grp] : groups) {
         std::string path = stats_path(grp.protocol);
 
+        /* Skip servers with no admin credentials configured */
+        if (grp.admin_password.empty()) {
+            fprintf(stderr, "[DnasSlotPoller] Skipping %s:%d — no admin password set\n",
+                    grp.host.c_str(), grp.port);
+            continue;
+        }
+
         int status = 0;
         std::string body;
         bool ok = DnasStats::http_get(grp.host, grp.port, path,
-                                      grp.username, grp.password,
+                                      grp.admin_username, grp.admin_password,
                                       grp.ssl, 10, status, body);
 
         if (!ok || status != 200) {
@@ -186,10 +197,10 @@ std::string DnasSlotPoller::stats_path(StreamTarget::Protocol proto)
 {
     switch (proto) {
         case StreamTarget::Protocol::MCASTER1_DNAS:
-            return "/admin/mcaster1stats";
+            return "/admin/mcaster1stats.xml";
         case StreamTarget::Protocol::ICECAST2:
         case StreamTarget::Protocol::LIVE365:
-            return "/admin/stats";
+            return "/admin/stats.xml";
         case StreamTarget::Protocol::SHOUTCAST_V1:
         case StreamTarget::Protocol::SHOUTCAST_V2:
             return "/statistics";
@@ -197,12 +208,23 @@ std::string DnasSlotPoller::stats_path(StreamTarget::Protocol proto)
         case StreamTarget::Protocol::TWITCH:
             return "";  /* RTMP-based — no stats endpoint */
     }
-    return "/admin/stats";
+    return "/admin/stats.xml";
 }
 
 // ---------------------------------------------------------------------------
 // parse_mounts — extract <source mount="/path">...</source> blocks
 // ---------------------------------------------------------------------------
+static uint64_t parse_uint64(const std::string& block, const std::string& tag)
+{
+    try {
+        std::regex re("<" + tag + ">(\\d+)</" + tag + ">", std::regex::icase);
+        std::smatch m;
+        if (std::regex_search(block, m, re))
+            return std::stoull(m[1].str());
+    } catch (...) {}
+    return 0;
+}
+
 std::map<std::string, MountStats> DnasSlotPoller::parse_mounts(const std::string& body)
 {
     std::map<std::string, MountStats> result;
@@ -220,13 +242,61 @@ std::map<std::string, MountStats> DnasSlotPoller::parse_mounts(const std::string
             std::string block = (*it)[2].str();
 
             MountStats ms;
-            ms.listeners     = parse_int(block, "listeners");
-            ms.listener_peak = parse_int(block, "listener_peak");
-            ms.bitrate       = parse_int(block, "bitrate");
-            ms.out_kbps      = parse_int(block, "outgoing_kbitrate");
-            ms.connected_sec = parse_int(block, "connected");
-            ms.title         = parse_str(block, "title");
-            ms.server_name   = parse_str(block, "server_name");
+            /* Core stats (Icecast2 + DNAS) */
+            ms.listeners            = parse_int(block, "listeners");
+            ms.listener_peak        = parse_int(block, "listener_peak");
+            ms.listener_connections = parse_int(block, "listener_connections");
+            ms.bitrate              = parse_int(block, "bitrate");
+            ms.incoming_kbps        = parse_int(block, "incoming_bitrate");
+            ms.out_kbps             = parse_int(block, "outgoing_kbitrate");
+            ms.connected_sec        = parse_int(block, "connected");
+            ms.slow_listeners       = parse_int(block, "slow_listeners");
+            ms.queue_size           = parse_int(block, "queue_size");
+            ms.total_bytes_read     = parse_uint64(block, "total_bytes_read");
+            ms.total_bytes_sent     = parse_uint64(block, "total_bytes_sent");
+
+            ms.title            = parse_str(block, "title");
+            ms.server_name      = parse_str(block, "server_name");
+            ms.server_type      = parse_str(block, "server_type");
+            ms.genre            = parse_str(block, "genre");
+            ms.listen_url       = parse_str(block, "listenurl");
+            ms.source_ip        = parse_str(block, "source_ip");
+            ms.stream_start     = parse_str(block, "stream_start");
+            ms.metadata_updated = parse_str(block, "metadata_updated");
+            ms.user_agent       = parse_str(block, "user_agent");
+            ms.max_listeners    = parse_str(block, "max_listeners");
+
+            /* ICY 2.2 extended fields (Mcaster1 DNAS) */
+            ms.icy2_track_title     = parse_str(block, "icy2-track-title");
+            ms.icy2_show_title      = parse_str(block, "icy2-show-title");
+            ms.icy2_show_season     = parse_str(block, "icy2-show-season");
+            ms.icy2_show_episode    = parse_str(block, "icy2-show-episode");
+            ms.icy2_station_slogan  = parse_str(block, "icy2-station-slogan");
+            ms.icy2_playlist_name   = parse_str(block, "icy2-playlist-name");
+            ms.icy2_share_url       = parse_str(block, "icy2-share-url");
+            ms.icy2_chat_url        = parse_str(block, "icy2-chat-url");
+            ms.icy2_tip_url         = parse_str(block, "icy2-tip-url");
+            ms.icy2_request_url     = parse_str(block, "icy2-request-url");
+            ms.icy2_dj_handle       = parse_str(block, "icy2-dj-handle");
+            ms.icy2_station_logo    = parse_str(block, "icy2-station-logo");
+            ms.icy2_station_id      = parse_str(block, "icy2-station-id");
+            ms.icy2_podcast_rss     = parse_str(block, "icy2-podcast-rss");
+            ms.icy2_podcast_host    = parse_str(block, "icy2-podcast-host");
+            ms.icy2_podcast_episode = parse_str(block, "icy2-podcast-episode");
+            ms.icy2_version         = parse_str(block, "icy2-version");
+            ms.mount_type           = parse_str(block, "mount_type");
+
+            /* Social media links */
+            ms.icy2_social_twitter  = parse_str(block, "icy2-social-twitter");
+            ms.icy2_social_facebook = parse_str(block, "icy2-social-facebook");
+            ms.icy2_social_ig       = parse_str(block, "icy2-social-ig");
+            ms.icy2_social_youtube  = parse_str(block, "icy2-social-youtube");
+            ms.icy2_social_tiktok   = parse_str(block, "icy2-social-tiktok");
+            ms.icy2_social_bluesky  = parse_str(block, "icy2-social-bluesky");
+
+            /* Use icy2-track-title if <title> is empty */
+            if (ms.title.empty() && !ms.icy2_track_title.empty())
+                ms.title = ms.icy2_track_title;
 
             result[mount] = ms;
         }
