@@ -144,6 +144,18 @@
       <AdditionalDependencies>Qt6Core.lib;Qt6Widgets.lib;Qt6Gui.lib;Qt6Multimedia.lib;Qt6Network.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;vpx.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;d3d11.lib;dxgi.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;mf.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
+    <PostBuildEvent>
+      <Command>
+if not exist "$(OutDir)certs" mkdir "$(OutDir)certs"
+if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.cer" (
+  copy /Y "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.cer" "$(OutDir)certs\"
+)
+if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.pfx" (
+  "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" sign /fd SHA256 /f "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.pfx" /p "Mcaster1Dev2026!" "$(TargetPath)"
+)
+      </Command>
+      <Message>Copying cert and signing Mcaster1DSPEncoder</Message>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
 
   <!-- ================================================================== -->

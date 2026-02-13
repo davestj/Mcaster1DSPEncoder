@@ -56,3 +56,16 @@ if ($missing) {
 } else {
     Write-Host "[Deploy] vcpkg DLLs already present -- skipping"
 }
+
+# Sign the exe if signing keys are available (Release builds only, but attempt for Debug too)
+$signScript = "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\sign.ps1"
+$outputExe  = "$EXEDIR\Mcaster1DSPEncoder_Qt.exe"
+if ((Test-Path $signScript) -and (Test-Path $outputExe)) {
+    Write-Host "[Sign] Signing exe with Mcaster1 code signing cert..."
+    & $signScript $outputExe
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[Sign] Signed successfully"
+    } else {
+        Write-Host "[Sign] Signing skipped or failed (non-fatal)" -ForegroundColor Yellow
+    }
+}
