@@ -1,9 +1,21 @@
 # CLAUDE.md — Mcaster1DSPEncoder Project Memory
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Project:** Mcaster1DSPEncoder — Triple-platform broadcast DSP encoder (Windows + Linux + macOS)
+**Project:** Mcaster1DSPEncoder — Next Generation Triple-platform broadcast DSP encoder (Windows + Linux + macOS)
+**Version:** 1.3.1-beta (Windows Qt) | 1.1.5 (macOS) | 1.4.5 (Linux)
+**Product Page:** https://mcaster1.com/encoder.php
 **Repo root:** `/var/www/mcaster1.com/Mcaster1DSPEncoder/` (Linux) | `C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder` (Windows)
 **Active branches:** `winqt-dev` (Windows Qt), `linux-dev` (Linux), `macos-dev` (macOS)
+
+### Mcaster1 Ecosystem URLs
+- **Encoder Product Page:** https://mcaster1.com/encoder.php
+- **Mcaster1 DNAS Server:** https://mcaster1.com/mcaster1_dnas.php
+- **Mcaster1AMP Player:** https://mcaster1.com/mcaster1amp.php (video/radio player — can view DSP Encoder video streams)
+- **Mcaster1 Studio:** https://mcaster1.com/mcaster1studio.php (broadcast automation)
+- **Mcaster1 AudioPipe:** https://mcaster1.com/audiopipes.php (virtual audio routing)
+- **Mcaster1 TagStack:** https://mcaster1.com/tagstack.php (ICY 2.2 content management)
+- **Mcaster1 CastIt:** https://mcaster1.com/mcaster1_castit.php (stream statistics)
+- **GitHub:** https://github.com/davestj/Mcaster1DSPEncoder
 
 ---
 For mysql connection work from the command line, we use 
@@ -737,7 +749,8 @@ All YAMLs (encoder profiles, DSP effects, global config) are saved **next to the
 | W0.1–W1.1 | v1.1.5 | Qt 6 port foundation: main window, encoder list, VU, DSP chain, streaming, YAML config, presets, log viewer, video pipeline, ICY2.2 tab | **COMPLETE** |
 | W1.2 | v1.2.0 | Preview Audio Studio dialog, ICY1/ICY2.2 protocol parser, live stream monitor, deploy_release.ps1 | **COMPLETE** |
 | W1.2.5 | v1.2.5 | PTT resampling fix, event logging, sleep→IDLE fix, global/per-encoder metadata persistence, file browser, save-on-exit | **COMPLETE** |
-| **W1.3** | **v1.3.0** | Video capture (MF+DirectShow), Live Video Studio (3-source switcher + transitions), Virtual Camera (DirectShow DLL), VP8/VP9, ON-AIR indicator, Video Stream Monitor (AIR/CUE), DNAS slot poller | **IN PROGRESS** |
+| **W1.3** | **v1.3.0** | Video capture (MF+DirectShow), Live Video Studio (3-source switcher + transitions), Virtual Camera (DirectShow DLL), VP8/VP9, ON-AIR indicator, Video Stream Monitor (AIR/CUE), DNAS slot poller | **COMPLETE** |
+| **W1.3.1** | **v1.3.1-beta** | 12 broadcast transitions (gamma-correct), WASAPI loopback, DXGI screen capture, MF H.264 encoder, MF video file decoder, platform integration (taskbar/notifications), NSIS installer, Help menu ecosystem links, FEATURES.md, RELEASENOTES.md | **IN PROGRESS** |
 | W1.4 | v1.4.0 | WASAPI loopback VU metering, stream health dashboard, bitrate graph, NSIS installer | PLANNED |
 
 ### Key Win-Qt Gotchas

@@ -6,6 +6,45 @@ Versioning follows `vMAJOR.MINOR.PATCH` conventions.
 
 ---
 
+## [winqt-dev v1.3.1-beta] — 2026-03-20 — Next Generation DSP Encoder Release
+
+### Added
+- **TransitionEngine rewrite**: 12 broadcast-grade transitions with sRGB gamma-correct blending
+  (256-entry LUT), 24px feathered wipe edges, cubic Hermite easing, FNV-1a dissolve pattern.
+  New types: Dip to White, Wipe Up/Down, Push Left/Right, Iris Circle, Dissolve
+- **WASAPI loopback audio capture**: System audio output capture via IAudioClient loopback mode
+- **DXGI Desktop Duplication**: GPU-accelerated screen capture via IDXGIOutputDuplication
+- **MF H.264 encoder**: Hardware-accelerated encoding (NVENC/QSV/AMF), software fallback,
+  SPS/PPS extraction from first keyframe
+- **MF video file decoder**: IMFSourceReader for MP4/MKV/AVI/WMV/MOV with HW decode
+- **Platform integration**: ITaskbarList3 taskbar badge overlay, Shell_NotifyIcon notifications,
+  COM init, DPI awareness. Renamed `macos_init()` → `windows_init()`
+- **NSIS installer**: `Mcaster1DSPEncoderQT_Setup_1.3.0.exe` — user-space install, LZMA
+  compression, config preservation, Start Menu + Desktop shortcuts, Add/Remove Programs
+- **Help menu**: Documentation (local/web), Encoder Product Page, Mcaster1 DNAS,
+  Mcaster1AMP Player links via QDesktopServices
+- **FEATURES.md**: Comprehensive feature comparison (Qt 6 vs Legacy MFC, ~60 features)
+- **RELEASENOTES.md**: v1.3.0 release notes with bundled deps and system requirements
+- **VERSION.txt**: Version tracking file for win-qt branch
+- **About dialog**: Mcaster1 ecosystem links (7 products), video pipeline info
+- Code signing: self-signed cert (CN=David St. John, O=Mcaster1 Software) on exe + installer
+
+### Changed
+- Version bump: 1.2.0 → 1.3.1-beta (app.h)
+- Live Video Studio transition combo: 4 → 11 types, duration slider extended to 5.0s
+- vcxproj: added d3d11.lib, dxgi.lib, mfplat.lib, mfreadwrite.lib, mfuuid.lib, mf.lib
+- `.gitignore`: ASIO SDK, .claude/, .bat scripts, installer artifacts, signing keys, MOC generated
+- README.md: complete rewrite with next-gen features, ecosystem links, quick start guide
+- CLAUDE.md: added Mcaster1 ecosystem URLs, version info, W1.3.1 phase entry
+- `build_installer.ps1`: bundles all .md docs, FFmpeg DLLs, SSL DLLs, installer output to installer/
+- `sign.ps1`: fixed PowerShell `${env:ProgramFiles(x86)}` syntax for signtool path
+
+### Fixed
+- `#ifndef WIN32_LEAN_AND_MEAN` guards on all Windows platform .cpp files (was C4005 warning)
+- Removed orphaned ASIOSDK git submodule reference (proprietary, now gitignored)
+
+---
+
 ## [winqt-dev] — 2026-03-07 — Video Stream Monitor + Documentation
 
 ### Added

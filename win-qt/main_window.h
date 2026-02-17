@@ -126,6 +126,10 @@ private:
     QAction *act_eq31_        = nullptr;
     QAction *act_sonic_       = nullptr;
     QAction *act_about_       = nullptr;
+    QAction *act_website_     = nullptr;
+    QAction *act_dnas_        = nullptr;
+    QAction *act_amp_         = nullptr;
+    QAction *act_docs_        = nullptr;
     QAction *act_quit_        = nullptr;
     QAction *act_theme_       = nullptr;
     QAction *act_broadcast_   = nullptr;

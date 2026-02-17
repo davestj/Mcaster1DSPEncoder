@@ -34,8 +34,8 @@ public:
     Theme     theme() const { return theme_; }
 
     /* Version info */
-    static QString versionString() { return QStringLiteral("1.2.0"); }
-    static QString buildPhase()    { return QStringLiteral("Phase Win-Qt v1.2.0"); }
+    static QString versionString() { return QStringLiteral("1.3.1-beta"); }
+    static QString buildPhase()    { return QStringLiteral("Phase Win-Qt v1.3.1-beta"); }
 
     MainWindow *mainWindow() const { return main_window_; }
 
