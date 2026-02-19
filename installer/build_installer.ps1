@@ -120,11 +120,25 @@ if (Test-Path $iconSrc) {
 $docsDir = Join-Path $StagingDir "docs"
 New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
 
-# HTML docs
+# HTML docs + CSS
 $docsSrc = Join-Path $ProjectRoot "docs\index.html"
 if (Test-Path $docsSrc) {
     Copy-Item $docsSrc $docsDir
-    Write-Host "[Stage] docs/index.html copied"
+    Write-Host "[Stage] docs/index.html"
+}
+$cssSrc = Join-Path $ProjectRoot "docs\style.css"
+if (Test-Path $cssSrc) {
+    Copy-Item $cssSrc $docsDir
+    Write-Host "[Stage] docs/style.css"
+}
+
+# Screenshots
+$screenshotsSrc = Join-Path $ProjectRoot "docs\screenshots"
+if (Test-Path $screenshotsSrc) {
+    $screenshotsDst = Join-Path $docsDir "screenshots"
+    Copy-Item $screenshotsSrc $screenshotsDst -Recurse -Force
+    $count = (Get-ChildItem "$screenshotsDst\*.png" -ErrorAction SilentlyContinue).Count
+    Write-Host "[Stage] docs/screenshots/ ($count images)"
 }
 
 # Project documentation (Markdown files)

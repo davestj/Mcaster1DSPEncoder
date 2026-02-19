@@ -191,6 +191,7 @@ if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.
     <ClCompile Include="file_source.cpp" />
     <ClCompile Include="event_log.cpp" />
     <ClCompile Include="global_config_manager.cpp" />
+    <ClCompile Include="help_browser.cpp" />
     <ClCompile Include="icy22_settings_tab.cpp" />
     <ClCompile Include="icy_stream_reader.cpp" />
     <ClCompile Include="input_level_monitor.cpp" />
@@ -292,6 +293,7 @@ if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.
     <ClInclude Include="eq_graphic_dialog.h" />
     <ClInclude Include="file_source.h" />
     <ClInclude Include="global_config_manager.h" />
+    <ClInclude Include="help_browser.h" />
     <ClInclude Include="icy22_settings_tab.h" />
     <ClInclude Include="icy_stream_reader.h" />
     <ClInclude Include="input_level_monitor.h" />
@@ -456,6 +458,12 @@ if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.
       <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
       <Message>MOC eq_graphic_dialog.h</Message>
     </CustomBuild>
+    <CustomBuild Include="help_browser.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC help_browser.h</Message>
+    </CustomBuild>
     <CustomBuild Include="icy22_settings_tab.h">
       <FileType>Document</FileType>
       <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
@@ -613,6 +621,7 @@ if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.
     <ClCompile Include="$(IntDir)\moc_encoder_type_chooser.cpp" />
     <ClCompile Include="$(IntDir)\moc_eq_curve_widget.cpp" />
     <ClCompile Include="$(IntDir)\moc_eq_graphic_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_help_browser.cpp" />
     <ClCompile Include="$(IntDir)\moc_icy22_settings_tab.cpp" />
     <ClCompile Include="$(IntDir)\moc_icy_stream_reader.cpp" />
     <ClCompile Include="$(IntDir)\moc_log_viewer_dialog.cpp" />
