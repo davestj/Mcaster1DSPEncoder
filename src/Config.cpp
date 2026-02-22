@@ -93,23 +93,37 @@ BOOL CConfig::OnInitDialog()
 
 void CConfig::OnSize(UINT nType, int cx, int cy)
 {
+	if (nType == SIZE_MINIMIZED) {
+		CResizableDialog::OnSize(nType, cx, cy);
+		return;
+	}
+
+	/* Suppress all intermediate repaints during the cascade of ResizableLib
+	   anchor moves and child-dialog MoveWindow calls.  Without this, each
+	   combo box receives its own WM_ERASEBKGND + WM_PAINT in sequence,
+	   causing visible flicker and momentary disappearance of controls. */
+	LockWindowUpdate();
+
 	CResizableDialog::OnSize(nType, cx, cy);
 
-	if (!IsWindow(m_hWnd) || !IsWindow(m_TabCtrl.m_hWnd))
-		return;
+	if (IsWindow(m_hWnd) && IsWindow(m_TabCtrl.m_hWnd)) {
+		CRect rcTab;
+		m_TabCtrl.GetWindowRect(&rcTab);
+		ScreenToClient(&rcTab);
+		m_TabCtrl.AdjustRect(FALSE, &rcTab);
 
-	// Resize the embedded tab-page child dialogs to fit inside the tab control
-	CRect rcTab;
-	m_TabCtrl.GetWindowRect(&rcTab);
-	ScreenToClient(&rcTab);
-	m_TabCtrl.AdjustRect(FALSE, &rcTab);
+		/* bRepaint=FALSE: defer the repaint to our single RedrawWindow below. */
+		if (basicSettings && IsWindow(basicSettings->m_hWnd))
+			basicSettings->MoveWindow(&rcTab, FALSE);
+		if (ypSettings && IsWindow(ypSettings->m_hWnd))
+			ypSettings->MoveWindow(&rcTab, FALSE);
+		if (advSettings && IsWindow(advSettings->m_hWnd))
+			advSettings->MoveWindow(&rcTab, FALSE);
+	}
 
-	if (basicSettings && IsWindow(basicSettings->m_hWnd))
-		basicSettings->MoveWindow(&rcTab);
-	if (ypSettings && IsWindow(ypSettings->m_hWnd))
-		ypSettings->MoveWindow(&rcTab);
-	if (advSettings && IsWindow(advSettings->m_hWnd))
-		advSettings->MoveWindow(&rcTab);
+	UnlockWindowUpdate();
+	/* One clean repaint of the entire dialog tree — no flicker. */
+	RedrawWindow(NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 void CConfig::OnSelchangeTab1(NMHDR* pNMHDR, LRESULT* pResult) 
@@ -165,23 +179,32 @@ void CConfig::GlobalsToDialog(mcaster1Globals *g) {
 		basicSettings->m_UseBitrate = true;
 	}
 
-    if (g->gAACFlag) {
-        basicSettings->m_EncoderType = "AAC";
-        basicSettings->m_Quality = g->gAACQuality;
-    }
-    if (g->gAACPFlag) {
-        basicSettings->m_EncoderType = "AAC Plus";
+    /* Determine encoder type string for the UI combo box */
+    if (g->gOpusFlag) {
+        basicSettings->m_EncoderType = "Opus";
         basicSettings->m_Quality = "";
-    }
-    if (g->gLAMEFlag) {
-        basicSettings->m_EncoderType = "MP3 Lame";
+    } else if (g->gAACFlag && g->fdkAacProfile == 29) {
+        basicSettings->m_EncoderType = "AAC++";
+        basicSettings->m_Quality = g->gAACQuality;
+    } else if (g->gAACFlag && g->fdkAacProfile == 5) {
+        basicSettings->m_EncoderType = "AAC+";
+        basicSettings->m_Quality = g->gAACQuality;
+    } else if (g->gAACFlag && g->fdkAacProfile == 2) {
+        basicSettings->m_EncoderType = "AAC-LC";
+        basicSettings->m_Quality = g->gAACQuality;
+    } else if (g->gAACPFlag) {
+        basicSettings->m_EncoderType = "AAC+";   /* legacy AAC Plus */
+        basicSettings->m_Quality = "";
+    } else if (g->gAACFlag) {
+        basicSettings->m_EncoderType = "AAC-LC"; /* legacy AAC */
+        basicSettings->m_Quality = g->gAACQuality;
+    } else if (g->gLAMEFlag) {
+        basicSettings->m_EncoderType = "MP3 -- LAME (built-in)";
         basicSettings->m_Quality = g->gOggQuality;
-    }
-    if (g->gOggFlag) {
+    } else if (g->gOggFlag) {
         basicSettings->m_EncoderType = "OggVorbis";
         basicSettings->m_Quality = g->gOggQuality;
-    }
-    if (g->gFLACFlag) {
+    } else if (g->gFLACFlag) {
         basicSettings->m_EncoderType = "Ogg FLAC";
         basicSettings->m_Quality = g->gOggQuality;
     }
@@ -275,40 +298,43 @@ void CConfig::DialogToGlobals(mcaster1Globals *g) {
     g->currentChannels = atoi(LPCSTR(basicSettings->m_Channels));
     g->currentSamplerate = atoi(LPCSTR(basicSettings->m_Samplerate));
 
-    if (basicSettings->m_EncoderType == "AAC Plus") {
-        g->gAACPFlag = 1;
-        g->gAACFlag = 0;
-        g->gOggFlag = 0;
-        g->gLAMEFlag = 0;
-		g->gFLACFlag = 0;
-    }
-    if (basicSettings->m_EncoderType == "AAC") {
-        g->gAACPFlag = 0;
-        g->gAACFlag = 1;
-        g->gOggFlag = 0;
-        g->gLAMEFlag = 0;
-		g->gFLACFlag = 0;
-    }
-    if (basicSettings->m_EncoderType == "MP3 Lame") {
-        g->gAACPFlag = 0;
-        g->gLAMEFlag = 1;
-        g->gAACFlag = 0;
-        g->gOggFlag = 0;
-		g->gFLACFlag = 0;
-    }
-    if (basicSettings->m_EncoderType == "OggVorbis") {
-        g->gAACPFlag = 0;
+    /* Clear all codec flags, then set exactly one based on the UI selection */
+    g->gOpusFlag  = 0;
+    g->gAACFlag   = 0;
+    g->gAACPFlag  = 0;
+    g->gLAMEFlag  = 0;
+    g->gOggFlag   = 0;
+    g->gFLACFlag  = 0;
+    g->fdkAacProfile = 0;
+
+    CString enc = basicSettings->m_EncoderType;
+    if (enc == "Opus") {
+        g->gOpusFlag = 1;
+        strcpy(g->gEncodeType, "Opus");
+    } else if (enc == "AAC++") {
+        g->gAACFlag = 1;  g->fdkAacProfile = 29;
+        strcpy(g->gEncodeType, "AAC++");
+    } else if (enc == "AAC+") {
+        g->gAACFlag = 1;  g->fdkAacProfile = 5;
+        strcpy(g->gEncodeType, "AAC+");
+    } else if (enc == "AAC-LC") {
+        g->gAACFlag = 1;  g->fdkAacProfile = 2;
+        strcpy(g->gEncodeType, "AAC-LC");
+    } else if (enc == "OggVorbis") {
         g->gOggFlag = 1;
-        g->gLAMEFlag = 0;
-        g->gAACFlag = 0;
-		g->gFLACFlag = 0;
-    }
-    if (basicSettings->m_EncoderType == "Ogg FLAC") {
-        g->gAACPFlag = 0;
-        g->gOggFlag = 0;
-        g->gLAMEFlag = 0;
-        g->gAACFlag = 0;
-		g->gFLACFlag = 1;
+        strcpy(g->gEncodeType, "OggVorbis");
+    } else if (enc == "Ogg FLAC") {
+        g->gFLACFlag = 1;
+        strcpy(g->gEncodeType, "Ogg FLAC");
+    } else if (enc == "MP3 -- LAME (built-in)" || enc == "MP3 Lame" || enc == "MP3 -- ACM") {
+        g->gLAMEFlag = 1;
+        strcpy(g->gEncodeType, "MP3");
+    } else if (enc == "AAC Plus") {   /* legacy */
+        g->gAACPFlag = 1;
+        strcpy(g->gEncodeType, "AAC Plus");
+    } else if (enc == "AAC") {        /* legacy */
+        g->gAACFlag = 1;
+        strcpy(g->gEncodeType, "AAC");
     }
 
 	if (basicSettings->m_UseBitrate) {
@@ -324,7 +350,7 @@ void CConfig::DialogToGlobals(mcaster1Globals *g) {
 		g->LAMEJointStereoFlag = 0;
 	}
 
-    strcpy(g->gEncodeType, LPCSTR(basicSettings->m_EncoderType));
+    /* gEncodeType already set to canonical string in the if-else chain above */
 
     if (g->gAACFlag) {
         strcpy(g->gAACQuality, LPCSTR(basicSettings->m_Quality));

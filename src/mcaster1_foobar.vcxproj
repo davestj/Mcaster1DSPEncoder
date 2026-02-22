@@ -157,6 +157,7 @@
   <ItemGroup>
     <ClCompile Include="About.cpp" />
     <ClCompile Include="AdvancedSettings.cpp" />
+    <ClCompile Include="config_yaml.cpp" />
     <ClCompile Include="mcaster1_foobar.cpp" />
     <ClCompile Include="BasicSettings.cpp" />
     <ClCompile Include="Config.cpp" />
@@ -203,6 +204,7 @@
   <ItemGroup>
     <ClInclude Include="About.h" />
     <ClInclude Include="AdvancedSettings.h" />
+    <ClInclude Include="config_yaml.h" />
     <ClInclude Include="BasicSettings.h" />
     <ClInclude Include="Config.h" />
     <ClInclude Include="EditMetadata.h" />

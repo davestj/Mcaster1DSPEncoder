@@ -590,6 +590,23 @@ int sendToServer(mcaster1Globals *g, int sd, char_t *data, int length, int type)
 	return ret;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Config store helpers — used by config_yaml.cpp to populate configFileValues[]
+ * so that config_read() can apply values and fire callbacks exactly as it does
+ * when reading legacy .cfg files.
+ * ───────────────────────────────────────────────────────────────────────────── */
+void configReset(void) {
+	numConfigValues = 0;
+	memset(&configFileValues, '\000', sizeof(configFileValues));
+}
+
+void configAddKeyValue(const char *key, const char *value) {
+	if (numConfigValues >= 99) return;
+	strncpy(configFileValues[numConfigValues].Variable, key,   255);
+	strncpy(configFileValues[numConfigValues].Value,    value, 255);
+	numConfigValues++;
+}
+
 int readConfigFile(mcaster1Globals *g, int readOnly) {
 	FILE	*filep;
 	char_t	buffer[1024];
@@ -2908,7 +2925,7 @@ void config_read(mcaster1Globals *g) {
 			g->streamTypeCallback(g, (void *) "MP3");
 		}
 
-		if(g->gAACFlag) {
+		if(g->gAACFlag && g->fdkAacProfile == 0) {  /* legacy AAC */
 			g->streamTypeCallback(g, (void *) "AAC");
 		}
 
@@ -2919,6 +2936,16 @@ void config_read(mcaster1Globals *g) {
 		if(g->gFLACFlag) {
 			g->streamTypeCallback(g, (void *) "OggFLAC");
 		}
+#ifdef WIN32
+		if(g->gOpusFlag) {
+			g->streamTypeCallback(g, (void *) "Opus");
+		}
+		if(g->gAACFlag && g->fdkAacProfile != 0) {  /* fdk-aac */
+			const char *profile = (g->fdkAacProfile == 29) ? "AAC++" :
+			                      (g->fdkAacProfile == 5)  ? "AAC+"  : "AAC-LC";
+			g->streamTypeCallback(g, (void *) profile);
+		}
+#endif
 	}
 
 	if(g->destURLCallback) {
@@ -3173,7 +3200,7 @@ void config_read(mcaster1Globals *g) {
 		}
 	}
 
-	if(g->gAACFlag) {
+	if(g->gAACFlag && g->fdkAacProfile == 0) {  /* legacy AAC (old DLL path) */
 		if(g->bitrateCallback) {
 			sprintf(localBitrate, "AAC: Quality %s/%dHz/%s", g->gAACQuality, g->currentSamplerate, mode);
 			g->bitrateCallback(g, (void *) localBitrate);
@@ -3217,6 +3244,24 @@ void config_read(mcaster1Globals *g) {
 			g->bitrateCallback(g, (void *) localBitrate);
 		}
 	}
+
+#ifdef WIN32
+	if(g->gOpusFlag) {
+		if(g->bitrateCallback) {
+			sprintf(localBitrate, "Opus: %dkbps/48000Hz/%s", g->currentBitrate, mode);
+			g->bitrateCallback(g, (void *) localBitrate);
+		}
+	}
+	if(g->gAACFlag && g->fdkAacProfile != 0) {  /* fdk-aac: AAC-LC / AAC+ / AAC++ */
+		if(g->bitrateCallback) {
+			const char *profile = (g->fdkAacProfile == 29) ? "AAC++" :
+			                      (g->fdkAacProfile == 5)  ? "AAC+"  : "AAC-LC";
+			sprintf(localBitrate, "%s: %dkbps/%dHz/%s",
+			        profile, g->currentBitrate, g->currentSamplerate, mode);
+			g->bitrateCallback(g, (void *) localBitrate);
+		}
+	}
+#endif
 
 	if(g->serverStatusCallback) {
 		g->serverStatusCallback(g, (void *) "Disconnected");

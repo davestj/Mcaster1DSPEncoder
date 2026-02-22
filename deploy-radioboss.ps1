@@ -43,6 +43,7 @@ $runtimeDlls = @(
     "$vcpkgBin\libmp3lame.dll",
     "$vcpkgBin\opus.dll",
     "$vcpkgBin\opusenc.dll",
+    "$vcpkgBin\yaml.dll",
     "$externalLib\ogg.dll",
     "$externalLib\vorbis.dll",
     "$externalLib\vorbisenc.dll",

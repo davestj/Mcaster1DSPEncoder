@@ -7,6 +7,7 @@
 #include "mcaster1dspencoder.h"
 #include "MainWindow.h"
 #include "libmcaster1dspencoder.h"
+#include "config_yaml.h"
 #include <process.h>
 #include <portaudio.h>
 #include <math.h>
@@ -36,6 +37,7 @@ static PaStream			*g_paStream = NULL;
 static int				g_paDeviceIndex = -1;   /* active PortAudio input device */
 
 bool					gLiveRecording = false;
+volatile float			g_recVolumeFactor = 1.0f;   /* software input gain: 0.0=silent, 1.0=unity */
 static int				oldLeft = 0;
 static int				oldRight = 0;
 HDC						specdc = 0;
@@ -272,6 +274,14 @@ void addComment(char *comment) {
 }
 
 int handleAllOutput(float *samples, int nsamples, int nchannels, int in_samplerate) {
+	/* Apply software input gain from the volume slider.
+	 * Scale every sample in-place so both VU meters and encoders see the adjusted level. */
+	if (g_recVolumeFactor < 0.9999f) {
+		int total = nsamples * nchannels;
+		for (int i = 0; i < total; i++)
+			samples[i] *= g_recVolumeFactor;
+	}
+
 	long	ileftMax = 0;
 	long	irightMax = 0;
 	long	leftMax = 0;
@@ -335,6 +345,13 @@ int handleAllOutput(float *samples, int nsamples, int nchannels, int in_samplera
 }
 
 void UpdatePeak(int peakL, int peakR) {
+	/* Apply channel mode: zero out the inactive side so the meter only
+	   shows the selected channel when Left Only or Right Only is chosen. */
+	switch (pWindow->m_ChannelMode) {
+		case 1: peakR = 0; break;   /* Left Only  — silence right meter */
+		case 2: peakL = 0; break;   /* Right Only — silence left meter  */
+		default: break;             /* Stereo     — pass both through   */
+	}
 	pWindow->flexmeters.GetMeterInfoObject(0)->value = peakL;
 	pWindow->flexmeters.GetMeterInfoObject(1)->value = peakR;
 }
@@ -384,7 +401,7 @@ void setAuto(int flag) {
 }
 
 void writeMainConfig() {
-	writeConfigFile(&gMain);
+	writeConfigYAML(&gMain);
 }
 
 int initializeMcaster1() {
@@ -472,7 +489,17 @@ void LoadConfigs(char *currentDir, char *logFile) {
     setgLogFile(&gMain, currentlogFile);
     setConfigFileName(&gMain, configFile);
 	addUISettings(&gMain);
-	readConfigFile(&gMain);
+	if (!readConfigYAML(&gMain)) {
+		/* No YAML found — one-time migration from legacy .cfg */
+		char cfgPath[1024], bakPath[1024];
+		readConfigFile(&gMain, 1);   /* readOnly — don't auto-recreate .cfg */
+		writeConfigYAML(&gMain);
+		const char *base = strlen(gMain.gConfigFileName) ? gMain.gConfigFileName : "Mcaster1 DSP Encoder";
+		_snprintf(cfgPath, sizeof(cfgPath)-1, "%s_%d.cfg",     base, gMain.encoderNumber);
+		_snprintf(bakPath, sizeof(bakPath)-1, "%s_%d.cfg.bak", base, gMain.encoderNumber);
+		cfgPath[sizeof(cfgPath)-1] = bakPath[sizeof(bakPath)-1] = '\0';
+		MoveFileA(cfgPath, bakPath);
+	}
 }
 
 /* PortAudio input callback — replaces old BASSwaveInputProc.
@@ -617,6 +644,7 @@ CMainWindow::CMainWindow(CWnd *pParent /* NULL */ ) :
 	memset(m_currentDir, '\000', sizeof(m_currentDir));
 	strcpy(m_currentDir, ".");
 	m_flexmetersReady = false;
+	m_ChannelMode     = 0;   // default: Stereo
 }
 
 CMainWindow::~CMainWindow() {
@@ -688,6 +716,7 @@ BEGIN_MESSAGE_MAP(CMainWindow, CResizableDialog)
 	ON_WM_QUERYDRAGICON()
 	ON_CBN_SELCHANGE(IDC_RECCARDS, OnSelchangeReccards)
 	ON_WM_SIZE()
+	ON_WM_CTLCOLOR()
 	//}}AFX_MSG_MAP
 	ON_WM_SYSCOMMAND()
 	ON_COMMAND(IDI_RESTORE, OnSTRestore)
@@ -981,13 +1010,33 @@ BOOL CMainWindow::OnInitDialog() {
 			}
 		}
 	}
+	/* Widen the drop-down list so long PortAudio device names show in full. */
+	{
+		CClientDC dc(this);
+		CFont* pOld = dc.SelectObject(m_RecCardsCtrl.GetFont());
+		int maxW = 0;
+		for (int i = 0; i < m_RecCardsCtrl.GetCount(); i++) {
+			CString s;  m_RecCardsCtrl.GetLBText(i, s);
+			int w = dc.GetTextExtent(s).cx;
+			if (w > maxW) maxW = w;
+		}
+		if (pOld) dc.SelectObject(pOld);
+		if (maxW > 0) m_RecCardsCtrl.SetDroppedWidth(maxW + 24);
+	}
+
 	/* Populate channel selector — PortAudio uses a flat device model so the second
 	 * combo shows channel mode options rather than sub-device inputs. */
 	m_RecDevicesCtrl.ResetContent();
 	m_RecDevicesCtrl.AddString("Stereo");
 	m_RecDevicesCtrl.AddString("Left Only");
 	m_RecDevicesCtrl.AddString("Right Only");
-	m_RecDevicesCtrl.SetCurSel(0); /* default: Stereo */
+	/* CBS_SORT is active — find "Stereo" by text so the default is correct
+	   regardless of alphabetical position. */
+	{
+		int si = m_RecDevicesCtrl.FindStringExact(-1, "Stereo");
+		m_RecDevicesCtrl.SetCurSel(si != CB_ERR ? si : 0);
+	}
+	m_ChannelMode = 0; /* Stereo */
 
 	if(getLockedMetadataFlag(&gMain)) {
 		m_Metadata = getLockedMetadata(&gMain);
@@ -999,6 +1048,10 @@ BOOL CMainWindow::OnInitDialog() {
 	m_LiveRecCtrl.SetBitmap(HBITMAP(liveRecOn));
 	m_RecDevicesCtrl.EnableWindow(TRUE);
 	m_RecCardsCtrl.EnableWindow(TRUE);
+	m_RecVolumeCtrl.SetRange(0, 100);
+	m_RecVolumeCtrl.SetPos(100);
+	m_RecVolume = 100;
+	g_recVolumeFactor = 1.0f;
 	m_RecVolumeCtrl.EnableWindow(TRUE);
 	startRecording(m_CurrentInputCard);
 #endif
@@ -1227,7 +1280,7 @@ void CMainWindow::OnLiverec()
 void CMainWindow::ProcessConfigDone(int enc, CConfig *pConfig) {
 	if(enc > 0) {
 		pConfig->DialogToGlobals(g[enc - 1]);
-		writeConfigFile(g[enc - 1]);
+		writeConfigYAML(g[enc - 1]);
 		mcaster1_init(g[enc - 1]);
 	}
 
@@ -1308,7 +1361,7 @@ void CMainWindow::OnPopupDelete() {
 					g[i + 1] = 0;
 					deleteConfigFile(g[i]);
 					g[i]->encoderNumber--;
-					writeConfigFile(g[i]);
+					writeConfigYAML(g[i]);
 				}
 			}
 
@@ -1321,8 +1374,17 @@ void CMainWindow::OnPopupDelete() {
 }
 
 void CMainWindow::OnSelchangeRecdevices() {
-	/* PortAudio: card and input are combined into one device entry.
-	 * The m_RecDevicesCtrl is not used with PortAudio — no-op. */
+	/* IDC_RECDEVICES has CBS_SORT, so GetCurSel() index is alphabetical order,
+	   not insertion order.  Use the item text to drive m_ChannelMode so the
+	   mapping is correct regardless of sort order. */
+	CString sel;
+	int idx = m_RecDevicesCtrl.GetCurSel();
+	if (idx >= 0) m_RecDevicesCtrl.GetLBText(idx, sel);
+
+	if (sel == "Left Only")       m_ChannelMode = 1;
+	else if (sel == "Right Only") m_ChannelMode = 2;
+	else                          m_ChannelMode = 0;  /* Stereo / default */
+
 	UpdateData(FALSE);
 }
 
@@ -1345,8 +1407,9 @@ void CMainWindow::CleanUp() {
 void CMainWindow::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar *pScrollBar) {
 	if(pScrollBar->m_hWnd == m_RecVolumeCtrl.m_hWnd) {
 		UpdateData(TRUE);
-		/* PortAudio does not expose hardware mixer volume control.
-		 * m_RecVolume is stored for UI state only. */
+		/* Apply software input gain: slider 0-100 maps to factor 0.0-1.0.
+		 * Written to g_recVolumeFactor which handleAllOutput() reads. */
+		g_recVolumeFactor = (float)m_RecVolume / 100.0f;
 	}
 
 	CDialog::OnHScroll(nSBCode, nPos, pScrollBar);
@@ -1721,7 +1784,25 @@ void CMainWindow::OnSelchangeReccards()
 	m_RecDevicesCtrl.AddString("Stereo");
 	m_RecDevicesCtrl.AddString("Left Only");
 	m_RecDevicesCtrl.AddString("Right Only");
-	m_RecDevicesCtrl.SetCurSel(0);
+	{
+		int si = m_RecDevicesCtrl.FindStringExact(-1, "Stereo");
+		m_RecDevicesCtrl.SetCurSel(si != CB_ERR ? si : 0);
+	}
+	m_ChannelMode = 0;  /* reset to Stereo on device change */
+
+	/* Re-measure drop-down width in case the card list changed. */
+	{
+		CClientDC dc(this);
+		CFont* pOld = dc.SelectObject(m_RecCardsCtrl.GetFont());
+		int maxW = 0;
+		for (int i = 0; i < m_RecCardsCtrl.GetCount(); i++) {
+			CString s;  m_RecCardsCtrl.GetLBText(i, s);
+			int w = dc.GetTextExtent(s).cx;
+			if (w > maxW) maxW = w;
+		}
+		if (pOld) dc.SelectObject(pOld);
+		if (maxW > 0) m_RecCardsCtrl.SetDroppedWidth(maxW + 24);
+	}
 
 	startRecording(m_CurrentInputCard);
 	UpdateData(FALSE);
@@ -1738,11 +1819,12 @@ void CMainWindow::OnSize(UINT nType, int cx, int cy)
 	if (!m_flexmetersReady)
 		return;
 
-	/* Recalculate FlexMeters geometry for the new IDC_METER bounds */
+	/* Recalculate FlexMeters geometry for the new IDC_METER bounds.
+	   Initialize_Step3 now reads the control rect first, so the DIB
+	   is always sized to match the actual (post-resize) control pixels. */
 	flexmeters.Initialize_Step3();
 
-	/* Immediately repaint the meter — don't wait up to 50 ms for the timer tick.
-	   This prevents stale bars showing at the old size during/after a resize. */
+	/* Force an immediate repaint — don't wait up to 50 ms for the timer. */
 	HWND hMeter = GetDlgItem(IDC_METER)->m_hWnd;
 	HDC  hDC    = ::GetDC(hMeter);
 	if (hDC)
@@ -1750,6 +1832,22 @@ void CMainWindow::OnSize(UINT nType, int cx, int cy)
 		flexmeters.RenderMeters(hDC);
 		::ReleaseDC(hMeter, hDC);
 	}
+}
+
+HBRUSH CMainWindow::OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor)
+{
+	/* Return a transparent brush for IDC_METER so that WM_ERASEBKGND does
+	   NOT fill the control's interior with the dialog background colour.
+	   Without this, every WM_PAINT cycle (triggered on resize) erases the
+	   FlexMeters DIB content, making the bars flash blank between timer ticks.
+	   The SS_BLACKFRAME border is still drawn; only the interior erase is
+	   suppressed.  Our timer (and OnSize) redraw into the preserved content. */
+	if (nCtlColor == CTLCOLOR_STATIC &&
+	    pWnd->GetDlgCtrlID() == IDC_METER)
+	{
+		return (HBRUSH)GetStockObject(NULL_BRUSH);
+	}
+	return CResizableDialog::OnCtlColor(pDC, pWnd, nCtlColor);
 }
 
 

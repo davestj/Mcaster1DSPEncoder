@@ -98,7 +98,7 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>vorbis.lib;ogg.lib;delayimp.lib;Winmm.lib;libmp3lame.lib;fdk-aac.lib;opus.lib;opusenc.lib;msacm32.lib;portaudio_static_x86.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;libOggFLAC.lib;libFLAC.lib;pthreadVSE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>yaml.lib;vorbis.lib;ogg.lib;delayimp.lib;Winmm.lib;libmp3lame.lib;fdk-aac.lib;opus.lib;opusenc.lib;msacm32.lib;portaudio_static_x86.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;libOggFLAC.lib;libFLAC.lib;pthreadVSE.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)MCASTER1DSPENCODER.exe</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>../libmcaster1dspencoder/Debug;../external/portaudio/built;C:\vcpkg\installed\x86-windows\lib;../external/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -146,7 +146,7 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
     <Link>
-      <AdditionalDependencies>vorbis.lib;ogg.lib;delayimp.lib;Winmm.lib;libmp3lame.lib;fdk-aac.lib;opus.lib;opusenc.lib;msacm32.lib;portaudio_static_x86.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;libOggFLAC.lib;libFLAC.lib;pthreadVSE.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>yaml.lib;vorbis.lib;ogg.lib;delayimp.lib;Winmm.lib;libmp3lame.lib;fdk-aac.lib;opus.lib;opusenc.lib;msacm32.lib;portaudio_static_x86.lib;ws2_32.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;libOggFLAC.lib;libFLAC.lib;pthreadVSE.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <OutputFile>$(OutDir)MCASTER1DSPENCODER.exe</OutputFile>
       <SuppressStartupBanner>true</SuppressStartupBanner>
       <AdditionalLibraryDirectories>../libmcaster1dspencoder/Release;../external/portaudio/built;C:\vcpkg\installed\x86-windows\lib;../external/lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -170,6 +170,7 @@
     <ClCompile Include="MCASTER1DSPENCODER.cpp" />
     <ClCompile Include="BasicSettings.cpp" />
     <ClCompile Include="Config.cpp" />
+    <ClCompile Include="config_yaml.cpp" />
     <ClCompile Include="EditMetadata.cpp" />
     <ClCompile Include="FindWindow.cpp" />
     <ClCompile Include="FlexMeters.cpp" />
@@ -223,6 +224,7 @@
     <ClInclude Include="Mcaster1DSPEncoder.h" />
     <ClInclude Include="BasicSettings.h" />
     <ClInclude Include="Config.h" />
+    <ClInclude Include="config_yaml.h" />
     <ClInclude Include="EditMetadata.h" />
     <ClInclude Include="FindWindow.h" />
     <ClInclude Include="FlexMeters.h" />

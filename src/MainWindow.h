@@ -119,6 +119,7 @@ public:
     bool m_flexmetersReady;
     double bias;
     int m_VUStatus;
+    int m_ChannelMode;  // 0=Stereo  1=Left Only  2=Right Only
 
 	HICON hIcon_;
 	bool bMinimized_;
@@ -163,6 +164,7 @@ protected:
 	afx_msg void OnSetfocusEncoders(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnSelchangeReccards();
 	afx_msg void OnSize(UINT nType, int cx, int cy);
+	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 public:

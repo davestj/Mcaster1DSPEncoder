@@ -8,6 +8,7 @@
 #include "libmcaster1dspencoder.h"
 #include <mad.h>
 #include "mcaster1_winamp.h"
+#include "config_yaml.h"
 #include "resource.h"
 
 #include "MainWindow.h"
@@ -74,8 +75,17 @@ int mcaster1_init(mcaster1Globals *g)
 	setBitrateCallback(g, outputBitrateCallback);
 	setServerNameCallback(g, outputServerNameCallback);
 	setDestURLCallback(g, outputStreamURLCallback);
-
-	readConfigFile(g);
+	if (!readConfigYAML(g)) {
+		/* No YAML found — one-time migration from legacy .cfg */
+		char cfgPath[1024], bakPath[1024];
+		readConfigFile(g, 1);   /* readOnly — don't auto-recreate .cfg */
+		writeConfigYAML(g);
+		const char *base = strlen(g->gConfigFileName) ? g->gConfigFileName : "Mcaster1 DSP Encoder";
+		_snprintf(cfgPath, sizeof(cfgPath)-1, "%s_%d.cfg",     base, g->encoderNumber);
+		_snprintf(bakPath, sizeof(bakPath)-1, "%s_%d.cfg.bak", base, g->encoderNumber);
+		cfgPath[sizeof(cfgPath)-1] = bakPath[sizeof(bakPath)-1] = '\0';
+		MoveFileA(cfgPath, bakPath);
+	}
 	setFrontEndType(g, FRONT_END_MCASTER1_PLUGIN);
 	return 1;
 }
