@@ -14,6 +14,7 @@
 /libmcaster1dspencoder/Release/
 /libmcaster1dspencoder/Debug/
 /build/
+/ARCHIVES/
 
 # Stale in-src output dirs from old layout (no longer generated but guard against)
 src/Release/

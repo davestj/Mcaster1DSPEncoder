@@ -1,0 +1,2 @@
+C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder\foobar2000\foobar2000\SDK\Release\foobar2000_SDK.lib
+C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder\external\foobar2000\foobar2000\SDK\Release\foobar2000_SDK.lib
