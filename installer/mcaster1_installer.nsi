@@ -10,7 +10,9 @@
 ; ── Product Info ──────────────────────────────────────────────
 !define PRODUCT_NAME        "Mcaster1 DSP Encoder"
 !define PRODUCT_SHORTNAME   "Mcaster1DSPEncoder"
-!define PRODUCT_VERSION     "1.3.0"
+!ifndef PRODUCT_VERSION
+  !define PRODUCT_VERSION   "1.3.1-beta"
+!endif
 !define PRODUCT_PUBLISHER   "Mcaster1 Software"
 !define PRODUCT_WEB_SITE    "https://mcaster1.com"
 !define PRODUCT_EXE         "Mcaster1DSPEncoder_Qt.exe"

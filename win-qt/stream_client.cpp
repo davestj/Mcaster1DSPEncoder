@@ -401,33 +401,21 @@ bool StreamClient::send_icecast2_headers()
     std::string cred = target_.username + ":" + target_.password;
     std::string b64  = base64_encode(cred);
 
-    char fixed[2048];
-    snprintf(fixed, sizeof(fixed),
-        "PUT %s HTTP/1.1\r\n"
-        "Host: %s:%d\r\n"
-        "Authorization: Basic %s\r\n"
-        "User-Agent: Mcaster1DSPEncoder/0.4.0\r\n"
-        "Content-Type: %s\r\n"
-        "Ice-Public: %d\r\n"
-        "Ice-Name: %s\r\n"
-        "Ice-Description: %s\r\n"
-        "Ice-Genre: %s\r\n"
-        "Ice-Url: %s\r\n"
-        "Ice-Audio-Info: ice-samplerate=%d;ice-bitrate=%d;ice-channels=%d\r\n",
-        target_.mount.c_str(),
-        target_.host.c_str(), target_.port,
-        b64.c_str(),
-        target_.content_type.c_str(),
-        (target_.icy2_is_public ? 1 : 0),
-        target_.station_name.c_str(),
-        target_.description.c_str(),
-        target_.genre.c_str(),
-        target_.url.c_str(),
-        target_.sample_rate,
-        target_.bitrate,
-        target_.channels);
-
-    std::string req(fixed);
+    std::string req;
+    req.reserve(4096);
+    req += "PUT " + target_.mount + " HTTP/1.1\r\n";
+    req += "Host: " + target_.host + ":" + std::to_string(target_.port) + "\r\n";
+    req += "Authorization: Basic " + b64 + "\r\n";
+    req += "User-Agent: Mcaster1DSPEncoder/1.3.1\r\n";
+    req += "Content-Type: " + target_.content_type + "\r\n";
+    req += "Ice-Public: " + std::to_string(target_.icy2_is_public ? 1 : 0) + "\r\n";
+    req += "Ice-Name: " + target_.station_name + "\r\n";
+    req += "Ice-Description: " + target_.description + "\r\n";
+    req += "Ice-Genre: " + target_.genre + "\r\n";
+    req += "Ice-Url: " + target_.url + "\r\n";
+    req += "Ice-Audio-Info: ice-samplerate=" + std::to_string(target_.sample_rate)
+        + ";ice-bitrate=" + std::to_string(target_.bitrate)
+        + ";ice-channels=" + std::to_string(target_.channels) + "\r\n";
 
     // ICY2 extended social / identity headers — emitted only when set
     if (!target_.icy2_twitter.empty())

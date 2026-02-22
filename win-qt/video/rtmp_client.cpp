@@ -636,14 +636,17 @@ bool RtmpClient::parse_rtmp_url(const std::string& url,
     auto colon = host_port.find(':');
     if (colon != std::string::npos) {
         host = host_port.substr(0, colon);
-        port = static_cast<uint16_t>(std::atoi(host_port.substr(colon + 1).c_str()));
+        char *end = nullptr;
+        long p = std::strtol(host_port.substr(colon + 1).c_str(), &end, 10);
+        if (!end || *end != '\0' || p < 1 || p > 65535) return false;
+        port = static_cast<uint16_t>(p);
     } else {
         host = host_port;
         port = 1935;
     }
 
     app = path;
-    return !host.empty();
+    return !host.empty() && !app.empty();
 }
 
 void RtmpClient::set_error(const std::string& msg)
