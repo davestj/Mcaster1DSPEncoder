@@ -23,6 +23,11 @@
 #include "../platform.h"
 #include "../libmcaster1dspencoder/libmcaster1dspencoder.h"
 
+#ifndef MC1_HTTP_TEST_BUILD
+#include "audio_pipeline.h"
+#include "playlist_parser.h"
+#endif
+
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -304,13 +309,29 @@ static void setup_routes(httplib::Server& svr)
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
                 json j;
-                j["version"]            = "5.0.0";
-                j["platform"]           = "linux";
-                j["uptime"]             = uptime_str(g_start_time);
+                j["version"]  = "1.2.0";
+                j["platform"] = "linux";
+                j["uptime"]   = uptime_str(g_start_time);
+                j["admin_server"] = "mcaster1-encoder";
+                j["icy_version"]  = "2.2";
+
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) {
+                    auto all = g_pipeline->all_stats();
+                    int live = 0;
+                    for (auto& s : all)
+                        if (s.state == EncoderSlot::State::LIVE) ++live;
+                    j["encoders_connected"] = live;
+                    j["encoders_total"]     = static_cast<int>(all.size());
+                    j["master_volume"]      = g_pipeline->master_volume();
+                } else {
+                    j["encoders_connected"] = 0;
+                    j["encoders_total"]     = 0;
+                }
+#else
                 j["encoders_connected"] = 0;
                 j["encoders_total"]     = 0;
-                j["admin_server"]       = "mcaster1-encoder";
-                j["icy_version"]        = "2.2";
+#endif
                 res.set_content(j.dump(2), "application/json");
             });
         });
@@ -319,7 +340,176 @@ static void setup_routes(httplib::Server& svr)
     svr.Get("/api/v1/encoders",
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json arr = json::array();
+                if (g_pipeline) {
+                    for (auto& s : g_pipeline->all_stats()) {
+                        json e;
+                        e["slot_id"]      = s.track_index;  // misuse — fix below
+                        e["state"]        = s.state_str;
+                        e["is_live"]      = s.is_live;
+                        e["bytes_sent"]   = s.bytes_sent;
+                        e["uptime_sec"]   = s.uptime_sec;
+                        e["track_title"]  = s.current_title;
+                        e["track_artist"] = s.current_artist;
+                        e["position_ms"]  = s.position_ms;
+                        e["duration_ms"]  = s.duration_ms;
+                        e["track_index"]  = s.track_index;
+                        e["track_count"]  = s.track_count;
+                        e["volume"]       = s.volume;
+                        e["last_error"]   = s.last_error;
+                        arr.push_back(e);
+                    }
+                }
+                res.set_content(arr.dump(2), "application/json");
+#else
                 res.set_content(json::array().dump(), "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/encoders/{slot}/start ───────────────────────────────
+    svr.Post(R"(/api/v1/encoders/(\d+)/start)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                if (g_pipeline && g_pipeline->start_slot(slot_id)) {
+                    res.set_content(R"({"ok":true})", "application/json");
+                } else {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Failed to start slot"})",
+                                    "application/json");
+                }
+#else
+                res.set_content(R"({"ok":false,"error":"no pipeline"})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/encoders/{slot}/stop ────────────────────────────────
+    svr.Post(R"(/api/v1/encoders/(\d+)/stop)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                if (g_pipeline) g_pipeline->stop_slot(slot_id);
+                res.set_content(R"({"ok":true})", "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/encoders/{slot}/restart ─────────────────────────────
+    svr.Post(R"(/api/v1/encoders/(\d+)/restart)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                if (g_pipeline) g_pipeline->restart_slot(slot_id);
+                res.set_content(R"({"ok":true})", "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/encoders/{slot}/stats ────────────────────────────────
+    svr.Get(R"(/api/v1/encoders/(\d+)/stats)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json j;
+                if (g_pipeline) {
+                    auto s = g_pipeline->slot_stats(slot_id);
+                    j["state"]        = s.state_str;
+                    j["is_live"]      = s.is_live;
+                    j["bytes_sent"]   = s.bytes_sent;
+                    j["uptime_sec"]   = s.uptime_sec;
+                    j["track_title"]  = s.current_title;
+                    j["track_artist"] = s.current_artist;
+                    j["position_ms"]  = s.position_ms;
+                    j["duration_ms"]  = s.duration_ms;
+                    j["track_index"]  = s.track_index;
+                    j["track_count"]  = s.track_count;
+                    j["volume"]       = s.volume;
+                    j["last_error"]   = s.last_error;
+                } else {
+                    j["error"] = "no pipeline";
+                }
+                res.set_content(j.dump(2), "application/json");
+#else
+                res.set_content(R"({"error":"no pipeline"})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/devices ───────────────────────────────────────────────
+    svr.Get("/api/v1/devices",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                auto devs = AudioPipeline::list_devices();
+                json arr = json::array();
+                for (auto& d : devs) {
+                    json e;
+                    e["index"]              = d.index;
+                    e["name"]               = d.name;
+                    e["max_input_channels"] = d.max_input_channels;
+                    e["default_sample_rate"]= d.default_sample_rate;
+                    e["is_default_input"]   = d.is_default_input;
+                    arr.push_back(e);
+                }
+                res.set_content(arr.dump(2), "application/json");
+#else
+                res.set_content(json::array().dump(), "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/playlist/skip ────────────────────────────────────────
+    svr.Post("/api/v1/playlist/skip",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {}
+                int slot_id = body.value("slot", 1);
+                (void)slot_id;
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) g_pipeline->skip_track(slot_id);
+#endif
+                res.set_content(R"({"ok":true})", "application/json");
+            });
+        });
+
+    // ── POST /api/v1/playlist/load ────────────────────────────────────────
+    svr.Post("/api/v1/playlist/load",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                int         slot_id = body.value("slot", 1);
+                std::string path    = body.value("path", "");
+                if (path.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"path required"})", "application/json");
+                    return;
+                }
+#ifndef MC1_HTTP_TEST_BUILD
+                bool ok = g_pipeline ? g_pipeline->load_playlist(slot_id, path) : false;
+                json r; r["ok"] = ok;
+                if (!ok) r["error"] = "Failed to load playlist";
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
             });
         });
 
@@ -335,10 +525,25 @@ static void setup_routes(httplib::Server& svr)
                                     "application/json");
                     return;
                 }
-                // TODO: push metadata to active encoder globals
+                std::string title  = j.value("title",  "");
+                std::string artist = j.value("artist", "");
+                int         slot   = j.value("slot", -1);  // -1 = all slots
+                (void)slot;
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) {
+                    if (slot < 0) {
+                        // Push to all live slots
+                        auto all = g_pipeline->all_stats();
+                        for (auto& s : all)
+                            g_pipeline->push_metadata(s.track_index, title, artist);
+                    } else {
+                        g_pipeline->push_metadata(slot, title, artist);
+                    }
+                }
+#endif
                 json r; r["ok"] = true;
-                r["title"]  = j.value("title", "");
-                r["artist"] = j.value("artist", "");
+                r["title"]  = title;
+                r["artist"] = artist;
                 res.set_content(r.dump(), "application/json");
             });
         });
@@ -355,10 +560,20 @@ static void setup_routes(httplib::Server& svr)
                                     "application/json");
                     return;
                 }
-                float vol = j.value("volume", 1.0f);
+                float vol    = j.value("volume", 1.0f);
+                int   slot   = j.value("slot", -1);  // -1 = master
+                (void)slot;
                 if (vol < 0.0f) vol = 0.0f;
                 if (vol > 2.0f) vol = 2.0f;
-                // TODO: apply to g_recVolumeFactor
+
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) {
+                    if (slot < 0)
+                        g_pipeline->set_master_volume(vol);
+                    else
+                        g_pipeline->set_volume(slot, vol);
+                }
+#endif
                 json r; r["ok"] = true; r["volume"] = vol;
                 res.set_content(r.dump(), "application/json");
             });

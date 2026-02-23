@@ -10,6 +10,9 @@
 #include "../platform.h"
 #include "../libmcaster1dspencoder/libmcaster1dspencoder.h"
 #include "http_api.h"
+#ifndef MC1_HTTP_TEST_BUILD
+#include "audio_pipeline.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,7 +59,7 @@ static void admin_defaults()
 static void print_usage(const char* prog)
 {
     fprintf(stdout,
-"Mcaster1 DSP Encoder v5.0 — Linux CLI\n"
+"Mcaster1 DSP Encoder v1.2.0 — Linux CLI\n"
 "\n"
 "Usage:\n"
 "  %s [-d] [-v] -c <config>\n"
@@ -251,7 +254,7 @@ int main(int argc, char* argv[])
     /* ── Banner ─────────────────────────────────────────────────────────── */
     fprintf(stdout,
         "\n"
-        "  Mcaster1 DSP Encoder v5.0\n"
+        "  Mcaster1 DSP Encoder v1.2.0 (Linux)\n"
         "  ──────────────────────────────────────\n");
     for (int i = 0; i < gAdminConfig.num_sockets; i++) {
         fprintf(stdout, "  Admin  : %s://%-15s:%d\n",
@@ -264,6 +267,11 @@ int main(int argc, char* argv[])
             gAdminConfig.admin_username, gAdminConfig.admin_password);
     fprintf(stdout, "  Press Ctrl+C to stop.\n\n");
 
+    /* ── Initialize audio pipeline ───────────────────────────────────────── */
+#ifndef MC1_HTTP_TEST_BUILD
+    g_pipeline = new AudioPipeline();
+#endif
+
     /* ── Start HTTP admin server (non-blocking) ──────────────────────────── */
     http_api_start(webroot);
 
@@ -272,5 +280,9 @@ int main(int argc, char* argv[])
         sleep(1);
     }
 
+#ifndef MC1_HTTP_TEST_BUILD
+    delete g_pipeline;
+    g_pipeline = nullptr;
+#endif
     return 0;
 }
