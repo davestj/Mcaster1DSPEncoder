@@ -3,18 +3,13 @@
 // Pure C file I/O — no extra libraries beyond the C runtime.
 //
 
-#include "stdafx.h"
+#include "platform.h"       /* cross-platform shims — must come first */
 #include "podcast_rss_gen.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <sys/stat.h>   // for _stat64
-
-#ifdef _WIN32
-#include <windows.h>
-#include <io.h>
-#endif
+#include <sys/stat.h>
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,21 +28,21 @@ static const char *mimeForPath(const char *path)
 {
     const char *dot = strrchr(path, '.');
     if (!dot) return "application/octet-stream";
-    if (_stricmp(dot, ".mp3")  == 0) return "audio/mpeg";
-    if (_stricmp(dot, ".ogg")  == 0) return "audio/ogg";
-    if (_stricmp(dot, ".opus") == 0) return "audio/ogg; codecs=opus";
-    if (_stricmp(dot, ".flac") == 0) return "audio/flac";
-    if (_stricmp(dot, ".aac")  == 0) return "audio/aac";
-    if (_stricmp(dot, ".m4a")  == 0) return "audio/mp4";
-    if (_stricmp(dot, ".wav")  == 0) return "audio/wav";
+    if (mc_stricmp(dot, ".mp3")  == 0) return "audio/mpeg";
+    if (mc_stricmp(dot, ".ogg")  == 0) return "audio/ogg";
+    if (mc_stricmp(dot, ".opus") == 0) return "audio/ogg; codecs=opus";
+    if (mc_stricmp(dot, ".flac") == 0) return "audio/flac";
+    if (mc_stricmp(dot, ".aac")  == 0) return "audio/aac";
+    if (mc_stricmp(dot, ".m4a")  == 0) return "audio/mp4";
+    if (mc_stricmp(dot, ".wav")  == 0) return "audio/wav";
     return "application/octet-stream";
 }
 
 /* Get file size in bytes; returns 0 on error */
 static long long fileSize(const char *path)
 {
-    struct _stat64 st;
-    if (_stat64(path, &st) == 0) return (long long)st.st_size;
+    mc_stat_t st;
+    if (mc_stat(path, &st) == 0) return (long long)st.st_size;
     return 0;
 }
 
@@ -57,7 +52,7 @@ static void formatDuration(long seconds, char *out, size_t outLen)
     long h = seconds / 3600;
     long m = (seconds % 3600) / 60;
     long s = seconds % 60;
-    _snprintf(out, outLen - 1, "%02ld:%02ld:%02ld", h, m, s);
+    snprintf(out, outLen - 1, "%02ld:%02ld:%02ld", h, m, s);
     out[outLen - 1] = '\0';
 }
 
@@ -168,13 +163,13 @@ int generate_podcast_rss(const mcaster1Globals *g, const char *audio_path)
 
     /* Build episode title: "Show — YYYY-MM-DD" */
     char epTitle[512];
-    _snprintf(epTitle, sizeof(epTitle) - 1, "%s \xe2\x80\x94 %s", title, isoDate);
+    snprintf(epTitle, sizeof(epTitle) - 1, "%s \xe2\x80\x94 %s", title, isoDate);
     epTitle[sizeof(epTitle) - 1] = '\0';
 
     /* Duration estimate (WAV only — encoded formats omit it) */
     char durStr[16] = "";
     const char *dot = strrchr(audio_path, '.');
-    if (dot && _stricmp(dot, ".wav") == 0) {
+    if (dot && mc_stricmp(dot, ".wav") == 0) {
         long secs = estimateWavDuration(
             g->written > 0 ? (long long)g->written : fsize,
             (int)(g->currentSamplerate > 0 ? g->currentSamplerate : 44100),
@@ -190,7 +185,7 @@ int generate_podcast_rss(const mcaster1Globals *g, const char *audio_path)
     strncpy(uriPath, audio_path, sizeof(uriPath) - 1);
     uriPath[sizeof(uriPath) - 1] = '\0';
     for (char *p = uriPath; *p; p++) { if (*p == '\\') *p = '/'; }
-    _snprintf(enclosureURL, sizeof(enclosureURL) - 1, "file:///%s", uriPath);
+    snprintf(enclosureURL, sizeof(enclosureURL) - 1, "file:///%s", uriPath);
 
     /* --- Write RSS --------------------------------------------------------- */
     fprintf(fp,
@@ -239,7 +234,7 @@ int generate_podcast_rss(const mcaster1Globals *g, const char *audio_path)
     fprintf(fp, "      <title>%s</title>\n", esc);
 
     char itemDesc[512];
-    _snprintf(itemDesc, sizeof(itemDesc) - 1, "Live stream recording: %s", title);
+    snprintf(itemDesc, sizeof(itemDesc) - 1, "Live stream recording: %s", title);
     xmlEscape(itemDesc, esc, sizeof(esc));
     fprintf(fp, "      <description>%s</description>\n", esc);
 
