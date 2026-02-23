@@ -2,7 +2,7 @@
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
 **Binary:** `mcaster1-encoder`
-**Version:** v1.2.0 (Phase L3 — Audio Engine)
+**Version:** v1.3.0 (Phase L4 — DSP Chain + ICY2 + DNAS Stats)
 **Platform:** Debian 12 / Ubuntu 22.04+ (amd64)
 
 ---
@@ -80,8 +80,8 @@ All Linux source lives under `src/linux/`.
 |-------|---------|------|--------|
 | L1 | v1.0.0 | Infrastructure (platform.h, ICY 2.2 structs, build system) | **COMPLETE** |
 | L2 | v1.1.1 | HTTP/HTTPS admin server + login + web UI | **COMPLETE** |
-| **L3** | **v1.2.0** | **Audio encoding + streaming engine + FastCGI + PHP app** | **COMPLETE** |
-| L4 | v1.3.0 | DSP chain (EQ/AGC/crossfade) + Pro Media Library + Pulse AI | PLANNED |
+| L3 | v1.2.0 | Audio encoding + streaming engine + FastCGI + PHP app | **COMPLETE** |
+| **L4** | **v1.3.0** | **DSP chain (EQ/AGC/crossfade) + ICY2 headers + DNAS stats proxy** | **COMPLETE** |
 | L5 | v1.4.0 | Mcaster1DNAS deep integration + live dashboard | PLANNED |
 | L6 | v1.5.0 | Analytics, listener metrics, engagement platform | PLANNED |
 
@@ -301,53 +301,79 @@ intercepts all `exit()`/`die()` calls. All PHP files use `if/elseif` chains — 
 
 ---
 
-## Phase L4 — DSP Chain + Media Library + AI Playlist `v1.3.0` — PLANNED
+## Phase L4 — DSP Chain + ICY2 Headers + DNAS Stats `v1.3.0` — COMPLETE
 
-### DSP Processing Chain (planned)
+### DSP Processing Chain
 
 ```
 [AudioSource: PCM float32]
          ↓
 ┌────────────────────────────────────┐
-│           DSP Chain                │
+│           DspChain                 │
 │   [10-band Parametric EQ]          │
 │         ↓                          │
-│   [AGC / Compressor / Limiter]    │
-│         ↓                          │
-│   [Crossfader] ← next track       │
+│   [AGC / Compressor / Limiter]     │
 └────────────────────────────────────┘
-         ↓
+         ↓   (crossfader applied at track boundaries by EncoderSlot)
 [Encoder Pool: MP3/Opus/Vorbis/FLAC]
+         ↓
+[StreamClient — Icecast2 / Mcaster1DNAS]
 ```
 
-- **Parametric EQ**: 10-band biquad IIR (RBJ Audio EQ Cookbook), per-band gain ±24 dB
-- **AGC / Compressor / Limiter**: libebur128 LUFS measurement, configurable threshold/ratio/attack/release
-- **Crossfader**: equal-power fade (`cos(t·π/2)` / `sin(t·π/2)`), silence detection, pre-roll buffer
+| Component | File | Details |
+|-----------|------|---------|
+| 10-band parametric EQ | `dsp/eq.h`, `dsp/eq.cpp` | RBJ Audio EQ Cookbook biquad IIR; presets: `flat`, `classic_rock`, `country`, `modern_rock`, `broadcast`, `spoken_word` |
+| AGC / compressor | `dsp/agc.h`, `dsp/agc.cpp` | Feedforward peak compressor, attack/release smoothing, makeup gain, hard limiter ceiling |
+| Equal-power crossfader | `dsp/crossfader.h`, `dsp/crossfader.cpp` | `cos(t·π/2)` / `sin(t·π/2)` curves; single-buffer fade-in/fade-out and dual-buffer mix modes |
+| DSP chain orchestrator | `dsp/dsp_chain.h`, `dsp/dsp_chain.cpp` | Wires EQ → AGC; crossfader called externally at track boundaries |
+| DSP wiring in encoder | `encoder_slot.cpp` | `on_audio()` allocates mutable buffer and calls `dsp_chain_->process()` after volume; `stop()` resets chain |
+| Live DSP reconfigure | `encoder_slot.cpp`, `audio_pipeline.cpp` | `reconfigure_dsp()` updates running chain without restarting encoder |
 
-### Pro Media Library (planned)
+### ICY2 Extended Headers
 
-- SQLite-backed track database
-- BPM detection via aubio
-- Musical key detection
-- Energy level (RMS loudness)
-- Mood classification (BPM + key + energy → tag)
-- inotify directory watcher for live library updates
-- TagLib metadata extraction
-- Cover art thumbnails
-- Web UI: sortable grid with drag-to-queue
+`StreamTarget` now carries social/identity fields sent as `Ice-*` / `Icy-*` headers
+at connect time (Icecast 2.4+ / Mcaster1DNAS):
 
-### Pulse AI Playlist Engine (planned)
+| Field | Header | Example |
+|-------|--------|---------|
+| `icy2_twitter` | `Icy-Twitter` | `@Mcaster1Radio` |
+| `icy2_facebook` | `Icy-Facebook` | `https://facebook.com/mcaster1radio` |
+| `icy2_instagram` | `Icy-Instagram` | `@mcaster1radio` |
+| `icy2_email` | `Icy-Email` | `studio@mcaster1.com` |
+| `icy2_language` | `Icy-Language` | `en` |
+| `icy2_country` | `Icy-Country` | `US` |
+| `icy2_city` | `Icy-City` | `Miami, FL` |
+| `icy2_is_public` | `Ice-Public` | `1` |
 
-Context-aware track selector using:
-- Time of day / day of week / season
-- Operator mood preset
-- News feed sentiment (RSS)
-- Weather API
-- Listener engagement signals from ICY 2.2
+### DSP HTTP API Endpoints (Phase L4 additions)
 
-Optional LLM backends:
-- **Ollama** (local): llama3.2, mistral, gemma2
-- **Claude API**: claude-haiku-4-5 (fast) / claude-sonnet-4-6 (quality)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/v1/encoders/{slot}/dsp` | Get DSP config (preset, enabled flags, durations) |
+| `PUT` | `/api/v1/encoders/{slot}/dsp` | Live-update DSP config without restarting |
+| `POST` | `/api/v1/encoders/{slot}/dsp/eq/preset` | Apply a named EQ preset instantly |
+| `GET` | `/api/v1/dnas/stats` | Proxy live stats from Mcaster1DNAS (`dnas.mcaster1.com:9443`) |
+
+### Test Station — Mcaster1 Rock & Roll Yolo!
+
+Config: `src/linux/config/mcaster1_rock_yolo.yaml`
+
+Three encoder slots targeting `dnas.mcaster1.com:9443`:
+
+| Slot | Mount | Genre | EQ Preset | Bitrate |
+|------|-------|-------|-----------|---------|
+| 1 | `/yolo-rock` | Classic Rock | `classic_rock` | 128 kbps |
+| 2 | `/yolo-country` | Country | `country` | 128 kbps |
+| 3 | `/yolo-modern` | Modern Rock | `modern_rock` | 192 kbps |
+
+All slots include ICY2 social headers, AGC enabled, equal-power crossfade.
+
+### Build
+
+```bash
+bash src/linux/make_phase4.sh
+# Binary: build/mcaster1-encoder
+```
 
 ---
 
@@ -833,25 +859,24 @@ sudo chmod 660 /run/php/php8.2-fpm-mc1.sock
 
 ---
 
-## Current Work (Phase L3 Completion)
+## Completed (Phase L4 — v1.3.0)
 
-As of v1.2.0, all Phase L3 components are implemented:
+- [x] DSP chain: `dsp/eq.cpp`, `dsp/agc.cpp`, `dsp/crossfader.cpp`, `dsp/dsp_chain.cpp`
+- [x] EQ presets: flat, classic_rock, country, modern_rock, broadcast, spoken_word
+- [x] DSP wired into `EncoderSlot::on_audio()` — EQ → AGC per buffer
+- [x] Equal-power crossfader triggered at track boundaries
+- [x] Live DSP reconfigure API: `PUT /api/v1/encoders/{slot}/dsp`
+- [x] EQ preset API: `POST /api/v1/encoders/{slot}/dsp/eq/preset`
+- [x] ICY2 extended headers in `StreamTarget` (Twitter/Facebook/Instagram/email/language/country/city)
+- [x] DNAS stats proxy: `GET /api/v1/dnas/stats` → `dnas.mcaster1.com:9443`
+- [x] Test station config: `config/mcaster1_rock_yolo.yaml` (3 slots, ICY2 headers, DSP presets)
+- [x] Build script: `make_phase4.sh`
 
-- [x] FileSource: MP3 (libmpg123) + OGG/FLAC/Opus/AAC/WAV (libavcodec)
-- [x] PortAudioSource: device enumeration + capture + Pa_OpenStream callback
-- [x] PlaylistParser: M3U / PLS / XSPF / TXT
-- [x] EncoderSlot: MP3 (LAME) + Vorbis (libvorbis/libogg) + Opus (libopusenc callbacks) + FLAC (stream encoder callbacks)
-- [x] StreamClient: Icecast2 HTTP PUT + Shoutcast v1/v2 + ICY metadata + auto-reconnect
-- [x] ArchiveWriter: simultaneous WAV + MP3 archive
-- [x] AudioPipeline: multi-slot orchestration
-- [x] FastCGI bridge: binary FastCGI/1.0 over AF_UNIX → php-fpm
-- [x] PHP app: media library browser, metrics dashboard, JSON APIs
-- [x] MySQL: users, roles, sessions, tracks, listener metrics
-- [x] HTTP API: start/stop/restart/stats per slot, devices, metadata, volume, playlist
+## Up Next (Phase L5)
 
-## Up Next (Phase L4)
-
-- [ ] DSP chain: `dsp/eq.h/cpp`, `dsp/agc.h/cpp`, `dsp/crossfader.h/cpp`
+- [ ] Mcaster1DNAS deep integration: live listener count via `/admin/mcaster1stats` polling
+- [ ] WebSocket push: real-time listener count updates to dashboard
+- [ ] Multi-mount simulcast coordination across slots
 - [ ] Media library manager: `medialib/scanner.h/cpp`, `medialib/database.h/cpp`
 - [ ] BPM + key detection: aubio integration
 - [ ] Pulse AI playlist: `pulse/context_engine.h/cpp`, `pulse/track_scorer.h/cpp`

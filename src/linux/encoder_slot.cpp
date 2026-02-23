@@ -1,5 +1,5 @@
 // encoder_slot.cpp — Per-encoder-slot state machine
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #include "encoder_slot.h"
 #include "file_source.h"
 #include "audio_source.h"
@@ -116,6 +116,27 @@ bool EncoderSlot::start()
         if (cs == StreamClient::State::RECONNECTING) set_state(State::RECONNECTING);
     });
 
+    // --- Init DSP chain ---
+    {
+        mc1dsp::DspChainConfig dsp_cfg;
+        dsp_cfg.sample_rate        = cfg_.sample_rate;
+        dsp_cfg.channels           = cfg_.channels;
+        dsp_cfg.eq_enabled         = cfg_.dsp_eq_enabled;
+        dsp_cfg.agc_enabled        = cfg_.dsp_agc_enabled;
+        dsp_cfg.crossfader_enabled = cfg_.dsp_crossfade_enabled;
+        dsp_cfg.crossfade_duration = cfg_.dsp_crossfade_duration;
+        dsp_cfg.eq_preset          = cfg_.dsp_eq_preset;
+        dsp_chain_ = std::make_unique<mc1dsp::DspChain>();
+        dsp_chain_->configure(dsp_cfg);
+        fprintf(stderr, "[EncoderSlot %d] DSP: EQ=%s AGC=%s XFade=%s (%.1fs) preset='%s'\n",
+                cfg_.slot_id,
+                cfg_.dsp_eq_enabled  ? "on" : "off",
+                cfg_.dsp_agc_enabled ? "on" : "off",
+                cfg_.dsp_crossfade_enabled ? "on" : "off",
+                cfg_.dsp_crossfade_duration,
+                cfg_.dsp_eq_preset.empty() ? "none" : cfg_.dsp_eq_preset.c_str());
+    }
+
     // --- Init archive ---
     if (cfg_.archive_enabled && !cfg_.archive_dir.empty()) {
         ArchiveWriter::Config ac;
@@ -186,6 +207,7 @@ void EncoderSlot::stop()
     if (source_)        { source_->stop(); source_.reset(); }
     if (stream_client_) { stream_client_->disconnect(); stream_client_.reset(); }
     if (archive_)       { archive_->close(); archive_.reset(); }
+    if (dsp_chain_)     { dsp_chain_.reset(); }
 
     close_codec();
     set_state(State::IDLE);
@@ -300,6 +322,20 @@ void EncoderSlot::update_config(const EncoderConfig& cfg)
 }
 
 // ---------------------------------------------------------------------------
+// reconfigure_dsp — live-update DSP chain parameters (takes effect immediately)
+// ---------------------------------------------------------------------------
+void EncoderSlot::reconfigure_dsp(const mc1dsp::DspChainConfig& dsp_cfg)
+{
+    if (dsp_chain_) dsp_chain_->configure(dsp_cfg);
+    std::lock_guard<std::mutex> lk(mtx_);
+    cfg_.dsp_eq_enabled         = dsp_cfg.eq_enabled;
+    cfg_.dsp_agc_enabled        = dsp_cfg.agc_enabled;
+    cfg_.dsp_crossfade_enabled  = dsp_cfg.crossfader_enabled;
+    cfg_.dsp_crossfade_duration = dsp_cfg.crossfade_duration;
+    cfg_.dsp_eq_preset          = dsp_cfg.eq_preset;
+}
+
+// ---------------------------------------------------------------------------
 // state_to_string
 // ---------------------------------------------------------------------------
 std::string EncoderSlot::state_to_string(State s)
@@ -330,13 +366,15 @@ void EncoderSlot::on_audio(const float* pcm, size_t frames, int /*ch*/, int /*sr
 
     if (!stream_client_ || !stream_client_->is_connected()) return;
 
-    // Apply volume
+    // Apply volume + DSP chain (EQ → AGC); allocate mutable copy if needed
     float vol = cfg_.volume;
+    const bool need_buf = (vol != 1.0f) || (dsp_chain_ != nullptr);
     std::vector<float> buf;
-    if (vol != 1.0f) {
+    if (need_buf) {
         size_t n = frames * static_cast<size_t>(cfg_.channels);
         buf.resize(n);
         for (size_t i = 0; i < n; ++i) buf[i] = pcm[i] * vol;
+        if (dsp_chain_) dsp_chain_->process(buf.data(), frames);
         pcm = buf.data();
     }
 

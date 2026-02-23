@@ -1,5 +1,5 @@
 // stream_client.cpp — Icecast2 / Shoutcast SOURCE client
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #include "stream_client.h"
 
 #include <cstring>
@@ -228,34 +228,33 @@ void StreamClient::do_disconnect_locked()
 }
 
 // ---------------------------------------------------------------------------
-// send_icecast2_headers — HTTP PUT handshake
+// send_icecast2_headers — HTTP PUT handshake with ICY2 extended headers
 // ---------------------------------------------------------------------------
 bool StreamClient::send_icecast2_headers()
 {
     std::string cred = target_.username + ":" + target_.password;
     std::string b64  = base64_encode(cred);
 
-    char req[4096];
-    snprintf(req, sizeof(req),
+    // Mandatory headers
+    char fixed[2048];
+    snprintf(fixed, sizeof(fixed),
         "PUT %s HTTP/1.1\r\n"
         "Host: %s:%d\r\n"
         "Authorization: Basic %s\r\n"
-        "User-Agent: Mcaster1DSPEncoder/1.2.0\r\n"
+        "User-Agent: Mcaster1DSPEncoder/1.3.0\r\n"
         "Content-Type: %s\r\n"
-        "Ice-Public: 1\r\n"
+        "Ice-Public: %d\r\n"
         "Ice-Name: %s\r\n"
         "Ice-Description: %s\r\n"
         "Ice-Genre: %s\r\n"
         "Ice-Url: %s\r\n"
         "Ice-Audio-Info: ice-samplerate=%d;ice-bitrate=%d;ice-channels=%d\r\n"
-        "Icy-MetaData: %d\r\n"
-        "Transfer-Encoding: chunked\r\n"
-        "Expect: 100-continue\r\n"
-        "\r\n",
+        "Icy-MetaData: %d\r\n",
         target_.mount.c_str(),
         target_.host.c_str(), target_.port,
         b64.c_str(),
         target_.content_type.c_str(),
+        (target_.icy2_is_public ? 1 : 0),
         target_.station_name.c_str(),
         target_.description.c_str(),
         target_.genre.c_str(),
@@ -265,8 +264,31 @@ bool StreamClient::send_icecast2_headers()
         target_.channels,
         (target_.icy_metaint > 0 ? 1 : 0));
 
+    std::string req(fixed);
+
+    // ICY2 extended social / identity headers — emitted only when set
+    if (!target_.icy2_twitter.empty())
+        req += "Icy-Twitter: "   + target_.icy2_twitter   + "\r\n";
+    if (!target_.icy2_facebook.empty())
+        req += "Icy-Facebook: "  + target_.icy2_facebook  + "\r\n";
+    if (!target_.icy2_instagram.empty())
+        req += "Icy-Instagram: " + target_.icy2_instagram + "\r\n";
+    if (!target_.icy2_email.empty())
+        req += "Icy-Email: "     + target_.icy2_email     + "\r\n";
+    if (!target_.icy2_language.empty())
+        req += "Icy-Language: "  + target_.icy2_language  + "\r\n";
+    if (!target_.icy2_country.empty())
+        req += "Icy-Country: "   + target_.icy2_country   + "\r\n";
+    if (!target_.icy2_city.empty())
+        req += "Icy-City: "      + target_.icy2_city      + "\r\n";
+
+    // Terminate headers
+    req += "Transfer-Encoding: chunked\r\n"
+           "Expect: 100-continue\r\n"
+           "\r\n";
+
     std::lock_guard<std::mutex> lk(sock_mutex_);
-    if (tcp_write(reinterpret_cast<const uint8_t*>(req), strlen(req)) < 0) {
+    if (tcp_write(reinterpret_cast<const uint8_t*>(req.c_str()), req.size()) < 0) {
         set_error("Failed to send PUT headers");
         return false;
     }
@@ -276,7 +298,6 @@ bool StreamClient::send_icecast2_headers()
     ssize_t n = ::recv(sock_fd_, resp, sizeof(resp) - 1, 0);
     if (n <= 0) { set_error("No response from server"); return false; }
 
-    // Accept 100 Continue or 200 OK
     std::string rs(resp, static_cast<size_t>(n));
     if (rs.find("100") == std::string::npos && rs.find("200") == std::string::npos) {
         set_error("Server rejected connection: " + rs.substr(0, 80));

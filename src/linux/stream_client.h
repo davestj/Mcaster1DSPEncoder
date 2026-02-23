@@ -1,5 +1,5 @@
 // stream_client.h — Icecast2 / Shoutcast SOURCE client
-// Phase 3 — Mcaster1DSPEncoder Linux v1.2.0
+// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
 #pragma once
 
 #include <string>
@@ -39,6 +39,17 @@ struct StreamTarget {
 
     // ICY metadata interval (bytes between inline metadata blocks, 0 = disabled)
     int         icy_metaint  = 16384;
+
+    // ICY2 extended station identity — sent as Ice-* headers at connect time
+    // Leave empty to omit the header; Mcaster1DNAS / Icecast 2.4+ support these.
+    std::string icy2_twitter;    // Twitter handle, e.g. "@Mcaster1Radio"
+    std::string icy2_facebook;   // Facebook page URL or name
+    std::string icy2_instagram;  // Instagram handle, e.g. "@mcaster1radio"
+    std::string icy2_email;      // Station contact e-mail
+    std::string icy2_language;   // IETF language tag, e.g. "en"
+    std::string icy2_country;    // ISO 3166-1 alpha-2, e.g. "US"
+    std::string icy2_city;       // City / region string, e.g. "Miami, FL"
+    bool        icy2_is_public = true;  // 1 = list in public directories
 
     // Reconnect behaviour
     int         retry_interval_sec = 5;

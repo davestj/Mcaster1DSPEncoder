@@ -27,6 +27,7 @@
 #ifndef MC1_HTTP_TEST_BUILD
 #include "audio_pipeline.h"
 #include "playlist_parser.h"
+#include "dsp/dsp_chain.h"
 #endif
 
 #include <openssl/pem.h>
@@ -582,6 +583,163 @@ static void setup_routes(httplib::Server& svr)
 #endif
                 json r; r["ok"] = true; r["volume"] = vol;
                 res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/encoders/{slot}/dsp — get DSP configuration ──────────
+    svr.Get(R"(/api/v1/encoders/(\d+)/dsp)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json j;
+                if (g_pipeline) {
+                    EncoderConfig cfg;
+                    if (g_pipeline->get_slot_config(slot_id, cfg)) {
+                        j["slot_id"]            = slot_id;
+                        j["eq_enabled"]         = cfg.dsp_eq_enabled;
+                        j["agc_enabled"]        = cfg.dsp_agc_enabled;
+                        j["crossfade_enabled"]  = cfg.dsp_crossfade_enabled;
+                        j["crossfade_duration"] = cfg.dsp_crossfade_duration;
+                        j["eq_preset"]          = cfg.dsp_eq_preset;
+                        j["presets_available"]  = json::array(
+                            {"flat","classic_rock","country","modern_rock",
+                             "broadcast","spoken_word"});
+                    } else {
+                        res.status = 404;
+                        j["error"] = "Slot not found";
+                    }
+                } else {
+                    res.status = 503;
+                    j["error"] = "No pipeline";
+                }
+                res.set_content(j.dump(2), "application/json");
+#else
+                res.set_content(R"({"error":"no pipeline"})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/encoders/{slot}/dsp — update DSP config live ─────────
+    svr.Put(R"(/api/v1/encoders/(\d+)/dsp)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                EncoderConfig cfg;
+                if (!g_pipeline || !g_pipeline->get_slot_config(slot_id, cfg)) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Slot not found"})", "application/json");
+                    return;
+                }
+                if (body.contains("eq_enabled"))
+                    cfg.dsp_eq_enabled        = body["eq_enabled"].get<bool>();
+                if (body.contains("agc_enabled"))
+                    cfg.dsp_agc_enabled       = body["agc_enabled"].get<bool>();
+                if (body.contains("crossfade_enabled"))
+                    cfg.dsp_crossfade_enabled = body["crossfade_enabled"].get<bool>();
+                if (body.contains("crossfade_duration"))
+                    cfg.dsp_crossfade_duration= body["crossfade_duration"].get<float>();
+                if (body.contains("eq_preset"))
+                    cfg.dsp_eq_preset         = body["eq_preset"].get<std::string>();
+
+                mc1dsp::DspChainConfig dsp_cfg;
+                dsp_cfg.sample_rate        = cfg.sample_rate;
+                dsp_cfg.channels           = cfg.channels;
+                dsp_cfg.eq_enabled         = cfg.dsp_eq_enabled;
+                dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
+                dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
+                dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                dsp_cfg.eq_preset          = cfg.dsp_eq_preset;
+                g_pipeline->reconfigure_dsp(slot_id, dsp_cfg);
+
+                json r;
+                r["ok"]               = true;
+                r["slot_id"]          = slot_id;
+                r["eq_enabled"]       = cfg.dsp_eq_enabled;
+                r["agc_enabled"]      = cfg.dsp_agc_enabled;
+                r["crossfade_enabled"]= cfg.dsp_crossfade_enabled;
+                r["eq_preset"]        = cfg.dsp_eq_preset;
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false,"error":"no pipeline"})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/encoders/{slot}/dsp/eq/preset — apply named EQ preset
+    svr.Post(R"(/api/v1/encoders/(\d+)/dsp/eq/preset)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                std::string preset = body.value("preset", "flat");
+                EncoderConfig cfg;
+                if (!g_pipeline || !g_pipeline->get_slot_config(slot_id, cfg)) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Slot not found"})", "application/json");
+                    return;
+                }
+                mc1dsp::DspChainConfig dsp_cfg;
+                dsp_cfg.sample_rate        = cfg.sample_rate;
+                dsp_cfg.channels           = cfg.channels;
+                dsp_cfg.eq_enabled         = true;          // applying a preset enables EQ
+                dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
+                dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
+                dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                dsp_cfg.eq_preset          = preset;
+                g_pipeline->reconfigure_dsp(slot_id, dsp_cfg);
+
+                json r; r["ok"] = true; r["slot_id"] = slot_id; r["preset"] = preset;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/dnas/stats — proxy live stats from Mcaster1DNAS server ─
+    svr.Get("/api/v1/dnas/stats",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                // Fetch stats from DNAS admin endpoint via HTTPS
+                httplib::SSLClient cli("dnas.mcaster1.com", 9443);
+                cli.enable_server_certificate_verification(false);
+                cli.set_basic_auth("djpulse", "#!3wrvNN57761");
+                cli.set_connection_timeout(5);
+                cli.set_read_timeout(10);
+
+                auto r = cli.Get("/admin/mcaster1stats");
+                if (!r) {
+                    res.status = 502;
+                    json e;
+                    e["error"]  = "DNAS unreachable";
+                    e["source"] = "dnas.mcaster1.com:9443";
+                    res.set_content(e.dump(), "application/json");
+                    return;
+                }
+
+                json j;
+                j["ok"]           = (r->status == 200);
+                j["http_status"]  = r->status;
+                j["content_type"] = r->get_header_value("Content-Type");
+                j["body"]         = r->body;
+                j["source"]       = "dnas.mcaster1.com:9443/admin/mcaster1stats";
+                res.set_content(j.dump(2), "application/json");
             });
         });
 
