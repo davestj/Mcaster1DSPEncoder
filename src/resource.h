@@ -24,6 +24,7 @@
 #define IDB_SMALLLOGO                   124
 #define IDD_FINDWINDOW_DLG              125
 #define IDR_SYSTRAY                     126
+#define IDB_PNG1                        128
 #define IDR_SYSTRAY_MENU                130
 #define ID_QUIT                         200
 #define IDD_DIALOG1                     301
@@ -143,6 +144,114 @@
 #define IDC_ADVANCED_GROUP              1107
 #define IDC_EXT_META_GROUP              1108
 #define IDC_MANUAL_META_GROUP           1109
+
+// --- Podcast Settings tab (IDD_PROPPAGE_LARGE2 rework) ---
+#define IDC_PODCAST_GROUP               1110
+#define IDC_LOG_GROUP                   1111
+#define IDC_GENERATE_RSS                1112
+#define IDC_RSS_USE_YP                  1113
+#define IDC_PODCAST_TITLE               1114
+#define IDC_PODCAST_AUTHOR              1115
+#define IDC_PODCAST_CATEGORY            1116
+#define IDC_PODCAST_LANGUAGE            1117
+#define IDC_PODCAST_COPYRIGHT           1118
+#define IDC_PODCAST_WEBSITE             1119
+#define IDC_PODCAST_COVERART            1120
+#define IDC_PODCAST_DESCRIPTION         1121
+#define IDC_BROWSE_ARCHIVE              1122
+
+// --- ICY 2.2 Extended tab (IDD_PROPPAGE_LARGE3) ---
+// Station Identity
+#define IDC_ICY22_STATION_ID            1130
+#define IDC_ICY22_STATION_LOGO          1131
+#define IDC_ICY22_VERIFY_STATUS         1132
+// Show / Programming
+#define IDC_ICY22_SHOW_TITLE            1133
+#define IDC_ICY22_SHOW_START            1134
+#define IDC_ICY22_SHOW_END              1135
+#define IDC_ICY22_NEXT_SHOW             1136
+#define IDC_ICY22_NEXT_SHOW_TIME        1137
+#define IDC_ICY22_SCHEDULE_URL          1138
+#define IDC_ICY22_AUTODJ                1139
+#define IDC_ICY22_PLAYLIST_NAME         1140
+// DJ / Host
+#define IDC_ICY22_DJ_HANDLE             1141
+#define IDC_ICY22_DJ_BIO                1142
+#define IDC_ICY22_DJ_GENRE              1143
+#define IDC_ICY22_DJ_RATING             1144
+// Social & Discovery
+#define IDC_ICY22_CREATOR_HANDLE        1145
+#define IDC_ICY22_SOCIAL_TWITTER        1146
+#define IDC_ICY22_SOCIAL_TWITCH         1147
+#define IDC_ICY22_SOCIAL_IG             1148
+#define IDC_ICY22_SOCIAL_TIKTOK         1149
+#define IDC_ICY22_SOCIAL_YOUTUBE        1150
+#define IDC_ICY22_SOCIAL_FACEBOOK       1151
+#define IDC_ICY22_SOCIAL_LINKEDIN       1152
+#define IDC_ICY22_SOCIAL_LINKTREE       1153
+#define IDC_ICY22_EMOJI                 1154
+#define IDC_ICY22_HASHTAGS              1155
+// Listener Engagement
+#define IDC_ICY22_REQUEST_ENABLED       1156
+#define IDC_ICY22_REQUEST_URL           1157
+#define IDC_ICY22_CHAT_URL              1158
+#define IDC_ICY22_TIP_URL               1159
+#define IDC_ICY22_EVENTS_URL            1160
+// Broadcast Distribution
+#define IDC_ICY22_CROSSPOST             1161
+#define IDC_ICY22_SESSION_ID            1162
+#define IDC_ICY22_CDN_REGION            1163
+#define IDC_ICY22_RELAY_ORIGIN          1164
+// Compliance / Content Flags
+#define IDC_ICY22_NSFW                  1165
+#define IDC_ICY22_AI_GENERATOR          1166
+#define IDC_ICY22_GEO_REGION            1167
+#define IDC_ICY22_LICENSE_TYPE          1168
+#define IDC_ICY22_ROYALTY_FREE          1169
+#define IDC_ICY22_LICENSE_TERRITORY     1170
+// Station Notice
+#define IDC_ICY22_NOTICE_TEXT           1171
+#define IDC_ICY22_NOTICE_URL            1172
+#define IDC_ICY22_NOTICE_EXPIRES        1173
+// Video / Simulcast
+#define IDC_ICY22_VIDEO_TYPE            1174
+#define IDC_ICY22_VIDEO_LINK            1175
+#define IDC_ICY22_VIDEO_TITLE           1176
+#define IDC_ICY22_VIDEO_POSTER          1177
+#define IDC_ICY22_VIDEO_PLATFORM        1178
+#define IDC_ICY22_VIDEO_LIVE            1179
+#define IDC_ICY22_VIDEO_CODEC           1180
+#define IDC_ICY22_VIDEO_FPS             1181
+#define IDC_ICY22_VIDEO_RESOLUTION      1182
+#define IDC_ICY22_VIDEO_RATING          1183
+#define IDC_ICY22_VIDEO_NSFW            1184
+// Audio Technical
+#define IDC_ICY22_LOUDNESS              1185
+
+// ICY 2.2 Extended dialog
+#define IDD_PROPPAGE_LARGE3             304
+
+// --- Phase 5.5 UX Polish: ICY 2.2 popup category dialogs ---
+#define IDD_ICY22_STATION               305
+#define IDD_ICY22_DJ                    306
+#define IDD_ICY22_SOCIAL                307
+#define IDD_ICY22_ENGAGE                308
+#define IDD_ICY22_COMPLY                309
+#define IDD_ICY22_VIDEO                 310
+// Documentation viewer dialog
+#define IDD_DOC_VIEWER                  311
+// Extended Details dashboard button controls
+#define IDC_ICY22_BTN_STATION           1190
+#define IDC_ICY22_BTN_DJ                1191
+#define IDC_ICY22_BTN_SOCIAL            1192
+#define IDC_ICY22_BTN_ENGAGE            1193
+#define IDC_ICY22_BTN_COMPLY            1194
+#define IDC_ICY22_BTN_VIDEO             1195
+#define IDC_ICY22_GEN_SESSION           1196
+// Doc viewer controls
+#define IDC_DOC_TABS                    1197
+#define IDC_DOC_BROWSER                 1198
+
 #define IDC_ST_RESTORE                  32771
 #define IDC_ST_EXIT                     32772
 #define ID__CONFIGURE                   40001
@@ -154,14 +263,22 @@
 #define ID_ABOUT_ABOUT                  40007
 #define ID__RESTORE                     40008
 #define IDI_RESTORE                     40009
+// Help menu command IDs
+#define ID_HELP_DOCUMENTATION           40010
+#define ID_HELP_PRODUCT_ICY22           40011
+#define ID_HELP_PRODUCT_ENCODER         40012
+#define ID_HELP_PRODUCT_ROADMAP         40013
+#define ID_HELP_PRODUCT_ISSUES          40014
+#define ID_HELP_PRODUCT_WIKI            40015
+#define ID_HELP_PRODUCT_TECHREF         40016
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        128
+#define _APS_NEXT_RESOURCE_VALUE        131
 #define _APS_NEXT_COMMAND_VALUE         40010
-#define _APS_NEXT_CONTROL_VALUE         1061
+#define _APS_NEXT_CONTROL_VALUE         1186
 #define _APS_NEXT_SYMED_VALUE           103
 #endif
 #endif

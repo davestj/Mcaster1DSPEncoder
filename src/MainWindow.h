@@ -155,6 +155,13 @@ protected:
 	afx_msg void OnDestroy();
 	afx_msg void OnAboutAbout();
 	afx_msg void OnAboutHelp();
+	afx_msg void OnHelpDocumentation();
+	afx_msg void OnHelpProductIcy22();
+	afx_msg void OnHelpProductEncoder();
+	afx_msg void OnHelpProductRoadmap();
+	afx_msg void OnHelpProductIssues();
+	afx_msg void OnHelpProductWiki();
+	afx_msg void OnHelpProductTechref();
 	afx_msg void OnPaint();
 	afx_msg void OnTimer(UINT nIDEvent);
 	afx_msg void OnMeter();
@@ -167,6 +174,7 @@ protected:
 	afx_msg HBRUSH OnCtlColor(CDC* pDC, CWnd* pWnd, UINT nCtlColor);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
+
 public:
 	afx_msg void OnLvnItemchangedEncoders(NMHDR *pNMHDR, LRESULT *pResult);
 	afx_msg void OnBnClickedButtonEqu();

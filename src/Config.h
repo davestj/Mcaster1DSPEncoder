@@ -9,7 +9,13 @@
 #include "BasicSettings.h"
 #include "YPSettings.h"
 #include "AdvancedSettings.h"
+#include "ICY22Settings.h"
 #include "libmcaster1dspencoder.h"
+
+// WM_SET_PODCAST_FROM_YP — sent by AdvancedSettings to CConfig when user
+// checks "Populate RSS from YP Settings". CConfig copies YP fields into
+// the podcast edit controls and calls UpdateData(FALSE) on advSettings.
+#define WM_SET_PODCAST_FROM_YP  (WM_USER + 101)
 
 /////////////////////////////////////////////////////////////////////////////
 // CConfig dialog
@@ -30,9 +36,10 @@ public:
 	//}}AFX_DATA
 
 
-    CBasicSettings  *basicSettings;
-    CYPSettings     *ypSettings;
-    CAdvancedSettings     *advSettings;
+    CBasicSettings    *basicSettings;
+    CYPSettings       *ypSettings;
+    CAdvancedSettings *advSettings;
+    CICY22Settings    *icy22Settings;
     CDialog *parentDialog;
     int     currentEnc;
 
@@ -54,6 +61,7 @@ protected:
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	virtual void OnOK();
 	virtual void OnCancel();
+	afx_msg LRESULT OnSetPodcastFromYP(WPARAM wParam, LPARAM lParam);
 	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 };

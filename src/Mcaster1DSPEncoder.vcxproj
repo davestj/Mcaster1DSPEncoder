@@ -177,6 +177,8 @@
     <ClCompile Include="log.cpp" />
     <ClCompile Include="MainWindow.cpp" />
     <ClCompile Include="SystemTray.cpp" />
+    <ClCompile Include="ICY22Settings.cpp" />
+    <ClCompile Include="podcast_rss_gen.cpp" />
     <ClCompile Include="YPSettings.cpp" />
     <!-- ResizableLib — compiled without project PCH; /wd4005 suppresses WINVER redefinition -->
     <ClCompile Include="..\external\ResizableLib\ResizableDialog.cpp">
@@ -233,6 +235,8 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="StdAfx.h" />
     <ClInclude Include="SystemTray.h" />
+    <ClInclude Include="ICY22Settings.h" />
+    <ClInclude Include="podcast_rss_gen.h" />
     <ClInclude Include="YPSettings.h" />
   </ItemGroup>
   <ItemGroup>
@@ -247,6 +251,10 @@
       <Project>{0caef635-9b19-4df0-b7b6-03f9c861a551}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="app-icon-v2.png" />
+    <Image Include="bitmap1.bmp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

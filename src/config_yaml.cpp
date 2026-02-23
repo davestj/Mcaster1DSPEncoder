@@ -71,6 +71,10 @@ static int emitPairInt(yaml_emitter_t *e, const char *key, long value)
 
 // Apply extended Windows-only fields that are NOT in the legacy config_read() mapping.
 // Called from readConfigYAML after config_read() has already handled standard fields.
+/* Helper macro for strncpy into fixed-size struct field */
+#define ASTR(field) do { strncpy(g->field, val, sizeof(g->field)-1); g->field[sizeof(g->field)-1]='\0'; } while(0)
+#define AINT(field) do { g->field = atoi(val); } while(0)
+
 static void applyExtendedField(mcaster1Globals *g, const char *key, const char *val)
 {
 #ifdef WIN32
@@ -81,8 +85,81 @@ static void applyExtendedField(mcaster1Globals *g, const char *key, const char *
     if (strcmp(key, "LameABRMean")    == 0) { g->lameABRMean    = atoi(val); return; }
     if (strcmp(key, "LameMinBitrate") == 0) { g->lameMinBitrate = atoi(val); return; }
     if (strcmp(key, "LameMaxBitrate") == 0) { g->lameMaxBitrate = atoi(val); return; }
+
+    // ── Podcast RSS (Phase 5) ──────────────────────────────────────────────
+    if (strcmp(key, "GenerateRSS")        == 0) { AINT(gGenerateRSS);       return; }
+    if (strcmp(key, "RSSUseYPSettings")   == 0) { AINT(gRSSUseYPSettings);  return; }
+    if (strcmp(key, "PodcastTitle")       == 0) { ASTR(gPodcastTitle);       return; }
+    if (strcmp(key, "PodcastAuthor")      == 0) { ASTR(gPodcastAuthor);      return; }
+    if (strcmp(key, "PodcastCategory")    == 0) { ASTR(gPodcastCategory);    return; }
+    if (strcmp(key, "PodcastLanguage")    == 0) { ASTR(gPodcastLanguage);    return; }
+    if (strcmp(key, "PodcastCopyright")   == 0) { ASTR(gPodcastCopyright);   return; }
+    if (strcmp(key, "PodcastWebsite")     == 0) { ASTR(gPodcastWebsite);     return; }
+    if (strcmp(key, "PodcastCoverArt")    == 0) { ASTR(gPodcastCoverArt);    return; }
+    if (strcmp(key, "PodcastDescription") == 0) { ASTR(gPodcastDescription); return; }
+
+    // ── ICY 2.2 Extended (Phase 5) ─────────────────────────────────────────
+    if (strcmp(key, "ICY22StationID")          == 0) { ASTR(gICY22StationID);          return; }
+    if (strcmp(key, "ICY22StationLogo")        == 0) { ASTR(gICY22StationLogo);        return; }
+    if (strcmp(key, "ICY22VerifyStatus")       == 0) { ASTR(gICY22VerifyStatus);       return; }
+    if (strcmp(key, "ICY22ShowTitle")          == 0) { ASTR(gICY22ShowTitle);          return; }
+    if (strcmp(key, "ICY22ShowStart")          == 0) { ASTR(gICY22ShowStart);          return; }
+    if (strcmp(key, "ICY22ShowEnd")            == 0) { ASTR(gICY22ShowEnd);            return; }
+    if (strcmp(key, "ICY22NextShow")           == 0) { ASTR(gICY22NextShow);           return; }
+    if (strcmp(key, "ICY22NextShowTime")       == 0) { ASTR(gICY22NextShowTime);       return; }
+    if (strcmp(key, "ICY22ScheduleURL")        == 0) { ASTR(gICY22ScheduleURL);        return; }
+    if (strcmp(key, "ICY22AutoDJ")             == 0) { AINT(gICY22AutoDJ);             return; }
+    if (strcmp(key, "ICY22PlaylistName")       == 0) { ASTR(gICY22PlaylistName);       return; }
+    if (strcmp(key, "ICY22DJHandle")           == 0) { ASTR(gICY22DJHandle);           return; }
+    if (strcmp(key, "ICY22DJBio")              == 0) { ASTR(gICY22DJBio);              return; }
+    if (strcmp(key, "ICY22DJGenre")            == 0) { ASTR(gICY22DJGenre);            return; }
+    if (strcmp(key, "ICY22DJRating")           == 0) { ASTR(gICY22DJRating);           return; }
+    if (strcmp(key, "ICY22CreatorHandle")      == 0) { ASTR(gICY22CreatorHandle);      return; }
+    if (strcmp(key, "ICY22SocialTwitter")      == 0) { ASTR(gICY22SocialTwitter);      return; }
+    if (strcmp(key, "ICY22SocialTwitch")       == 0) { ASTR(gICY22SocialTwitch);       return; }
+    if (strcmp(key, "ICY22SocialIG")           == 0) { ASTR(gICY22SocialIG);           return; }
+    if (strcmp(key, "ICY22SocialTikTok")       == 0) { ASTR(gICY22SocialTikTok);       return; }
+    if (strcmp(key, "ICY22SocialYouTube")      == 0) { ASTR(gICY22SocialYouTube);      return; }
+    if (strcmp(key, "ICY22SocialFacebook")     == 0) { ASTR(gICY22SocialFacebook);     return; }
+    if (strcmp(key, "ICY22SocialLinkedIn")     == 0) { ASTR(gICY22SocialLinkedIn);     return; }
+    if (strcmp(key, "ICY22SocialLinktree")     == 0) { ASTR(gICY22SocialLinktree);     return; }
+    if (strcmp(key, "ICY22Emoji")              == 0) { ASTR(gICY22Emoji);              return; }
+    if (strcmp(key, "ICY22Hashtags")           == 0) { ASTR(gICY22Hashtags);           return; }
+    if (strcmp(key, "ICY22RequestEnabled")     == 0) { AINT(gICY22RequestEnabled);     return; }
+    if (strcmp(key, "ICY22RequestURL")         == 0) { ASTR(gICY22RequestURL);         return; }
+    if (strcmp(key, "ICY22ChatURL")            == 0) { ASTR(gICY22ChatURL);            return; }
+    if (strcmp(key, "ICY22TipURL")             == 0) { ASTR(gICY22TipURL);             return; }
+    if (strcmp(key, "ICY22EventsURL")          == 0) { ASTR(gICY22EventsURL);          return; }
+    if (strcmp(key, "ICY22CrosspostPlatforms") == 0) { ASTR(gICY22CrosspostPlatforms); return; }
+    if (strcmp(key, "ICY22SessionID")          == 0) { ASTR(gICY22SessionID);          return; }
+    if (strcmp(key, "ICY22CDNRegion")          == 0) { ASTR(gICY22CDNRegion);          return; }
+    if (strcmp(key, "ICY22RelayOrigin")        == 0) { ASTR(gICY22RelayOrigin);        return; }
+    if (strcmp(key, "ICY22NSFW")               == 0) { AINT(gICY22NSFW);               return; }
+    if (strcmp(key, "ICY22AIGenerator")        == 0) { AINT(gICY22AIGenerator);        return; }
+    if (strcmp(key, "ICY22GeoRegion")          == 0) { ASTR(gICY22GeoRegion);          return; }
+    if (strcmp(key, "ICY22LicenseType")        == 0) { ASTR(gICY22LicenseType);        return; }
+    if (strcmp(key, "ICY22RoyaltyFree")        == 0) { AINT(gICY22RoyaltyFree);        return; }
+    if (strcmp(key, "ICY22LicenseTerritory")   == 0) { ASTR(gICY22LicenseTerritory);   return; }
+    if (strcmp(key, "ICY22NoticeText")         == 0) { ASTR(gICY22NoticeText);         return; }
+    if (strcmp(key, "ICY22NoticeURL")          == 0) { ASTR(gICY22NoticeURL);          return; }
+    if (strcmp(key, "ICY22NoticeExpires")      == 0) { ASTR(gICY22NoticeExpires);      return; }
+    if (strcmp(key, "ICY22VideoType")          == 0) { ASTR(gICY22VideoType);          return; }
+    if (strcmp(key, "ICY22VideoLink")          == 0) { ASTR(gICY22VideoLink);          return; }
+    if (strcmp(key, "ICY22VideoTitle")         == 0) { ASTR(gICY22VideoTitle);         return; }
+    if (strcmp(key, "ICY22VideoPoster")        == 0) { ASTR(gICY22VideoPoster);        return; }
+    if (strcmp(key, "ICY22VideoPlatform")      == 0) { ASTR(gICY22VideoPlatform);      return; }
+    if (strcmp(key, "ICY22VideoLive")          == 0) { AINT(gICY22VideoLive);          return; }
+    if (strcmp(key, "ICY22VideoCodec")         == 0) { ASTR(gICY22VideoCodec);         return; }
+    if (strcmp(key, "ICY22VideoFPS")           == 0) { ASTR(gICY22VideoFPS);           return; }
+    if (strcmp(key, "ICY22VideoResolution")    == 0) { ASTR(gICY22VideoResolution);    return; }
+    if (strcmp(key, "ICY22VideoRating")        == 0) { ASTR(gICY22VideoRating);        return; }
+    if (strcmp(key, "ICY22VideoNSFW")          == 0) { AINT(gICY22VideoNSFW);          return; }
+    if (strcmp(key, "ICY22LoudnessLUFS")       == 0) { ASTR(gICY22LoudnessLUFS);       return; }
 #endif
 }
+
+#undef ASTR
+#undef AINT
 
 // ─────────────────────────────────────────────────────────────────────────────
 // writeConfigYAML
@@ -211,6 +288,76 @@ int writeConfigYAML(mcaster1Globals *g)
     ESTR("ExternalURL",      g->externalURL);
     ESTR("ExternalFile",     g->externalFile);
     ESTR("ExternalInterval", g->externalInterval);
+
+    // ── Podcast RSS (Phase 5) ─────────────────────────────────────────────────
+    EINT("GenerateRSS",          g->gGenerateRSS);
+    EINT("RSSUseYPSettings",     g->gRSSUseYPSettings);
+    ESTR("PodcastTitle",         g->gPodcastTitle);
+    ESTR("PodcastAuthor",        g->gPodcastAuthor);
+    ESTR("PodcastCategory",      g->gPodcastCategory);
+    ESTR("PodcastLanguage",      g->gPodcastLanguage);
+    ESTR("PodcastCopyright",     g->gPodcastCopyright);
+    ESTR("PodcastWebsite",       g->gPodcastWebsite);
+    ESTR("PodcastCoverArt",      g->gPodcastCoverArt);
+    ESTR("PodcastDescription",   g->gPodcastDescription);
+
+    // ── ICY 2.2 Extended (Phase 5) ───────────────────────────────────────────
+    ESTR("ICY22StationID",          g->gICY22StationID);
+    ESTR("ICY22StationLogo",        g->gICY22StationLogo);
+    ESTR("ICY22VerifyStatus",       g->gICY22VerifyStatus);
+    ESTR("ICY22ShowTitle",          g->gICY22ShowTitle);
+    ESTR("ICY22ShowStart",          g->gICY22ShowStart);
+    ESTR("ICY22ShowEnd",            g->gICY22ShowEnd);
+    ESTR("ICY22NextShow",           g->gICY22NextShow);
+    ESTR("ICY22NextShowTime",       g->gICY22NextShowTime);
+    ESTR("ICY22ScheduleURL",        g->gICY22ScheduleURL);
+    EINT("ICY22AutoDJ",             g->gICY22AutoDJ);
+    ESTR("ICY22PlaylistName",       g->gICY22PlaylistName);
+    ESTR("ICY22DJHandle",           g->gICY22DJHandle);
+    ESTR("ICY22DJBio",              g->gICY22DJBio);
+    ESTR("ICY22DJGenre",            g->gICY22DJGenre);
+    ESTR("ICY22DJRating",           g->gICY22DJRating);
+    ESTR("ICY22CreatorHandle",      g->gICY22CreatorHandle);
+    ESTR("ICY22SocialTwitter",      g->gICY22SocialTwitter);
+    ESTR("ICY22SocialTwitch",       g->gICY22SocialTwitch);
+    ESTR("ICY22SocialIG",           g->gICY22SocialIG);
+    ESTR("ICY22SocialTikTok",       g->gICY22SocialTikTok);
+    ESTR("ICY22SocialYouTube",      g->gICY22SocialYouTube);
+    ESTR("ICY22SocialFacebook",     g->gICY22SocialFacebook);
+    ESTR("ICY22SocialLinkedIn",     g->gICY22SocialLinkedIn);
+    ESTR("ICY22SocialLinktree",     g->gICY22SocialLinktree);
+    ESTR("ICY22Emoji",              g->gICY22Emoji);
+    ESTR("ICY22Hashtags",           g->gICY22Hashtags);
+    EINT("ICY22RequestEnabled",     g->gICY22RequestEnabled);
+    ESTR("ICY22RequestURL",         g->gICY22RequestURL);
+    ESTR("ICY22ChatURL",            g->gICY22ChatURL);
+    ESTR("ICY22TipURL",             g->gICY22TipURL);
+    ESTR("ICY22EventsURL",          g->gICY22EventsURL);
+    ESTR("ICY22CrosspostPlatforms", g->gICY22CrosspostPlatforms);
+    ESTR("ICY22SessionID",          g->gICY22SessionID);
+    ESTR("ICY22CDNRegion",          g->gICY22CDNRegion);
+    ESTR("ICY22RelayOrigin",        g->gICY22RelayOrigin);
+    EINT("ICY22NSFW",               g->gICY22NSFW);
+    EINT("ICY22AIGenerator",        g->gICY22AIGenerator);
+    ESTR("ICY22GeoRegion",          g->gICY22GeoRegion);
+    ESTR("ICY22LicenseType",        g->gICY22LicenseType);
+    EINT("ICY22RoyaltyFree",        g->gICY22RoyaltyFree);
+    ESTR("ICY22LicenseTerritory",   g->gICY22LicenseTerritory);
+    ESTR("ICY22NoticeText",         g->gICY22NoticeText);
+    ESTR("ICY22NoticeURL",          g->gICY22NoticeURL);
+    ESTR("ICY22NoticeExpires",      g->gICY22NoticeExpires);
+    ESTR("ICY22VideoType",          g->gICY22VideoType);
+    ESTR("ICY22VideoLink",          g->gICY22VideoLink);
+    ESTR("ICY22VideoTitle",         g->gICY22VideoTitle);
+    ESTR("ICY22VideoPoster",        g->gICY22VideoPoster);
+    ESTR("ICY22VideoPlatform",      g->gICY22VideoPlatform);
+    EINT("ICY22VideoLive",          g->gICY22VideoLive);
+    ESTR("ICY22VideoCodec",         g->gICY22VideoCodec);
+    ESTR("ICY22VideoFPS",           g->gICY22VideoFPS);
+    ESTR("ICY22VideoResolution",    g->gICY22VideoResolution);
+    ESTR("ICY22VideoRating",        g->gICY22VideoRating);
+    EINT("ICY22VideoNSFW",          g->gICY22VideoNSFW);
+    ESTR("ICY22LoudnessLUFS",       g->gICY22LoudnessLUFS);
 
     EMIT(yaml_mapping_end_event_initialize(&ev));
     EMIT(yaml_document_end_event_initialize(&ev, 1));

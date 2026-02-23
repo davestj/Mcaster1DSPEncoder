@@ -393,6 +393,87 @@ typedef struct {
 
 		int		LAMEJointStereoFlag;
 		CBUFFER	circularBuffer;
+
+	/* ---- Phase 5: Podcast RSS generation ---- */
+	int     gGenerateRSS;               /* 0/1 — write .rss alongside saved file */
+	int     gRSSUseYPSettings;          /* 0/1 — seed RSS fields from YP settings */
+	char_t  gPodcastTitle[256];         /* podcast show title */
+	char_t  gPodcastAuthor[256];        /* host / author name */
+	char_t  gPodcastCategory[128];      /* iTunes category e.g. "Technology" */
+	char_t  gPodcastLanguage[16];       /* ISO 639-1 e.g. "en-us" */
+	char_t  gPodcastCopyright[256];     /* copyright string */
+	char_t  gPodcastWebsite[1024];      /* podcast homepage URL */
+	char_t  gPodcastCoverArt[1024];     /* cover art image URL */
+	char_t  gPodcastDescription[2048];  /* show description / summary */
+	char_t  gLastSavedFilePath[1024];   /* set by openArchiveFile, consumed by RSS gen */
+
+	/* ---- Phase 5: ICY 2.2 Extended metadata ---- */
+	/* Station Identity */
+	char_t  gICY22StationID[256];
+	char_t  gICY22StationLogo[1024];
+	char_t  gICY22VerifyStatus[32];     /* unverified|pending|verified|gold */
+	/* Show / Programming */
+	char_t  gICY22ShowTitle[256];
+	char_t  gICY22ShowStart[64];        /* ISO8601 */
+	char_t  gICY22ShowEnd[64];
+	char_t  gICY22NextShow[256];
+	char_t  gICY22NextShowTime[64];
+	char_t  gICY22ScheduleURL[1024];
+	int     gICY22AutoDJ;
+	char_t  gICY22PlaylistName[256];
+	/* DJ / Host */
+	char_t  gICY22DJHandle[128];
+	char_t  gICY22DJBio[512];           /* max 280 chars per spec */
+	char_t  gICY22DJGenre[256];         /* comma-separated, max 5 */
+	char_t  gICY22DJRating[32];
+	/* Social & Discovery */
+	char_t  gICY22CreatorHandle[128];
+	char_t  gICY22SocialTwitter[128];
+	char_t  gICY22SocialTwitch[128];
+	char_t  gICY22SocialIG[128];
+	char_t  gICY22SocialTikTok[128];
+	char_t  gICY22SocialYouTube[256];
+	char_t  gICY22SocialFacebook[256];
+	char_t  gICY22SocialLinkedIn[256];
+	char_t  gICY22SocialLinktree[1024];
+	char_t  gICY22Emoji[16];
+	char_t  gICY22Hashtags[512];        /* JSON array e.g. ["#rock","#live"] */
+	/* Listener Engagement */
+	int     gICY22RequestEnabled;
+	char_t  gICY22RequestURL[1024];
+	char_t  gICY22ChatURL[1024];
+	char_t  gICY22TipURL[1024];
+	char_t  gICY22EventsURL[1024];
+	/* Broadcast Distribution */
+	char_t  gICY22CrosspostPlatforms[512]; /* comma-separated active platforms */
+	char_t  gICY22SessionID[256];          /* UUID auto-gen on connect if blank */
+	char_t  gICY22CDNRegion[64];
+	char_t  gICY22RelayOrigin[1024];
+	/* Compliance / Content Flags */
+	int     gICY22NSFW;
+	int     gICY22AIGenerator;
+	char_t  gICY22GeoRegion[64];
+	char_t  gICY22LicenseType[64];      /* cc-by|cc-by-sa|cc0|pro-licensed|all-rights-reserved */
+	int     gICY22RoyaltyFree;
+	char_t  gICY22LicenseTerritory[256];/* ISO country codes or GLOBAL */
+	/* Station Notice */
+	char_t  gICY22NoticeText[512];
+	char_t  gICY22NoticeURL[1024];
+	char_t  gICY22NoticeExpires[64];    /* ISO8601 */
+	/* Video / Simulcast */
+	char_t  gICY22VideoType[32];        /* live|short|clip|trailer|ad */
+	char_t  gICY22VideoLink[1024];
+	char_t  gICY22VideoTitle[256];
+	char_t  gICY22VideoPoster[1024];
+	char_t  gICY22VideoPlatform[32];    /* youtube|tiktok|twitch|kick|rumble|vimeo|custom */
+	int     gICY22VideoLive;
+	char_t  gICY22VideoCodec[32];
+	char_t  gICY22VideoFPS[16];
+	char_t  gICY22VideoResolution[32];  /* e.g. "1920x1080" */
+	char_t  gICY22VideoRating[16];
+	int     gICY22VideoNSFW;
+	/* Audio Technical */
+	char_t  gICY22LoudnessLUFS[16];    /* EBU R128 e.g. "-14.0" */
 } mcaster1Globals;
 
 
