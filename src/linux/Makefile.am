@@ -21,6 +21,7 @@ AM_CXXFLAGS = -std=c++17 -Wall -Wno-unused-parameter -O2
 mcaster1_encoder_SOURCES = \
     main_cli.cpp \
     http_api.cpp \
+    fastcgi_client.cpp \
     audio_pipeline.cpp \
     encoder_slot.cpp \
     audio_source.cpp \

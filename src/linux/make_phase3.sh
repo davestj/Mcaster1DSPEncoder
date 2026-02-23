@@ -163,6 +163,7 @@ fi
 SRCS=(
     "${REPO_ROOT}/src/linux/main_cli.cpp"
     "${REPO_ROOT}/src/linux/http_api.cpp"
+    "${REPO_ROOT}/src/linux/fastcgi_client.cpp"
     "${REPO_ROOT}/src/linux/audio_pipeline.cpp"
     "${REPO_ROOT}/src/linux/encoder_slot.cpp"
     "${REPO_ROOT}/src/linux/audio_source.cpp"

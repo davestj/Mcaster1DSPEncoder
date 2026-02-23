@@ -20,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include "http_api.h"
+#include "fastcgi_client.h"
 #include "../platform.h"
 #include "../libmcaster1dspencoder/libmcaster1dspencoder.h"
 
@@ -46,16 +47,21 @@
 #include <iomanip>
 #include <fstream>
 #include <functional>
+#include <algorithm>
 #include <ctime>
 #include <cstring>
 #include <cerrno>
+#include <climits>
+#include <cstdlib>
 #include <sys/stat.h>
+#include <unistd.h>
 
 using json = nlohmann::json;
 
 /* ── Internal state ───────────────────────────────────────────────────────── */
 
-static std::string g_webroot;
+static std::string      g_webroot;
+static FastCgiClient*   g_fcgi = nullptr;
 
 // Per-listener context — keeps server alive and joinable
 struct ListenerCtx {
@@ -579,6 +585,101 @@ static void setup_routes(httplib::Server& svr)
             });
         });
 
+    // ── PHP app routes — FastCGI bridge to php-fpm ─────────────────────────
+    // Matches /app/foo.php and /app/api/foo.php but NOT /app/inc/*.php
+    // Auth is enforced by with_auth(); php-fpm receives X-MC1-AUTHENTICATED:1
+    auto handle_php = [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_fcgi) {
+                res.status = 503;
+                res.set_content("FastCGI client not available", "text/plain");
+                return;
+            }
+
+            // Absolute path to .php file on disk
+            std::string script_name     = req.path;
+            std::string script_filename = g_webroot + script_name;
+
+            // Reconstruct query string from parsed params
+            std::string query_string;
+            for (auto it = req.params.begin(); it != req.params.end(); ++it) {
+                if (!query_string.empty()) query_string += "&";
+                // Simple percent-encoding of value
+                for (unsigned char c : it->first)  query_string += static_cast<char>(c);
+                query_string += "=";
+                for (unsigned char c : it->second) {
+                    if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                        query_string += static_cast<char>(c);
+                    } else {
+                        char hex[4];
+                        snprintf(hex, sizeof(hex), "%%%02X", c);
+                        query_string += hex;
+                    }
+                }
+            }
+
+            std::string request_uri = script_name;
+            if (!query_string.empty()) request_uri += "?" + query_string;
+
+            // Gather content-type from request headers
+            std::string content_type;
+            {
+                auto ct = req.headers.find("Content-Type");
+                if (ct != req.headers.end()) content_type = ct->second;
+            }
+
+            // Forward request HTTP headers as HTTP_* FastCGI params
+            std::map<std::string, std::string> extra;
+            extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+            for (auto& [hname, hval] : req.headers) {
+                std::string key = hname;
+                std::transform(key.begin(), key.end(), key.begin(),
+                    [](unsigned char c) { return std::toupper(c); });
+                std::replace(key.begin(), key.end(), '-', '_');
+                // These are set separately as standard CGI vars
+                if (key == "CONTENT_TYPE" || key == "CONTENT_LENGTH") continue;
+                // Don't forward the Authorization header to PHP
+                if (key == "AUTHORIZATION") continue;
+                extra["HTTP_" + key] = hval;
+            }
+
+            std::string remote_addr = req.remote_addr;
+            if (remote_addr.empty()) remote_addr = "127.0.0.1";
+
+            int server_port = (gAdminConfig.num_sockets > 0)
+                              ? gAdminConfig.sockets[0].port : 8330;
+
+            FcgiResponse fr = g_fcgi->forward(
+                req.method,
+                script_filename, script_name,
+                query_string, request_uri,
+                content_type, req.body,
+                g_webroot,
+                remote_addr, "localhost", server_port,
+                extra
+            );
+
+            if (!fr.ok) {
+                res.status = 502;
+                res.set_content("502 Bad Gateway\n" + fr.error, "text/plain");
+                return;
+            }
+
+            res.status = fr.status;
+            for (auto& [k, v] : fr.headers)
+                res.set_header(k.c_str(), v.c_str());
+            res.set_content(fr.body, fr.content_type.c_str());
+        });
+    };
+
+    // /app/foo.php  (top-level app pages)
+    svr.Get(R"(/app/[^/]+\.php)",  handle_php);
+    svr.Post(R"(/app/[^/]+\.php)", handle_php);
+
+    // /app/api/foo.php  (JSON API endpoints)
+    svr.Get(R"(/app/api/[^/]+\.php)",  handle_php);
+    svr.Post(R"(/app/api/[^/]+\.php)", handle_php);
+
     // ── 404 catch-all ─────────────────────────────────────────────────────
     svr.set_error_handler([](const httplib::Request&, httplib::Response& res) {
         if (res.status == 404)
@@ -590,8 +691,19 @@ static void setup_routes(httplib::Server& svr)
 
 void http_api_start(const std::string& webroot)
 {
-    g_webroot    = webroot;
+    // Resolve webroot to absolute path so SCRIPT_FILENAME is correct for php-fpm
+    {
+        char resolved[PATH_MAX];
+        if (realpath(webroot.c_str(), resolved))
+            g_webroot = resolved;
+        else
+            g_webroot = webroot;
+    }
     g_start_time = time(nullptr);
+
+    // Initialise FastCGI client (one instance, thread-safe per-request)
+    if (!g_fcgi)
+        g_fcgi = new FastCgiClient("/run/php/php8.2-fpm-mc1.sock");
 
     if (!gAdminConfig.enabled || gAdminConfig.num_sockets == 0) {
         fprintf(stderr, "[http] Admin server disabled or no sockets configured.\n");
@@ -669,6 +781,9 @@ void http_api_stop()
         if (ctx.th.joinable()) ctx.th.join();
     }
     g_listeners.clear();
+
+    delete g_fcgi;
+    g_fcgi = nullptr;
 }
 
 /* ── SSL cert / CSR generation ────────────────────────────────────────────── */
