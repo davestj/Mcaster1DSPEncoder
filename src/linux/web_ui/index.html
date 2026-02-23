@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mcaster1 DSP Encoder — Admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+</head>
+<body class="dashboard-page">
+
+<!-- ── Top bar ──────────────────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">M<span style="opacity:.5">1</span></div>
+    <div>
+      <div class="topbar-name">Mcaster1</div>
+      <div class="topbar-sub">DSP Encoder</div>
+    </div>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="topbar-title" id="topbar-page-title">Dashboard</div>
+  <div class="topbar-status">
+    <span id="topbar-conn">
+      <i class="fa-solid fa-circle text-muted" style="font-size:8px"></i>
+      <span id="topbar-conn-label">Connecting…</span>
+    </span>
+    <span>
+      <i class="fa-regular fa-clock text-muted"></i>
+      Up <span id="topbar-uptime">—</span>
+    </span>
+  </div>
+  <button class="btn btn-secondary btn-sm" id="btn-logout">
+    <i class="fa-solid fa-right-from-bracket"></i> Logout
+  </button>
+</header>
+
+<!-- ── Body ─────────────────────────────────────────────────────────────── -->
+<div class="dash-body">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-section-label">Monitor</div>
+    <div class="nav-item active" data-view="overview">
+      <i class="fa-solid fa-gauge"></i> Dashboard
+    </div>
+    <div class="nav-item" data-view="encoders">
+      <i class="fa-solid fa-tower-broadcast"></i> Encoders
+    </div>
+    <div class="nav-item" data-view="streams">
+      <i class="fa-solid fa-broadcast-tower"></i> Streams
+    </div>
+
+    <div class="sidebar-section-label">Control</div>
+    <div class="nav-item" data-view="metadata">
+      <i class="fa-solid fa-music"></i> Now Playing
+    </div>
+    <div class="nav-item" data-view="playlist">
+      <i class="fa-solid fa-list-ul"></i> Playlist
+    </div>
+    <div class="nav-item" data-view="volume">
+      <i class="fa-solid fa-volume-high"></i> Volume
+    </div>
+
+    <div class="sidebar-section-label">Config</div>
+    <div class="nav-item" data-view="settings">
+      <i class="fa-solid fa-sliders"></i> Settings
+    </div>
+    <div class="nav-item" data-view="ssl">
+      <i class="fa-solid fa-lock"></i> SSL / Certs
+    </div>
+
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footer">
+      <div style="font-size:11px;color:var(--muted)">
+        <i class="fa-solid fa-circle-info" style="margin-right:4px"></i>
+        v5.0 &nbsp;&middot;&nbsp; ICY 2.2
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: OVERVIEW (Dashboard)
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view active" id="view-overview">
+
+      <!-- Now playing bar -->
+      <div class="now-playing-bar" id="now-playing-bar">
+        <div class="now-playing-icon">
+          <i class="fa-solid fa-music" id="now-playing-anim"></i>
+        </div>
+        <div class="now-playing-labels">
+          <div class="now-playing-title" id="np-title">No track metadata</div>
+          <div class="now-playing-artist" id="np-artist">—</div>
+        </div>
+        <div class="now-playing-right">
+          <span class="badge badge-idle" id="np-badge">Idle</span>
+        </div>
+      </div>
+
+      <!-- Stat cards -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-green">
+            <i class="fa-solid fa-circle-check"></i>
+          </div>
+          <div>
+            <div class="stat-value" id="stat-status">—</div>
+            <div class="stat-label">Server Status</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-teal">
+            <i class="fa-solid fa-tower-broadcast"></i>
+          </div>
+          <div>
+            <div class="stat-value" id="stat-active-enc">0</div>
+            <div class="stat-label">Active Encoders</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-cyan">
+            <i class="fa-solid fa-headphones"></i>
+          </div>
+          <div>
+            <div class="stat-value" id="stat-listeners">0</div>
+            <div class="stat-label">Total Listeners</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-yellow">
+            <i class="fa-regular fa-clock"></i>
+          </div>
+          <div>
+            <div class="stat-value mono" id="stat-uptime">—</div>
+            <div class="stat-label">Uptime</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Encoder summary table -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">
+            <i class="fa-solid fa-tower-broadcast"></i> Encoder Slots
+          </span>
+          <button class="btn btn-secondary btn-sm" id="btn-refresh-now">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Status</th>
+                  <th>Format</th>
+                  <th>Bitrate</th>
+                  <th>Server</th>
+                  <th>Mount</th>
+                  <th>Listeners</th>
+                </tr>
+              </thead>
+              <tbody id="encoder-table-body">
+                <tr>
+                  <td colspan="7" style="text-align:center;color:var(--muted);padding:32px">
+                    <i class="fa-solid fa-spinner spin"></i> Loading…
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </section><!-- /view-overview -->
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: ENCODERS (detail)
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-encoders">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-tower-broadcast"></i> Encoder Detail</span>
+        </div>
+        <div class="card-body">
+          <div id="encoder-detail-list">
+            <p style="color:var(--muted)">
+              <i class="fa-solid fa-spinner spin"></i> Loading encoder info…
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: STREAMS
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-streams">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-broadcast-tower"></i> Active Streams</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          <div class="table-wrap">
+            <table class="data-table" id="streams-table">
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Server</th>
+                  <th>Mount</th>
+                  <th>Format</th>
+                  <th>Bitrate</th>
+                  <th>Listeners</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="streams-table-body">
+                <tr><td colspan="7" style="text-align:center;color:var(--muted);padding:32px">
+                  No active streams.
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: METADATA (Now Playing)
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-metadata">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-music"></i> Update Track Metadata</span>
+          </div>
+          <div class="card-body">
+            <form id="metadata-form" autocomplete="off">
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-music"></i> Title</label>
+                    <input type="text" id="meta-title" class="form-input" placeholder="Track title">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-user"></i> Artist</label>
+                    <input type="text" id="meta-artist" class="form-input" placeholder="Artist name">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-record-vinyl"></i> Album</label>
+                    <input type="text" id="meta-album" class="form-input" placeholder="Album name">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-guitar"></i> Genre</label>
+                    <input type="text" id="meta-genre" class="form-input" placeholder="Genre">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-calendar"></i> Year</label>
+                    <input type="text" id="meta-year" class="form-input" placeholder="2024" maxlength="4">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label"><i class="fa-solid fa-drum"></i> BPM</label>
+                    <input type="text" id="meta-bpm" class="form-input" placeholder="120" maxlength="5">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label"><i class="fa-solid fa-image"></i> Cover Art URL</label>
+                  <input type="url" id="meta-artwork" class="form-input" placeholder="https://…">
+                </div>
+                <div id="meta-result" hidden></div>
+                <button type="submit" class="btn btn-primary">
+                  <i class="fa-solid fa-paper-plane"></i> Push to Streams
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-circle-info"></i> Current Metadata</span>
+          </div>
+          <div class="card-body">
+            <div id="current-meta-display" style="display:flex;flex-direction:column;gap:12px">
+              <div style="color:var(--muted);font-size:13px">
+                <i class="fa-solid fa-spinner spin"></i> Loading…
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: PLAYLIST
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-playlist">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-list-ul"></i> Playlist / File Streaming</span>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="alert alert-info" style="background:rgba(8,145,178,0.1);border-color:rgba(8,145,178,0.3);color:#7dd3fc">
+              <i class="fa-solid fa-circle-info"></i>
+              <span>Load a playlist file (.m3u, .pls, .xspf) or a directory of audio files to start file streaming.</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><i class="fa-solid fa-file-audio"></i> Playlist File Path</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="playlist-path" class="form-input"
+                       placeholder="/var/www/lyndenradio.com/audio/playlist.m3u">
+                <button class="btn btn-secondary" id="btn-load-playlist">
+                  <i class="fa-solid fa-folder-open"></i> Load
+                </button>
+              </div>
+            </div>
+            <div id="playlist-tracks" style="display:none">
+              <div class="section-title">Tracks</div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr><th>#</th><th>File</th><th>Duration</th><th></th></tr>
+                  </thead>
+                  <tbody id="playlist-tracks-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: VOLUME
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-volume">
+      <div class="two-col">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-volume-high"></i> Master Volume</span>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:24px">
+            <div class="volume-wrap">
+              <i class="fa-solid fa-volume-low volume-icon"></i>
+              <input type="range" id="volume-slider-main"
+                     class="volume-slider"
+                     min="0" max="100" value="100">
+              <span class="volume-value" id="volume-display-main">100%</span>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="setPresetVolume(100)">100%</button>
+              <button class="btn btn-secondary btn-sm" onclick="setPresetVolume(90)">90%</button>
+              <button class="btn btn-secondary btn-sm" onclick="setPresetVolume(75)">75%</button>
+              <button class="btn btn-secondary btn-sm" onclick="setPresetVolume(50)">50%</button>
+              <button class="btn btn-secondary btn-sm" onclick="setPresetVolume(25)">25%</button>
+              <button class="btn btn-danger btn-sm" onclick="setPresetVolume(0)">
+                <i class="fa-solid fa-volume-xmark"></i> Mute
+              </button>
+            </div>
+            <button class="btn btn-primary" id="btn-apply-volume">
+              <i class="fa-solid fa-check"></i> Apply Volume
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title"><i class="fa-solid fa-sliders"></i> Per-Encoder Volume</span>
+          </div>
+          <div class="card-body">
+            <div id="per-encoder-volume" style="display:flex;flex-direction:column;gap:16px">
+              <p style="color:var(--muted);font-size:13px">
+                <i class="fa-solid fa-spinner spin"></i> Loading encoders…
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: SETTINGS
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-settings">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-sliders"></i> Server Information</span>
+        </div>
+        <div class="card-body">
+          <div id="settings-info" style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+            <div style="color:var(--muted)"><i class="fa-solid fa-spinner spin"></i> Loading…</div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-circle-info"></i> API Reference</span>
+        </div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;font-family:var(--font-mono)">
+            <div style="color:var(--text-dim)">Available endpoints:</div>
+            <div style="color:var(--teal)">GET  /api/v1/status</div>
+            <div style="color:var(--teal)">GET  /api/v1/encoders</div>
+            <div style="color:var(--cyan)">PUT  /api/v1/metadata</div>
+            <div style="color:var(--cyan)">PUT  /api/v1/volume</div>
+            <div style="color:var(--yellow)">POST /api/v1/auth/login</div>
+            <div style="color:var(--yellow)">POST /api/v1/auth/logout</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         VIEW: SSL / CERTS
+         ══════════════════════════════════════════════════════════════════ -->
+    <section class="view" id="view-ssl">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title"><i class="fa-solid fa-lock"></i> SSL / TLS Certificates</span>
+        </div>
+        <div class="card-body">
+          <div class="alert alert-warn" style="margin-bottom:16px">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            <span>Certificate generation runs on the server CLI. Use <code style="font-family:var(--font-mono);background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:3px">--ssl-gencert</code> flags at startup.</span>
+          </div>
+          <div id="ssl-info" style="display:flex;flex-direction:column;gap:10px;font-size:13px">
+            <div style="color:var(--muted)"><i class="fa-solid fa-spinner spin"></i> Loading…</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main><!-- /main-content -->
+</div><!-- /dash-body -->
+
+<!-- Toast notification -->
+<div id="toast" class="hidden">
+  <i id="toast-icon" class="fa-solid fa-circle-check"></i>
+  <span id="toast-msg"></span>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
