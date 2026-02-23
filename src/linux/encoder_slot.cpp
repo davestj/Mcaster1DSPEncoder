@@ -29,6 +29,47 @@
 #endif
 
 // ---------------------------------------------------------------------------
+// Codec output-buffer state helpers (anonymous namespace — file-scope only)
+// ---------------------------------------------------------------------------
+namespace {
+
+#ifdef HAVE_OPUS
+struct OpusState {
+    OggOpusEnc*          enc = nullptr;
+    std::vector<uint8_t> pending;
+};
+
+int opus_write_cb(void* user, const unsigned char* ptr, opus_int32 len)
+{
+    auto* s = static_cast<OpusState*>(user);
+    s->pending.insert(s->pending.end(), ptr, ptr + len);
+    return 0;
+}
+
+int opus_close_cb(void* /*user*/) { return 0; }
+#endif // HAVE_OPUS
+
+#ifdef HAVE_FLAC
+struct FlacState {
+    FLAC__StreamEncoder* enc = nullptr;
+    std::vector<uint8_t> pending;
+};
+
+FLAC__StreamEncoderWriteStatus flac_write_cb(
+    const FLAC__StreamEncoder* /*enc*/,
+    const FLAC__byte buf[], size_t bytes,
+    uint32_t /*samples*/, uint32_t /*current_frame*/,
+    void* client_data)
+{
+    auto* s = static_cast<FlacState*>(client_data);
+    s->pending.insert(s->pending.end(), buf, buf + bytes);
+    return FLAC__STREAM_ENCODER_WRITE_STATUS_OK;
+}
+#endif // HAVE_FLAC
+
+} // namespace
+
+// ---------------------------------------------------------------------------
 // EncoderSlot — constructor / destructor
 // ---------------------------------------------------------------------------
 EncoderSlot::EncoderSlot(const EncoderConfig& cfg)
@@ -213,6 +254,7 @@ void EncoderSlot::push_metadata(const std::string& title, const std::string& art
 EncoderSlot::Stats EncoderSlot::stats() const
 {
     Stats s;
+    s.slot_id   = cfg_.slot_id;
     s.state     = state_.load();
     s.state_str = state_to_string(s.state);
     s.is_live   = (s.state == State::LIVE);
@@ -401,13 +443,35 @@ bool EncoderSlot::init_vorbis()
 
 bool EncoderSlot::init_opus()
 {
-    // libopusenc wraps Opus + Ogg container
 #ifdef HAVE_OPUS
-    // OggOpusEnc requires a file or callbacks — we'll use callbacks to a memory buffer
-    // For now we use opusenc with a callback that writes to stream_client_
-    // This is set up properly once connected, so just flag readiness
+    auto* state = new OpusState();
+
+    OpusEncCallbacks cbs{};
+    cbs.write = opus_write_cb;
+    cbs.close = opus_close_cb;
+
+    OggOpusComments* comments = ope_comments_create();
+    ope_comments_add(comments, "ENCODER", "Mcaster1DSPEncoder");
+
+    int error = OPE_OK;
+    state->enc = ope_encoder_create_callbacks(
+        &cbs, state, comments,
+        cfg_.sample_rate, cfg_.channels,
+        0 /* Vorbis I channel family */, &error);
+
+    ope_comments_destroy(comments);
+
+    if (!state->enc || error != OPE_OK) {
+        delete state;
+        fprintf(stderr, "[EncoderSlot] Opus init error: %s\n", ope_strerror(error));
+        return false;
+    }
+
+    ope_encoder_ctl(state->enc, OPUS_SET_BITRATE(cfg_.bitrate_kbps * 1000));
+
+    opus_enc_ = state;
     cfg_.stream_target.content_type = "audio/ogg";
-    return true;  // Actual init happens in first encode call
+    return true;
 #else
     fprintf(stderr, "[EncoderSlot] Opus not compiled in\n");
     return false;
@@ -417,15 +481,27 @@ bool EncoderSlot::init_opus()
 bool EncoderSlot::init_flac()
 {
 #ifdef HAVE_FLAC
-    FLAC__StreamEncoder* enc = FLAC__stream_encoder_new();
-    if (!enc) return false;
+    auto* state = new FlacState();
+    state->enc = FLAC__stream_encoder_new();
+    if (!state->enc) { delete state; return false; }
 
-    FLAC__stream_encoder_set_channels(enc, static_cast<unsigned>(cfg_.channels));
-    FLAC__stream_encoder_set_bits_per_sample(enc, 16);
-    FLAC__stream_encoder_set_sample_rate(enc, static_cast<unsigned>(cfg_.sample_rate));
-    FLAC__stream_encoder_set_compression_level(enc, 5);
+    FLAC__stream_encoder_set_channels        (state->enc, static_cast<unsigned>(cfg_.channels));
+    FLAC__stream_encoder_set_bits_per_sample (state->enc, 16);
+    FLAC__stream_encoder_set_sample_rate     (state->enc, static_cast<unsigned>(cfg_.sample_rate));
+    FLAC__stream_encoder_set_compression_level(state->enc, 5);
+    FLAC__stream_encoder_set_streamable_subset(state->enc, true);
 
-    flac_enc_ = enc;
+    FLAC__StreamEncoderInitStatus st =
+        FLAC__stream_encoder_init_stream(state->enc, flac_write_cb,
+                                         nullptr, nullptr, nullptr, state);
+    if (st != FLAC__STREAM_ENCODER_INIT_STATUS_OK) {
+        FLAC__stream_encoder_delete(state->enc);
+        delete state;
+        fprintf(stderr, "[EncoderSlot] FLAC stream init error: %d\n", static_cast<int>(st));
+        return false;
+    }
+
+    flac_enc_ = state;
     cfg_.stream_target.content_type = "audio/flac";
     return true;
 #else
@@ -445,10 +521,10 @@ void EncoderSlot::close_codec()
 #ifdef HAVE_VORBIS
     if (vorbis_enc_) {
         struct VorbisState {
-            vorbis_info     vi;
+            vorbis_info      vi;
             vorbis_dsp_state vd;
-            vorbis_block    vb;
-            vorbis_comment  vc;
+            vorbis_block     vb;
+            vorbis_comment   vc;
         };
         auto* vs = static_cast<VorbisState*>(vorbis_enc_);
         vorbis_block_clear(&vs->vb);
@@ -459,10 +535,21 @@ void EncoderSlot::close_codec()
         vorbis_enc_ = nullptr;
     }
 #endif
+#ifdef HAVE_OPUS
+    if (opus_enc_) {
+        auto* state = static_cast<OpusState*>(opus_enc_);
+        ope_encoder_drain(state->enc);
+        ope_encoder_destroy(state->enc);
+        delete state;
+        opus_enc_ = nullptr;
+    }
+#endif
 #ifdef HAVE_FLAC
     if (flac_enc_) {
-        FLAC__stream_encoder_finish(static_cast<FLAC__StreamEncoder*>(flac_enc_));
-        FLAC__stream_encoder_delete(static_cast<FLAC__StreamEncoder*>(flac_enc_));
+        auto* state = static_cast<FlacState*>(flac_enc_);
+        FLAC__stream_encoder_finish(state->enc);
+        FLAC__stream_encoder_delete(state->enc);
+        delete state;
         flac_enc_ = nullptr;
     }
 #endif
@@ -546,22 +633,50 @@ int EncoderSlot::encode_vorbis(const float* pcm, size_t frames,
 #endif
 }
 
-int EncoderSlot::encode_opus(const float* /*pcm*/, size_t /*frames*/,
-                              uint8_t* /*out_buf*/, size_t /*buf_len*/)
+int EncoderSlot::encode_opus(const float* pcm, size_t frames,
+                              uint8_t* out_buf, size_t buf_len)
 {
-    // Full Opus/Ogg encoding via libopusenc requires writing to a sink
-    // Implemented in Phase 3 refinement pass
+#ifdef HAVE_OPUS
+    if (!opus_enc_) return 0;
+    auto* state = static_cast<OpusState*>(opus_enc_);
+
+    state->pending.clear();
+
+    // ope_encoder_write_float: pcm is interleaved, frames = samples per channel
+    int ret = ope_encoder_write_float(state->enc, pcm, static_cast<int>(frames));
+    if (ret != OPE_OK) {
+        fprintf(stderr, "[EncoderSlot] Opus encode error: %s\n", ope_strerror(ret));
+        return 0;
+    }
+
+    if (state->pending.empty()) return 0;
+
+    size_t copy = std::min(state->pending.size(), buf_len);
+    memcpy(out_buf, state->pending.data(), copy);
+    // Keep any overflow for next call (rare with typical buf sizes)
+    if (copy < state->pending.size())
+        state->pending.erase(state->pending.begin(),
+                             state->pending.begin() + static_cast<ptrdiff_t>(copy));
+    else
+        state->pending.clear();
+
+    return static_cast<int>(copy);
+#else
+    (void)pcm; (void)frames; (void)out_buf; (void)buf_len;
     return 0;
+#endif
 }
 
 int EncoderSlot::encode_flac(const float* pcm, size_t frames,
-                              uint8_t* /*out_buf*/, size_t /*buf_len*/)
+                              uint8_t* out_buf, size_t buf_len)
 {
 #ifdef HAVE_FLAC
     if (!flac_enc_) return 0;
-    auto* enc = static_cast<FLAC__StreamEncoder*>(flac_enc_);
+    auto* state = static_cast<FlacState*>(flac_enc_);
 
-    // Convert float → int32 (16-bit range)
+    state->pending.clear();
+
+    // Convert interleaved float → FLAC__int32 (16-bit range)
     std::vector<FLAC__int32> samples(frames * static_cast<size_t>(cfg_.channels));
     for (size_t i = 0; i < samples.size(); ++i) {
         float s = pcm[i];
@@ -570,17 +685,17 @@ int EncoderSlot::encode_flac(const float* pcm, size_t frames,
         samples[i] = static_cast<FLAC__int32>(s * 32767.0f);
     }
 
-    const FLAC__int32* const channels_arr[] = {
-        samples.data(),
-        samples.data() + frames
-    };
-    // Note: FLAC__stream_encoder_process expects non-interleaved
-    // This simplified version just returns 0 for now
-    // Full deinterleaving done in Phase 3 refinement
-    (void)enc; (void)channels_arr;
-    return 0;
+    // process_interleaved accepts interleaved samples, frames = samples per channel
+    FLAC__bool ok = FLAC__stream_encoder_process_interleaved(
+        state->enc, samples.data(), static_cast<uint32_t>(frames));
+
+    if (!ok || state->pending.empty()) return 0;
+
+    size_t copy = std::min(state->pending.size(), buf_len);
+    memcpy(out_buf, state->pending.data(), copy);
+    return static_cast<int>(copy);
 #else
-    (void)pcm; (void)frames;
+    (void)pcm; (void)frames; (void)out_buf; (void)buf_len;
     return 0;
 #endif
 }

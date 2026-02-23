@@ -67,6 +67,7 @@ public:
     };
 
     struct Stats {
+        int         slot_id      = 0;
         State       state        = State::IDLE;
         std::string state_str;
         uint64_t    bytes_sent   = 0;

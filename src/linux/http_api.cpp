@@ -351,7 +351,7 @@ static void setup_routes(httplib::Server& svr)
                 if (g_pipeline) {
                     for (auto& s : g_pipeline->all_stats()) {
                         json e;
-                        e["slot_id"]      = s.track_index;  // misuse — fix below
+                        e["slot_id"]      = s.slot_id;
                         e["state"]        = s.state_str;
                         e["is_live"]      = s.is_live;
                         e["bytes_sent"]   = s.bytes_sent;
