@@ -463,6 +463,16 @@ void CameraSource::capture_loop()
             int frame_stride = stride_;
             size_t frame_len = static_cast<size_t>(cbLen);
 
+            // SEC-017: Guard against zero or negative stride
+            if (stride_ <= 0 || width_ <= 0 || height_ <= 0) {
+                fprintf(stderr, "[VideoCapture] Invalid frame dimensions: stride=%d width=%d height=%d\n",
+                        stride_, width_, height_);
+                pBuffer->Unlock();
+                pBuffer->Release();
+                pSample->Release();
+                continue;
+            }
+
             /* ── Convert NV12/YUY2 → BGRA if needed ── */
             if (capture_fmt_ == 1) {
                 /* NV12: Y plane (w*h) + interleaved UV plane (w*h/2) */
