@@ -150,13 +150,10 @@ if not exist "$(OutDir)certs" mkdir "$(OutDir)certs"
 if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.cer" (
   copy /Y "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.cer" "$(OutDir)certs\"
 )
-if exist "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.pfx" (
-  if defined MC1_SIGN_PASS (
-    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64\signtool.exe" sign /fd SHA256 /f "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS\Mcaster1CodeSigning.pfx" /p "%MC1_SIGN_PASS%" "$(TargetPath)"
-  )
-)
+rem Signing is handled by build_winqt.ps1 post-build — non-fatal here
+exit /b 0
       </Command>
-      <Message>Copying cert and signing Mcaster1DSPEncoder</Message>
+      <Message>Copying cert to output</Message>
     </PostBuildEvent>
   </ItemDefinitionGroup>
 
