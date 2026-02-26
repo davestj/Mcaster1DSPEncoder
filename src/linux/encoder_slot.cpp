@@ -1,8 +1,11 @@
 // encoder_slot.cpp — Per-encoder-slot state machine
-// Phase 4 — Mcaster1DSPEncoder Linux v1.3.0
+// Phase L5.1 — Mcaster1DSPEncoder Linux v1.4.1
 #include "encoder_slot.h"
 #include "file_source.h"
 #include "audio_source.h"
+#include "mc1_logger.h"
+#include "mc1_db.h"
+#include "server_monitors.h"
 
 #include <cstring>
 #include <cstdio>
@@ -10,6 +13,7 @@
 #include <algorithm>
 #include <random>
 #include <stdexcept>
+#include <chrono>
 
 // Codec headers — guarded so encoder_slot compiles in HTTP-test mode too
 #ifdef HAVE_LAME
@@ -23,6 +27,9 @@
 #endif
 #ifdef HAVE_FLAC
 #include <FLAC/stream_encoder.h>
+#endif
+#ifdef HAVE_FDK_AAC
+#include <fdk-aac/aacenc_lib.h>
 #endif
 #ifdef HAVE_PORTAUDIO
 #include <portaudio.h>
@@ -67,6 +74,21 @@ FLAC__StreamEncoderWriteStatus flac_write_cb(
 }
 #endif // HAVE_FLAC
 
+#ifdef HAVE_FDK_AAC
+// AacState — fdk-aac per-slot encoder state
+// PCM accumulation: fdk-aac requires exactly frame_size*channels INT_PCM per encode call.
+// Samples arriving from the audio callback are buffered here until a complete frame
+// is available, then flushed through aacEncEncode() into out_buf as ADTS packets.
+struct AacState {
+    HANDLE_AACENCODER     enc        = nullptr;
+    int                   frame_size = 1024;  // samples per channel per AAC frame
+    int                   channels   = 2;
+    std::vector<INT_PCM>  pcm_buf;            // float→INT_PCM accumulation buffer
+    size_t                pcm_head   = 0;     // read offset (avoid front-erase O(n))
+    std::vector<uint8_t>  out_buf;            // encoded ADTS output accumulation
+};
+#endif // HAVE_FDK_AAC
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -88,83 +110,161 @@ EncoderSlot::~EncoderSlot()
 // ---------------------------------------------------------------------------
 bool EncoderSlot::start()
 {
-    std::lock_guard<std::mutex> lk(mtx_);
-
-    if (state_.load() != State::IDLE && state_.load() != State::ERROR)
-        return false;
-
-    set_state(State::STARTING);
-    last_error_.clear();
-
-    // --- Init codec ---
-    bool codec_ok = false;
-    switch (cfg_.codec) {
-        case EncoderConfig::Codec::MP3:    codec_ok = init_lame();   break;
-        case EncoderConfig::Codec::VORBIS: codec_ok = init_vorbis(); break;
-        case EncoderConfig::Codec::OPUS:   codec_ok = init_opus();   break;
-        case EncoderConfig::Codec::FLAC:   codec_ok = init_flac();   break;
-    }
-    if (!codec_ok) {
-        set_error("Codec init failed");
-        return false;
-    }
-
-    // --- Init stream client ---
-    stream_client_ = std::make_unique<StreamClient>(cfg_.stream_target);
-    stream_client_->set_state_callback([this](StreamClient::State cs) {
-        if (cs == StreamClient::State::CONNECTED)   set_state(State::LIVE);
-        if (cs == StreamClient::State::RECONNECTING) set_state(State::RECONNECTING);
-    });
-
-    // --- Init DSP chain ---
+    // ------------------------------------------------------------------
+    // Hold mtx_ only for initialization.  Release BEFORE the blocking
+    // TCP connect to DNAS so that stats() / HTTP handlers are never
+    // starved while we wait for the DNAS handshake.
+    // is_playlist_source is hoisted out so the post-lock section can use it.
+    // ------------------------------------------------------------------
+    bool is_playlist_source = false;
     {
-        mc1dsp::DspChainConfig dsp_cfg;
-        dsp_cfg.sample_rate        = cfg_.sample_rate;
-        dsp_cfg.channels           = cfg_.channels;
-        dsp_cfg.eq_enabled         = cfg_.dsp_eq_enabled;
-        dsp_cfg.agc_enabled        = cfg_.dsp_agc_enabled;
-        dsp_cfg.crossfader_enabled = cfg_.dsp_crossfade_enabled;
-        dsp_cfg.crossfade_duration = cfg_.dsp_crossfade_duration;
-        dsp_cfg.eq_preset          = cfg_.dsp_eq_preset;
-        dsp_chain_ = std::make_unique<mc1dsp::DspChain>();
-        dsp_chain_->configure(dsp_cfg);
-        fprintf(stderr, "[EncoderSlot %d] DSP: EQ=%s AGC=%s XFade=%s (%.1fs) preset='%s'\n",
-                cfg_.slot_id,
-                cfg_.dsp_eq_enabled  ? "on" : "off",
-                cfg_.dsp_agc_enabled ? "on" : "off",
-                cfg_.dsp_crossfade_enabled ? "on" : "off",
-                cfg_.dsp_crossfade_duration,
-                cfg_.dsp_eq_preset.empty() ? "none" : cfg_.dsp_eq_preset.c_str());
-    }
+        std::lock_guard<std::mutex> lk(mtx_);
 
-    // --- Init archive ---
-    if (cfg_.archive_enabled && !cfg_.archive_dir.empty()) {
-        ArchiveWriter::Config ac;
-        ac.archive_dir  = cfg_.archive_dir;
-        ac.station_name = cfg_.name;
-        archive_ = std::make_unique<ArchiveWriter>(ac);
-        archive_->open(cfg_.sample_rate, cfg_.channels);
-    }
+        if (state_.load() != State::IDLE && state_.load() != State::ERROR)
+            return false;
 
-    // --- Init audio source ---
-    if (cfg_.input_type == EncoderConfig::InputType::DEVICE) {
-        auto* pa = new PortAudioSource(cfg_.device_index,
-                                       cfg_.sample_rate,
-                                       cfg_.channels);
-        source_.reset(pa);
-    } else {
-        // Playlist / file source
+        set_state(State::STARTING);
+        last_error_.clear();
+
+        // --- Init codec ---
+        bool codec_ok = false;
+        switch (cfg_.codec) {
+            case EncoderConfig::Codec::MP3:      codec_ok = init_lame();   break;
+            case EncoderConfig::Codec::VORBIS:   codec_ok = init_vorbis(); break;
+            case EncoderConfig::Codec::OPUS:     codec_ok = init_opus();   break;
+            case EncoderConfig::Codec::FLAC:     codec_ok = init_flac();   break;
+            case EncoderConfig::Codec::AAC_LC:
+            case EncoderConfig::Codec::AAC_HE:
+            case EncoderConfig::Codec::AAC_HE_V2:
+            case EncoderConfig::Codec::AAC_ELD:  codec_ok = init_aac();   break;
+        }
+        if (!codec_ok) {
+            // set_error() also acquires mtx_ — write fields directly here
+            last_error_ = "Codec init failed";
+            state_.store(State::ERROR);
+            fprintf(stderr, "[EncoderSlot %d] Error: Codec init failed\n", cfg_.slot_id);
+            return false;
+        }
+
+        // --- Init stream client ---
+        stopping_.store(false);
+        ++meta_gen_;               // invalidate any sleeping push_metadata threads from before this start()
+        first_connect_done_.store(false);   // reset so the first CONNECTED fires no re-push
+
+        // We build the stream target with reconnect policy from our config before handing
+        // it to StreamClient — this ensures the watchdog loop uses our DB settings.
+        StreamTarget st = cfg_.stream_target;
+        st.retry_interval_sec = cfg_.reconnect_interval_sec;
+        if (!cfg_.auto_reconnect) {
+            st.max_retries = 0;    // 0 = never reconnect after first drop
+        } else if (cfg_.reconnect_max_attempts > 0) {
+            st.max_retries = cfg_.reconnect_max_attempts;
+        } else {
+            st.max_retries = -1;   // -1 = retry forever
+        }
+
+        MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] start(): reconnect="
+                 + (cfg_.auto_reconnect ? "yes" : "no")
+                 + " interval=" + std::to_string(cfg_.reconnect_interval_sec) + "s"
+                 + " max=" + std::to_string(cfg_.reconnect_max_attempts));
+
+        stream_client_ = std::make_shared<StreamClient>(st);
+        stream_client_->set_state_callback([this](StreamClient::State cs) {
+            if (cs == StreamClient::State::CONNECTED) {
+                set_state(State::LIVE);
+                // On watchdog RE-connect only: re-push the current song title so the DNAS
+                // webplayer is never blank while the same track is still playing.
+                // first_connect_done_ is false on the very first CONNECTED event — we skip
+                // the re-push there because open_next_track()'s push_metadata() already
+                // queued a send.  On all subsequent reconnects the flag is true, so we send.
+                const bool is_reconnect = first_connect_done_.exchange(true);
+                if (is_reconnect) {
+                    std::string ttl, art;
+                    {
+                        std::lock_guard<std::mutex> lk(mtx_);
+                        ttl = current_title_;
+                        art = current_artist_;
+                    }
+                    if (!ttl.empty()) {
+                        auto sc = stream_client_;  // shared_ptr by value — keeps object alive
+                        std::thread([sc, ttl, art]() {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                            if (sc) sc->send_admin_metadata(ttl, art);
+                        }).detach();
+                    }
+                }
+            }
+            if (cs == StreamClient::State::RECONNECTING) {
+                set_state(State::RECONNECTING);
+            }
+            // STOPPED fires when max_retries is exhausted (not when we call stop() ourselves).
+            // We distinguish this from a voluntary stop by checking stopping_.
+            if (cs == StreamClient::State::STOPPED && !stopping_.load()) {
+                MC1_WARN("[Slot " + std::to_string(cfg_.slot_id)
+                         + "] SLEEP — max reconnect attempts exhausted");
+                mc1log.encoder(cfg_.slot_id, "SLEEP",
+                               "max reconnect attempts (" +
+                               std::to_string(cfg_.reconnect_max_attempts) + ") exhausted");
+                set_state(State::SLEEP);
+            }
+        });
+
+        // --- Init DSP chain ---
+        {
+            mc1dsp::DspChainConfig dsp_cfg;
+            dsp_cfg.sample_rate        = cfg_.sample_rate;
+            dsp_cfg.channels           = cfg_.channels;
+            dsp_cfg.eq_enabled         = cfg_.dsp_eq_enabled;
+            dsp_cfg.agc_enabled        = cfg_.dsp_agc_enabled;
+            dsp_cfg.crossfader_enabled = cfg_.dsp_crossfade_enabled;
+            dsp_cfg.crossfade_duration = cfg_.dsp_crossfade_duration;
+            dsp_cfg.eq_preset          = cfg_.dsp_eq_preset;
+            dsp_chain_ = std::make_unique<mc1dsp::DspChain>();
+            dsp_chain_->configure(dsp_cfg);
+            fprintf(stderr, "[EncoderSlot %d] DSP: EQ=%s AGC=%s XFade=%s (%.1fs) preset='%s'\n",
+                    cfg_.slot_id,
+                    cfg_.dsp_eq_enabled  ? "on" : "off",
+                    cfg_.dsp_agc_enabled ? "on" : "off",
+                    cfg_.dsp_crossfade_enabled ? "on" : "off",
+                    cfg_.dsp_crossfade_duration,
+                    cfg_.dsp_eq_preset.empty() ? "none" : cfg_.dsp_eq_preset.c_str());
+        }
+
+        // --- Init archive ---
+        if (cfg_.archive_enabled && !cfg_.archive_dir.empty()) {
+            ArchiveWriter::Config ac;
+            ac.archive_dir  = cfg_.archive_dir;
+            ac.station_name = cfg_.name;
+            archive_ = std::make_unique<ArchiveWriter>(ac);
+            archive_->open(cfg_.sample_rate, cfg_.channels);
+        }
+
+        // --- Create audio source object (playlist load happens AFTER lock release) ---
+        if (cfg_.input_type == EncoderConfig::InputType::DEVICE) {
+            auto* pa = new PortAudioSource(cfg_.device_index,
+                                           cfg_.sample_rate,
+                                           cfg_.channels);
+            source_.reset(pa);
+        } else {
+            auto* fs = new FileSource(cfg_.sample_rate, cfg_.channels);
+            source_.reset(fs);
+            is_playlist_source = true;
+        }
+
+        set_state(State::CONNECTING);
+    } // ← mtx_ released here — open_next_track / connect can run without holding mtx_
+
+    // --- Load playlist + first track (OUTSIDE lock — open_next_track acquires mtx_ internally) ---
+    if (is_playlist_source) {
         if (!cfg_.playlist_path.empty()) {
             auto entries = PlaylistParser::parse(cfg_.playlist_path);
-            std::lock_guard<std::mutex> plk(playlist_mtx_);
-            playlist_ = std::move(entries);
-            playlist_pos_ = 0;
-            if (cfg_.shuffle) shuffle_playlist();
+            {
+                std::lock_guard<std::mutex> plk(playlist_mtx_);
+                playlist_ = std::move(entries);
+                playlist_pos_ = 0;
+                if (cfg_.shuffle) shuffle_playlist();
+            } // ← playlist_mtx_ released before open_next_track
         }
-        auto* fs = new FileSource(cfg_.sample_rate, cfg_.channels);
-        source_.reset(fs);
-
-        // Load first track
         if (!open_next_track()) {
             set_error("No tracks in playlist");
             source_.reset();
@@ -174,13 +274,12 @@ bool EncoderSlot::start()
         }
     }
 
-    // --- Register audio callback ---
+    // --- Audio callback (no lock needed — captures this only) ---
     auto callback = [this](const float* pcm, size_t frames, int ch, int sr) {
         on_audio(pcm, frames, ch, sr);
     };
 
-    // --- Connect to server ---
-    set_state(State::CONNECTING);
+    // --- Connect to DNAS (blocking TCP — intentionally no lock held) ---
     stream_client_->connect();
 
     // --- Start audio capture / decode ---
@@ -202,6 +301,7 @@ bool EncoderSlot::start()
 // ---------------------------------------------------------------------------
 void EncoderSlot::stop()
 {
+    stopping_.store(true);   // signal detached threads (push_metadata, advance_playlist)
     set_state(State::STOPPING);
 
     if (source_)        { source_->stop(); source_.reset(); }
@@ -220,6 +320,19 @@ void EncoderSlot::stop()
 void EncoderSlot::restart()
 {
     stop();
+    start();
+}
+
+// ---------------------------------------------------------------------------
+// wake — recover from SLEEP state (max reconnect attempts exhausted).
+// We reset to IDLE and restart encoding from scratch.
+// ---------------------------------------------------------------------------
+void EncoderSlot::wake()
+{
+    if (state_.load() != State::SLEEP) return;
+    MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] wake() requested — resetting from SLEEP to IDLE");
+    mc1log.encoder(cfg_.slot_id, "WAKE", "manual wake from SLEEP state");
+    set_state(State::IDLE);
     start();
 }
 
@@ -258,16 +371,42 @@ void EncoderSlot::set_volume(float v)
 }
 
 // ---------------------------------------------------------------------------
-// push_metadata
+// push_metadata — update internal state immediately, send ICY admin update
+// non-blocking. When crossfade is enabled the HTTP GET is delayed so that
+// the title on the DNAS/webplayer updates only after the fade-in completes.
 // ---------------------------------------------------------------------------
-void EncoderSlot::push_metadata(const std::string& title, const std::string& artist)
+void EncoderSlot::push_metadata(const std::string& title,
+                                 const std::string& artist,
+                                 const std::string& album,
+                                 const std::string& artwork)
 {
-    if (stream_client_) {
-        stream_client_->send_icy_metadata(title, artist);
+    {
+        std::lock_guard<std::mutex> lk(mtx_);
+        current_title_  = title;
+        current_artist_ = artist;
     }
-    std::lock_guard<std::mutex> lk(mtx_);
-    current_title_  = title;
-    current_artist_ = artist;
+
+    if (!stream_client_) return;
+
+    // Determine delay: when crossfade is on, wait for the fade-in to complete
+    // before showing the new title to listeners on the DNAS webplayer.
+    int delay_ms = 0;
+    if (cfg_.dsp_crossfade_enabled && cfg_.dsp_crossfade_duration > 0.0f)
+        delay_ms = static_cast<int>(cfg_.dsp_crossfade_duration * 1000.0f);
+
+    // Fire metadata update in detached thread — never blocks advance_playlist().
+    // Capture shared_ptr by value so the StreamClient stays alive for the full
+    // crossfade delay even if stop() runs and clears stream_client_ mid-sleep.
+    // meta_gen_ guards against stale threads that survived a stop()+start() cycle:
+    // start() increments meta_gen_, so any thread carrying the old generation bails.
+    auto sc  = stream_client_;      // shared_ptr copy — ref-count keeps object alive
+    auto gen = meta_gen_.load();    // generation at the time this push was requested
+    std::thread([this, sc, title, artist, album, artwork, delay_ms, gen]() {
+        if (delay_ms > 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        if (sc && !stopping_.load() && meta_gen_.load() == gen)
+            sc->send_admin_metadata(title, artist, album, artwork);
+    }).detach();
 }
 
 // ---------------------------------------------------------------------------
@@ -346,6 +485,7 @@ std::string EncoderSlot::state_to_string(State s)
         case State::CONNECTING:  return "connecting";
         case State::LIVE:        return "live";
         case State::RECONNECTING:return "reconnecting";
+        case State::SLEEP:       return "sleep";
         case State::ERROR:       return "error";
         case State::STOPPING:    return "stopping";
     }
@@ -360,7 +500,9 @@ void EncoderSlot::on_audio(const float* pcm, size_t frames, int /*ch*/, int /*sr
     if (advance_requested_) {
         advance_requested_ = false;
         if (cfg_.input_type == EncoderConfig::InputType::PLAYLIST) {
-            advance_playlist();
+            // Dispatch to a detached thread: advance_playlist() calls fs->stop()
+            // which would deadlock if called from within the decode thread itself.
+            std::thread([this]() { advance_playlist(); }).detach();
         }
     }
 
@@ -403,6 +545,12 @@ void EncoderSlot::on_audio(const float* pcm, size_t frames, int /*ch*/, int /*sr
         case EncoderConfig::Codec::FLAC:
             encoded_bytes = encode_flac(pcm, frames, encoded_buf.data(), encoded_buf.size());
             break;
+        case EncoderConfig::Codec::AAC_LC:
+        case EncoderConfig::Codec::AAC_HE:
+        case EncoderConfig::Codec::AAC_HE_V2:
+        case EncoderConfig::Codec::AAC_ELD:
+            encoded_bytes = encode_aac(pcm, frames, encoded_buf.data(), encoded_buf.size());
+            break;
     }
 
     if (encoded_bytes > 0) {
@@ -422,9 +570,37 @@ bool EncoderSlot::init_lame()
 
     lame_set_in_samplerate(gfp, cfg_.sample_rate);
     lame_set_num_channels(gfp, cfg_.channels);
-    lame_set_brate(gfp, cfg_.bitrate_kbps);
-    lame_set_quality(gfp, 2);
-    lame_set_mode(gfp, cfg_.channels == 1 ? MONO : JOINT_STEREO);
+
+    // We apply encode mode: CBR uses lame_set_brate; VBR uses quality knob;
+    // ABR uses mean bitrate target.  Quality (0-10) is remapped: lower DB value
+    // = better quality, which maps to lower LAME algorithm quality (0 = best).
+    int lame_quality = 9 - std::min(9, std::max(0, cfg_.quality));  // 0(best)–9(fastest)
+    switch (cfg_.encode_mode) {
+        case EncoderConfig::EncodeMode::VBR:
+            lame_set_VBR(gfp, vbr_default);
+            lame_set_VBR_q(gfp, lame_quality);
+            break;
+        case EncoderConfig::EncodeMode::ABR:
+            lame_set_VBR(gfp, vbr_abr);
+            lame_set_VBR_mean_bitrate_kbps(gfp, cfg_.bitrate_kbps);
+            lame_set_quality(gfp, lame_quality);
+            break;
+        case EncoderConfig::EncodeMode::CBR:
+        default:
+            lame_set_brate(gfp, cfg_.bitrate_kbps);
+            lame_set_quality(gfp, lame_quality);
+            break;
+    }
+
+    // We apply channel mode: JOINT_STEREO is recommended for most music;
+    // STEREO uses independent L/R coding; MONO downmixes to one channel.
+    MPEG_mode mode = JOINT_STEREO;
+    if (cfg_.channels == 1 || cfg_.channel_mode == EncoderConfig::ChannelMode::MONO) {
+        mode = MONO;
+    } else if (cfg_.channel_mode == EncoderConfig::ChannelMode::STEREO) {
+        mode = STEREO;
+    }
+    lame_set_mode(gfp, mode);
 
     if (lame_init_params(gfp) < 0) {
         lame_close(gfp);
@@ -432,8 +608,11 @@ bool EncoderSlot::init_lame()
     }
     lame_enc_ = gfp;
 
-    // Update MIME type for stream
     cfg_.stream_target.content_type = "audio/mpeg";
+    MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] LAME init: "
+             + (cfg_.encode_mode == EncoderConfig::EncodeMode::VBR ? "VBR" :
+                cfg_.encode_mode == EncoderConfig::EncodeMode::ABR ? "ABR" : "CBR")
+             + " " + std::to_string(cfg_.bitrate_kbps) + "kbps quality=" + std::to_string(cfg_.quality));
     return true;
 #else
     fprintf(stderr, "[EncoderSlot] LAME not compiled in\n");
@@ -523,10 +702,13 @@ bool EncoderSlot::init_flac()
     state->enc = FLAC__stream_encoder_new();
     if (!state->enc) { delete state; return false; }
 
+    // We use cfg_.quality (0-10) clamped to FLAC compression range 0-8.
+    // Level 0 = fastest/largest, level 8 = best compression/slowest.
+    int flac_compression = std::min(8, std::max(0, cfg_.quality));
     FLAC__stream_encoder_set_channels        (state->enc, static_cast<unsigned>(cfg_.channels));
     FLAC__stream_encoder_set_bits_per_sample (state->enc, 16);
     FLAC__stream_encoder_set_sample_rate     (state->enc, static_cast<unsigned>(cfg_.sample_rate));
-    FLAC__stream_encoder_set_compression_level(state->enc, 5);
+    FLAC__stream_encoder_set_compression_level(state->enc, static_cast<unsigned>(flac_compression));
     FLAC__stream_encoder_set_streamable_subset(state->enc, true);
 
     FLAC__StreamEncoderInitStatus st =
@@ -589,6 +771,14 @@ void EncoderSlot::close_codec()
         FLAC__stream_encoder_delete(state->enc);
         delete state;
         flac_enc_ = nullptr;
+    }
+#endif
+#ifdef HAVE_FDK_AAC
+    if (aac_enc_) {
+        auto* state = static_cast<AacState*>(aac_enc_);
+        if (state->enc) aacEncClose(&state->enc);
+        delete state;
+        aac_enc_ = nullptr;
     }
 #endif
 }
@@ -739,6 +929,183 @@ int EncoderSlot::encode_flac(const float* pcm, size_t frames,
 }
 
 // ---------------------------------------------------------------------------
+// AAC codec (libfdk-aac) — init + encode
+// ---------------------------------------------------------------------------
+bool EncoderSlot::init_aac()
+{
+#ifdef HAVE_FDK_AAC
+    auto* state = new AacState();
+    state->channels = cfg_.channels;
+
+    if (aacEncOpen(&state->enc, 0, static_cast<UINT>(cfg_.channels)) != AACENC_OK) {
+        delete state;
+        fprintf(stderr, "[EncoderSlot %d] aacEncOpen failed\n", cfg_.slot_id);
+        return false;
+    }
+
+    // Audio Object Type per codec variant
+    UINT aot;
+    const char* aot_name;
+    switch (cfg_.codec) {
+        case EncoderConfig::Codec::AAC_LC:
+            aot = 2;   aot_name = "AAC-LC";    break;
+        case EncoderConfig::Codec::AAC_HE:
+            aot = 5;   aot_name = "HE-AAC v1"; break;  // SBR
+        case EncoderConfig::Codec::AAC_HE_V2:
+            aot = 29;  aot_name = "HE-AAC v2"; break;  // SBR + PS
+        case EncoderConfig::Codec::AAC_ELD:
+            aot = 39;  aot_name = "AAC-ELD";   break;  // ER-AAC-ELD
+        default:
+            aot = 2;   aot_name = "AAC-LC";    break;
+    }
+
+    // Core encoder parameters
+    aacEncoder_SetParam(state->enc, AACENC_AOT,         aot);
+    aacEncoder_SetParam(state->enc, AACENC_SAMPLERATE,  static_cast<UINT>(cfg_.sample_rate));
+    aacEncoder_SetParam(state->enc, AACENC_CHANNELMODE,
+                        cfg_.channels == 1 ? MODE_1 : MODE_2);
+    aacEncoder_SetParam(state->enc, AACENC_BITRATE,
+                        static_cast<UINT>(cfg_.bitrate_kbps * 1000));
+    aacEncoder_SetParam(state->enc, AACENC_TRANSMUX,    TT_MP4_ADTS);  // ADTS for streaming
+    aacEncoder_SetParam(state->enc, AACENC_AFTERBURNER, 1);            // highest quality
+
+    // AAC-ELD: enable SBR and use 512-sample granule (lower latency)
+    if (cfg_.codec == EncoderConfig::Codec::AAC_ELD) {
+        aacEncoder_SetParam(state->enc, AACENC_SBR_MODE,      1);
+        aacEncoder_SetParam(state->enc, AACENC_GRANULE_LENGTH, 512);
+    }
+
+    // HE-AAC v1/v2: allow downsampled SBR (halves output sample rate in header)
+    if (cfg_.codec == EncoderConfig::Codec::AAC_HE ||
+        cfg_.codec == EncoderConfig::Codec::AAC_HE_V2) {
+        aacEncoder_SetParam(state->enc, AACENC_SBR_RATIO, 1);  // 2:1 downsampled SBR
+    }
+
+    // Initialize encoder (triggers internal reconfiguration)
+    AACENC_ERROR err = aacEncEncode(state->enc, nullptr, nullptr, nullptr, nullptr);
+    if (err != AACENC_OK) {
+        aacEncClose(&state->enc);
+        delete state;
+        fprintf(stderr, "[EncoderSlot %d] AAC config/init failed: %d\n",
+                cfg_.slot_id, static_cast<int>(err));
+        return false;
+    }
+
+    // Query actual frame length after init
+    AACENC_InfoStruct info{};
+    aacEncInfo(state->enc, &info);
+    state->frame_size = static_cast<int>(info.frameLength);
+
+    aac_enc_ = state;
+
+    // MIME: audio/aacp for HE-AAC profiles, audio/aac for LC and ELD
+    if (cfg_.codec == EncoderConfig::Codec::AAC_HE ||
+        cfg_.codec == EncoderConfig::Codec::AAC_HE_V2)
+        cfg_.stream_target.content_type = "audio/aacp";
+    else
+        cfg_.stream_target.content_type = "audio/aac";
+
+    fprintf(stderr, "[EncoderSlot %d] %s init: %dk %dHz ch=%d framesize=%d\n",
+            cfg_.slot_id, aot_name, cfg_.bitrate_kbps, cfg_.sample_rate,
+            cfg_.channels, state->frame_size);
+    return true;
+#else
+    fprintf(stderr, "[EncoderSlot %d] FDK-AAC not compiled in\n", cfg_.slot_id);
+    return false;
+#endif
+}
+
+int EncoderSlot::encode_aac(const float* pcm, size_t frames,
+                             uint8_t* out_buf, size_t buf_len)
+{
+#ifdef HAVE_FDK_AAC
+    if (!aac_enc_) return 0;
+    auto* state = static_cast<AacState*>(aac_enc_);
+
+    // 1. Convert interleaved float32 → INT_PCM (int16_t), append to accumulation buffer
+    const size_t n_samples = frames * static_cast<size_t>(cfg_.channels);
+    const size_t old_size  = state->pcm_buf.size();
+    state->pcm_buf.resize(old_size + n_samples);
+    for (size_t i = 0; i < n_samples; ++i) {
+        float s = pcm[i];
+        if (s >  1.0f) s =  1.0f;
+        if (s < -1.0f) s = -1.0f;
+        state->pcm_buf[old_size + i] = static_cast<INT_PCM>(s * 32767.0f);
+    }
+
+    // 2. Drain complete AAC frames from the accumulation buffer
+    const int frame_samples = state->frame_size * cfg_.channels;  // total INT_PCM per frame
+
+    while (static_cast<int>(state->pcm_buf.size() - state->pcm_head) >= frame_samples) {
+        INT_PCM* in_ptr = state->pcm_buf.data() + state->pcm_head;
+        void*    in_vptr = static_cast<void*>(in_ptr);
+
+        INT in_id   = IN_AUDIO_DATA;
+        INT in_elem = static_cast<INT>(sizeof(INT_PCM));
+        INT in_size = frame_samples * static_cast<INT>(sizeof(INT_PCM));
+
+        AACENC_BufDesc in_desc{};
+        in_desc.numBufs           = 1;
+        in_desc.bufs              = &in_vptr;
+        in_desc.bufferIdentifiers = &in_id;
+        in_desc.bufSizes          = &in_size;
+        in_desc.bufElSizes        = &in_elem;
+
+        // Output: up to 8192 bytes per ADTS frame (far above any realistic bitrate)
+        static constexpr int OUT_FRAME_MAX = 8192;
+        std::array<uint8_t, OUT_FRAME_MAX> frame_out{};
+        void* out_vptr  = static_cast<void*>(frame_out.data());
+        INT out_id      = OUT_BITSTREAM_DATA;
+        INT out_elem    = 1;
+        INT out_sz      = OUT_FRAME_MAX;
+
+        AACENC_BufDesc out_desc{};
+        out_desc.numBufs           = 1;
+        out_desc.bufs              = &out_vptr;
+        out_desc.bufferIdentifiers = &out_id;
+        out_desc.bufSizes          = &out_sz;
+        out_desc.bufElSizes        = &out_elem;
+
+        AACENC_InArgs  inargs{};
+        inargs.numInSamples = frame_samples;
+        AACENC_OutArgs outargs{};
+
+        AACENC_ERROR err = aacEncEncode(state->enc, &in_desc, &out_desc, &inargs, &outargs);
+
+        if (err != AACENC_OK && err != AACENC_ENCODE_EOF) {
+            fprintf(stderr, "[EncoderSlot %d] aacEncEncode error: %d\n",
+                    cfg_.slot_id, static_cast<int>(err));
+        } else if (outargs.numOutBytes > 0) {
+            state->out_buf.insert(state->out_buf.end(),
+                                  frame_out.data(),
+                                  frame_out.data() + outargs.numOutBytes);
+        }
+
+        state->pcm_head += static_cast<size_t>(frame_samples);
+
+        // Compact accumulation buffer when head advances far enough (>32KB)
+        if (state->pcm_head > 16384) {
+            state->pcm_buf.erase(state->pcm_buf.begin(),
+                                 state->pcm_buf.begin() +
+                                     static_cast<ptrdiff_t>(state->pcm_head));
+            state->pcm_head = 0;
+        }
+    }
+
+    // 3. Copy accumulated ADTS output to caller's buffer
+    if (state->out_buf.empty()) return 0;
+    const size_t copy = std::min(state->out_buf.size(), buf_len);
+    memcpy(out_buf, state->out_buf.data(), copy);
+    state->out_buf.erase(state->out_buf.begin(),
+                         state->out_buf.begin() + static_cast<ptrdiff_t>(copy));
+    return static_cast<int>(copy);
+#else
+    (void)pcm; (void)frames; (void)out_buf; (void)buf_len;
+    return 0;
+#endif
+}
+
+// ---------------------------------------------------------------------------
 // Playlist management
 // ---------------------------------------------------------------------------
 bool EncoderSlot::open_next_track()
@@ -758,11 +1125,30 @@ bool EncoderSlot::open_next_track()
         }
 
         if (fs->open(path)) {
-            // Push ICY metadata
+            // Push ICY metadata — pass title, artist, album from embedded tags
             const auto& ti = fs->track_info();
             std::string art = ti.artist.empty() ? "" : ti.artist;
             std::string ttl = ti.title.empty()  ? title : ti.title;
-            push_metadata(ttl, art);
+            std::string alb = ti.album.empty()  ? "" : ti.album;
+            push_metadata(ttl, art, alb);
+
+            // We record this track play and increment play_count (non-fatal writes).
+            if (Mc1Db::instance().is_connected()) {
+                std::string title_esc  = Mc1Db::instance().escape(ttl);
+                std::string artist_esc = Mc1Db::instance().escape(art);
+                int listeners = ServerMonitor::instance().getListenersByMount(
+                    cfg_.stream_target.mount);
+                Mc1Db::instance().execf(
+                    "INSERT INTO mcaster1_metrics.track_plays "
+                    "(title, artist, slot_id, played_at, listeners_count) "
+                    "VALUES ('%s', '%s', %d, NOW(), %d)",
+                    title_esc.c_str(), artist_esc.c_str(), cfg_.slot_id, listeners);
+                std::string path_esc = Mc1Db::instance().escape(path);
+                Mc1Db::instance().execf(
+                    "UPDATE mcaster1_media.tracks SET play_count = play_count + 1, "
+                    "last_played_at = NOW() WHERE file_path = '%s'",
+                    path_esc.c_str());
+            }
 
             {
                 std::lock_guard<std::mutex> lk(mtx_);
@@ -771,8 +1157,10 @@ bool EncoderSlot::open_next_track()
                 current_duration_ms_  = ti.duration_ms;
             }
 
+            // We fire advance_playlist() from a NEW detached thread so that
+            // the decode thread can call stop() → join itself freely.
             fs->set_eof_callback([this]() {
-                advance_playlist();
+                std::thread([this]() { advance_playlist(); }).detach();
             });
 
             fprintf(stderr, "[EncoderSlot %d] Playing: %s\n",
@@ -780,14 +1168,36 @@ bool EncoderSlot::open_next_track()
             return true;
         }
 
-        // File failed — advance and try next
-        advance_playlist();
+        // File failed to open — skip it by bumping playlist_pos_ directly.
+        // We intentionally do NOT call advance_playlist() here to avoid
+        // starting a decode thread mid-loop and to prevent recursion through
+        // advance_mtx_ (which we may already hold from advance_playlist()).
+        {
+            std::lock_guard<std::mutex> lk(playlist_mtx_);
+            if (playlist_.empty()) return false;
+            ++playlist_pos_;
+            if (cfg_.repeat_all)
+                playlist_pos_ = playlist_pos_ % static_cast<int>(playlist_.size());
+            else if (playlist_pos_ >= static_cast<int>(playlist_.size()))
+                return false;
+        }
+        fprintf(stderr, "[EncoderSlot %d] Skipping missing file: %s\n",
+                cfg_.slot_id, path.c_str());
     }
     return false;
 }
 
 bool EncoderSlot::advance_playlist()
 {
+    // Bail out if stop() has been called — the slot is being torn down.
+    if (stopping_.load()) return false;
+
+    // We serialize advances so that the EOF-detached thread and any on_audio
+    // detached thread cannot race against each other.  The second caller will
+    // block briefly then also advance (skipping one extra track at most),
+    // which is far preferable to a EDEADLK crash.
+    std::lock_guard<std::mutex> alk(advance_mtx_);
+
     {
         std::lock_guard<std::mutex> lk(playlist_mtx_);
         if (playlist_.empty()) return false;
@@ -827,6 +1237,26 @@ void EncoderSlot::shuffle_playlist()
 void EncoderSlot::set_state(State s)
 {
     state_.store(s);
+
+    // We write stream_events for key state transitions (non-fatal fire-and-forget).
+    if (s == State::LIVE || s == State::STOPPING ||
+        s == State::RECONNECTING || s == State::ERROR) {
+        const char* evt = nullptr;
+        switch (s) {
+            case State::LIVE:         evt = "start";     break;
+            case State::STOPPING:     evt = "stop";      break;
+            case State::RECONNECTING: evt = "reconnect"; break;
+            case State::ERROR:        evt = "error";     break;
+            default: break;
+        }
+        if (evt && Mc1Db::instance().is_connected()) {
+            std::string mount_esc = Mc1Db::instance().escape(cfg_.stream_target.mount);
+            Mc1Db::instance().execf(
+                "INSERT INTO mcaster1_metrics.stream_events "
+                "(slot_id, mount, event_type) VALUES (%d, '%s', '%s')",
+                cfg_.slot_id, mount_esc.c_str(), evt);
+        }
+    }
 }
 
 void EncoderSlot::set_error(const std::string& msg)

@@ -28,6 +28,8 @@
 #include "audio_pipeline.h"
 #include "playlist_parser.h"
 #include "dsp/dsp_chain.h"
+#include "system_health.h"
+#include "server_monitors.h"
 #endif
 
 #include <openssl/pem.h>
@@ -37,6 +39,10 @@
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 
+#include "mc1_logger.h"
+#include "mc1_db.h"
+
+#include <crypt.h>
 #include <string>
 #include <map>
 #include <vector>
@@ -49,6 +55,7 @@
 #include <fstream>
 #include <functional>
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <cstring>
 #include <cerrno>
@@ -74,7 +81,7 @@ static std::mutex               g_listeners_mtx;
 
 /* ── Session store ────────────────────────────────────────────────────────── */
 
-struct MC1Session { time_t expires; };
+struct MC1Session { time_t expires; std::string username; };
 static std::map<std::string, MC1Session> g_sessions;
 static std::mutex                        g_session_mtx;
 
@@ -99,14 +106,23 @@ static bool session_valid(const std::string& tok)
     return true;
 }
 
-static std::string session_create()
+static std::string session_create(const std::string& username = "")
 {
     std::string tok = gen_token();
     int ttl = gAdminConfig.session_timeout_secs > 0
                   ? gAdminConfig.session_timeout_secs : 3600;
     std::lock_guard<std::mutex> lk(g_session_mtx);
-    g_sessions[tok] = { time(nullptr) + ttl };
+    g_sessions[tok] = { time(nullptr) + ttl, username };
     return tok;
+}
+
+static std::string session_get_username(const std::string& tok)
+{
+    if (tok.empty()) return {};
+    std::lock_guard<std::mutex> lk(g_session_mtx);
+    auto it = g_sessions.find(tok);
+    if (it == g_sessions.end()) return {};
+    return it->second.username;
 }
 
 static void session_delete(const std::string& tok)
@@ -227,11 +243,39 @@ static void serve_file(const std::string& path, httplib::Response& res)
 
 /* ── Credentials check ────────────────────────────────────────────────────── */
 
-static bool check_creds(const std::string& user, const std::string& pass)
+// bcrypt_verify: compares plaintext password against a $2y$/2b$/2a$ hash
+// using the POSIX crypt_r() function (libxcrypt / libcrypt).
+static bool bcrypt_verify(const std::string& password, const std::string& hash)
 {
-    // TODO: htpasswd file support (bcrypt via OpenSSL EVP)
-    return user == gAdminConfig.admin_username
-        && pass == gAdminConfig.admin_password;
+    if (hash.size() < 7 || hash[0] != '$') return false;
+    struct crypt_data cd{};
+    const char* result = crypt_r(password.c_str(), hash.c_str(), &cd);
+    return result != nullptr && hash == result;
+}
+
+// try_login: checks YAML credentials first, then falls back to MySQL users table.
+// Returns true on success and sets out_username to the authenticated username.
+static bool try_login(const std::string& user, const std::string& pass,
+                      std::string& out_username)
+{
+    // Layer 1: YAML admin credential (fast path, no DB round-trip)
+    if (user == gAdminConfig.admin_username &&
+        pass == gAdminConfig.admin_password) {
+        out_username = user;
+        return true;
+    }
+
+    // Layer 2: MySQL users table with bcrypt verification
+    std::string stored_hash;
+    bool is_active = false;
+    if (!Mc1Db::instance().fetch_user_auth(user, stored_hash, is_active))
+        return false;   // user not found or DB unavailable
+
+    if (!is_active) return false;
+    if (!bcrypt_verify(pass, stored_hash)) return false;
+
+    out_username = user;
+    return true;
 }
 
 /* ── API helpers ──────────────────────────────────────────────────────────── */
@@ -251,6 +295,29 @@ static time_t g_start_time = 0;
 
 static void setup_routes(httplib::Server& svr)
 {
+    // ── Access logger (fires after every request) ──────────────────────────
+    svr.set_logger([](const httplib::Request& req, const httplib::Response& res) {
+        // Duration isn't available in httplib set_logger; approximate to 0
+        std::string ua   = "-";
+        std::string ref  = "-";
+        auto ua_it  = req.headers.find("User-Agent");
+        auto ref_it = req.headers.find("Referer");
+        if (ua_it  != req.headers.end()) ua  = ua_it->second;
+        if (ref_it != req.headers.end()) ref = ref_it->second;
+
+        mc1log.access(req.remote_addr, req.method, req.path,
+                      res.status, (long)res.body.size(),
+                      0L, ref, ua);
+
+        // At debug level, log API request/response bodies
+        if (mc1log.level() >= MC1_LOG_DEBUG &&
+            req.path.rfind("/api/", 0) == 0) {
+            mc1log.api(req.method, req.path, res.status,
+                       req.body.size()  > 0 ? req.body  : "",
+                       res.body.size()  > 0 ? res.body  : "");
+        }
+    });
+
     // ── Root redirect ──────────────────────────────────────────────────────
     svr.Get("/", [](const httplib::Request& req, httplib::Response& res) {
         res.status = 302;
@@ -262,9 +329,12 @@ static void setup_routes(httplib::Server& svr)
         serve_file(g_webroot + "/login.html", res);
     });
 
-    // ── Dashboard (auth required) ──────────────────────────────────────────
+    // ── Dashboard — redirect to PHP page ──────────────────────────────────
     svr.Get("/dashboard", [](const httplib::Request& req, httplib::Response& res) {
-        with_auth(req, res, [&]() { serve_file(g_webroot + "/index.html", res); });
+        if (!request_is_authed(req)) {
+            res.status = 302; res.set_header("Location", "/login"); return;
+        }
+        res.status = 302; res.set_header("Location", "/dashboard.php");
     });
 
     // ── Static assets (CSS/JS/fonts — no auth so login page can use them) ─
@@ -285,17 +355,20 @@ static void setup_routes(httplib::Server& svr)
             }
             std::string user = body.value("username", "");
             std::string pass = body.value("password", "");
-            if (check_creds(user, pass)) {
-                std::string tok = session_create();
+            std::string authed_user;
+            if (try_login(user, pass, authed_user)) {
+                std::string tok = session_create(authed_user);
                 int ttl = gAdminConfig.session_timeout_secs > 0
                               ? gAdminConfig.session_timeout_secs : 3600;
                 std::string cookie = "mc1session=" + tok
                     + "; Path=/; HttpOnly; SameSite=Strict; Max-Age="
                     + std::to_string(ttl);
                 res.set_header("Set-Cookie", cookie);
+                MC1_INFO("auth: login ok user=" + authed_user);
                 json r; r["ok"] = true; r["redirect"] = "/dashboard";
                 res.set_content(r.dump(), "application/json");
             } else {
+                MC1_WARN("auth: login failed for user=" + user);
                 res.status = 401;
                 res.set_content(R"({"error":"Invalid credentials"})",
                                 "application/json");
@@ -382,8 +455,10 @@ static void setup_routes(httplib::Server& svr)
 #ifndef MC1_HTTP_TEST_BUILD
                 int slot_id = std::stoi(req.matches[1].str());
                 if (g_pipeline && g_pipeline->start_slot(slot_id)) {
+                    mc1log.encoder(slot_id, "START", "requested by " + req.remote_addr);
                     res.set_content(R"({"ok":true})", "application/json");
                 } else {
+                    MC1_WARN("start_slot(" + std::to_string(slot_id) + ") failed");
                     res.status = 400;
                     res.set_content(R"({"error":"Failed to start slot"})",
                                     "application/json");
@@ -401,6 +476,7 @@ static void setup_routes(httplib::Server& svr)
 #ifndef MC1_HTTP_TEST_BUILD
                 int slot_id = std::stoi(req.matches[1].str());
                 if (g_pipeline) g_pipeline->stop_slot(slot_id);
+                mc1log.encoder(slot_id, "STOP", "requested by " + req.remote_addr);
                 res.set_content(R"({"ok":true})", "application/json");
 #else
                 res.set_content(R"({"ok":false})", "application/json");
@@ -415,9 +491,31 @@ static void setup_routes(httplib::Server& svr)
 #ifndef MC1_HTTP_TEST_BUILD
                 int slot_id = std::stoi(req.matches[1].str());
                 if (g_pipeline) g_pipeline->restart_slot(slot_id);
+                mc1log.encoder(slot_id, "RESTART", "requested by " + req.remote_addr);
                 res.set_content(R"({"ok":true})", "application/json");
 #else
                 res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/encoders/{slot}/wake ────────────────────────────────
+    svr.Post(R"(/api/v1/encoders/(\d+)/wake)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                if (g_pipeline && g_pipeline->wake_slot(slot_id)) {
+                    mc1log.encoder(slot_id, "WAKE", "requested by " + req.remote_addr);
+                    res.set_content(R"({"ok":true})", "application/json");
+                } else {
+                    MC1_WARN("wake_slot(" + std::to_string(slot_id) + ") failed (not in SLEEP state?)");
+                    res.status = 400;
+                    res.set_content(R"({"error":"Slot not in SLEEP state or not found"})",
+                                    "application/json");
+                }
+#else
+                res.set_content(R"({"ok":false,"error":"no pipeline"})", "application/json");
 #endif
             });
         });
@@ -542,7 +640,7 @@ static void setup_routes(httplib::Server& svr)
                         // Push to all live slots
                         auto all = g_pipeline->all_stats();
                         for (auto& s : all)
-                            g_pipeline->push_metadata(s.track_index, title, artist);
+                            g_pipeline->push_metadata(s.slot_id, title, artist);
                     } else {
                         g_pipeline->push_metadata(slot, title, artist);
                     }
@@ -713,22 +811,31 @@ static void setup_routes(httplib::Server& svr)
         });
 
     // ── GET /api/v1/dnas/stats — proxy live stats from Mcaster1DNAS server ─
+    // We use gAdminConfig.dnas (populated from dnas: YAML section) so the
+    // host, port, credentials, and stats URL are not hardcoded here.
     svr.Get("/api/v1/dnas/stats",
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
-                // Fetch stats from DNAS admin endpoint via HTTPS
-                httplib::SSLClient cli("dnas.mcaster1.com", 9443);
+                const mc1DnasConfig& dnas = gAdminConfig.dnas;
+                std::string source_label  = std::string(dnas.host) + ":"
+                                          + std::to_string(dnas.port);
+
+                httplib::SSLClient cli(dnas.host, dnas.port);
                 cli.enable_server_certificate_verification(false);
-                cli.set_basic_auth("djpulse", "#!3wrvNN57761");
+                if (dnas.username[0])
+                    cli.set_basic_auth(dnas.username, dnas.password);
                 cli.set_connection_timeout(5);
                 cli.set_read_timeout(10);
 
-                auto r = cli.Get("/admin/mcaster1stats");
+                const char* stats_path = dnas.stats_url[0]
+                                       ? dnas.stats_url
+                                       : "/admin/mcaster1stats";
+                auto r = cli.Get(stats_path);
                 if (!r) {
                     res.status = 502;
                     json e;
                     e["error"]  = "DNAS unreachable";
-                    e["source"] = "dnas.mcaster1.com:9443";
+                    e["source"] = source_label;
                     res.set_content(e.dump(), "application/json");
                     return;
                 }
@@ -738,10 +845,180 @@ static void setup_routes(httplib::Server& svr)
                 j["http_status"]  = r->status;
                 j["content_type"] = r->get_header_value("Content-Type");
                 j["body"]         = r->body;
-                j["source"]       = "dnas.mcaster1.com:9443/admin/mcaster1stats";
+                j["source"]       = source_label + stats_path;
                 res.set_content(j.dump(2), "application/json");
             });
         });
+
+#ifndef MC1_HTTP_TEST_BUILD
+    // ── GET /api/v1/system/health — latest HealthSnapshot as JSON ─────────
+    svr.Get("/api/v1/system/health",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                const HealthSnapshot snap = SystemHealth::instance().getSnapshot();
+                json j;
+                j["ok"]           = (snap.sampled_at > 0);
+                j["sampled_at"]   = (long long)snap.sampled_at;
+                j["cpu_pct"]      = snap.cpu_pct;
+                j["mem_used_mb"]  = snap.mem_used_mb;
+                j["mem_total_mb"] = snap.mem_total_mb;
+                j["mem_pct"]      = snap.mem_pct;
+                j["net_in_kbps"]  = snap.net_in_kbps;
+                j["net_out_kbps"] = snap.net_out_kbps;
+                j["net_iface"]    = snap.net_iface;
+                j["thread_count"] = snap.thread_count;
+                json slots = json::array();
+                for (const auto& sl : snap.slots) {
+                    json s;
+                    s["slot_id"]     = sl.slot_id;
+                    s["state"]       = sl.state;
+                    s["bytes_out"]   = sl.bytes_out;
+                    s["out_kbps"]    = sl.out_kbps;
+                    s["track_title"] = sl.track_title;
+                    // Merge live listener count from ServerMonitor via slot's mount
+                    std::string mount;
+                    if (g_pipeline) {
+                        EncoderConfig ec;
+                        if (g_pipeline->get_slot_config(sl.slot_id, ec))
+                            mount = ec.stream_target.mount;
+                    }
+                    s["listeners"] = ServerMonitor::instance().getListenersByMount(mount);
+                    slots.push_back(s);
+                }
+                j["slots"] = slots;
+                res.set_content(j.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/system/health/history — last N snapshots ──────────────
+    svr.Get("/api/v1/system/health/history",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int n = 60;
+                if (req.has_param("n")) {
+                    try { n = std::stoi(req.get_param_value("n")); } catch (...) {}
+                    if (n < 1)  n = 1;
+                    if (n > 120) n = 120;
+                }
+                auto history = SystemHealth::instance().getHistory(n);
+                json arr = json::array();
+                for (const auto& snap : history) {
+                    json j;
+                    j["sampled_at"]   = (long long)snap.sampled_at;
+                    j["cpu_pct"]      = snap.cpu_pct;
+                    j["mem_used_mb"]  = snap.mem_used_mb;
+                    j["mem_total_mb"] = snap.mem_total_mb;
+                    j["mem_pct"]      = snap.mem_pct;
+                    j["net_in_kbps"]  = snap.net_in_kbps;
+                    j["net_out_kbps"] = snap.net_out_kbps;
+                    j["thread_count"] = snap.thread_count;
+                    arr.push_back(j);
+                }
+                json out;
+                out["ok"]   = true;
+                out["data"] = arr;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/server_monitors/stats — all servers (or one) ──────────
+    svr.Get("/api/v1/server_monitors/stats",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json out;
+                out["ok"] = true;
+                if (req.has_param("id")) {
+                    int id = 0;
+                    try { id = std::stoi(req.get_param_value("id")); } catch (...) {}
+                    auto srv = ServerMonitor::instance().getById(id);
+                    if (!srv) {
+                        res.status = 404;
+                        out["ok"]    = false;
+                        out["error"] = "server_id not found";
+                        res.set_content(out.dump(), "application/json");
+                        return;
+                    }
+                    json s;
+                    s["server_id"]      = srv->server_id;
+                    s["name"]           = srv->name;
+                    s["server_type"]    = srv->server_type;
+                    s["host"]           = srv->host;
+                    s["port"]           = srv->port;
+                    s["status"]         = srv->status;
+                    s["listeners"]      = srv->listeners_total;
+                    s["max_listeners"]  = srv->max_listeners;
+                    s["sources_total"]  = srv->sources_total;
+                    s["sources_online"] = srv->sources_online;
+                    s["out_kbps"]       = srv->out_kbps;
+                    s["uptime"]         = srv->uptime;
+                    s["server_id_str"]  = srv->server_id_str;
+                    s["polled_at"]      = (long long)srv->polled_at;
+                    s["fetch_ms"]       = srv->fetch_ms;
+                    s["error"]          = srv->error;
+                    json mounts = json::array();
+                    for (const auto& m : srv->mounts) {
+                        json ms;
+                        ms["mount"]      = m.mount;
+                        ms["title"]      = m.title;
+                        ms["codec"]      = m.codec;
+                        ms["listeners"]  = m.listeners;
+                        ms["peak"]       = m.peak;
+                        ms["bitrate"]    = m.bitrate;
+                        ms["out_kbps"]   = m.out_kbps;
+                        ms["online"]     = m.online;
+                        ms["ours"]       = m.ours;
+                        mounts.push_back(ms);
+                    }
+                    s["mounts"] = mounts;
+                    out["server"] = s;
+                } else {
+                    auto all = ServerMonitor::instance().getAll();
+                    json arr = json::array();
+                    for (const auto& srv : all) {
+                        json s;
+                        s["server_id"]      = srv.server_id;
+                        s["name"]           = srv.name;
+                        s["server_type"]    = srv.server_type;
+                        s["host"]           = srv.host;
+                        s["port"]           = srv.port;
+                        s["status"]         = srv.status;
+                        s["listeners"]      = srv.listeners_total;
+                        s["max_listeners"]  = srv.max_listeners;
+                        s["sources_total"]  = srv.sources_total;
+                        s["sources_online"] = srv.sources_online;
+                        s["out_kbps"]       = srv.out_kbps;
+                        s["uptime"]         = srv.uptime;
+                        s["polled_at"]      = (long long)srv.polled_at;
+                        s["fetch_ms"]       = srv.fetch_ms;
+                        s["status_str"]     = srv.server_id_str;
+                        s["error"]          = srv.error;
+                        arr.push_back(s);
+                    }
+                    out["servers"] = arr;
+                    out["count"]   = (int)all.size();
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/server_monitors/poll — force immediate re-poll ────────
+    svr.Post("/api/v1/server_monitors/poll",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int server_id = -1;  // -1 = all
+                try {
+                    auto body = json::parse(req.body);
+                    if (body.contains("id") && body["id"].is_number_integer())
+                        server_id = body["id"].get<int>();
+                } catch (...) {}
+                ServerMonitor::instance().pollNow(server_id);
+                json out;
+                out["ok"]       = true;
+                out["polled"]   = (server_id == -1) ? "all" : std::to_string(server_id);
+                res.set_content(out.dump(), "application/json");
+            });
+        });
+#endif  // MC1_HTTP_TEST_BUILD
 
     // ── PHP app routes — FastCGI bridge to php-fpm ─────────────────────────
     // Matches /app/foo.php and /app/api/foo.php but NOT /app/inc/*.php
@@ -789,6 +1066,10 @@ static void setup_routes(httplib::Server& svr)
             // Forward request HTTP headers as HTTP_* FastCGI params
             std::map<std::string, std::string> extra;
             extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+            // Pass the authenticated username so PHP auto_login maps to the right DB user
+            std::string mc1_user = session_get_username(cookie_get(req, "mc1session"));
+            if (!mc1_user.empty())
+                extra["HTTP_X_MC1_USER"] = mc1_user;
             for (auto& [hname, hval] : req.headers) {
                 std::string key = hname;
                 std::transform(key.begin(), key.end(), key.begin(),
@@ -807,11 +1088,51 @@ static void setup_routes(httplib::Server& svr)
             int server_port = (gAdminConfig.num_sockets > 0)
                               ? gAdminConfig.sockets[0].port : 8330;
 
+            // cpp-httplib parses multipart/form-data into req.files and leaves
+            // req.body empty. PHP-FPM needs the raw multipart bytes on STDIN to
+            // populate $_FILES and $_POST. Re-serialize from req.files here.
+            std::string fcgi_body;
+            std::string fcgi_ct;
+            if (req.is_multipart_form_data()) {
+                char bnd_buf[48];
+                auto ns = std::chrono::steady_clock::now().time_since_epoch().count();
+                snprintf(bnd_buf, sizeof(bnd_buf), "Mc1Bnd%lld", (long long)ns);
+                std::string boundary(bnd_buf);
+                for (auto& [fname, mfd] : req.files) {
+                    fcgi_body += "--";
+                    fcgi_body += boundary;
+                    fcgi_body += "\r\nContent-Disposition: form-data; name=\"";
+                    fcgi_body += mfd.name;
+                    fcgi_body += "\"";
+                    if (!mfd.filename.empty()) {
+                        fcgi_body += "; filename=\"";
+                        fcgi_body += mfd.filename;
+                        fcgi_body += "\"";
+                    }
+                    fcgi_body += "\r\n";
+                    if (!mfd.content_type.empty()) {
+                        fcgi_body += "Content-Type: ";
+                        fcgi_body += mfd.content_type;
+                        fcgi_body += "\r\n";
+                    }
+                    fcgi_body += "\r\n";
+                    fcgi_body += mfd.content;
+                    fcgi_body += "\r\n";
+                }
+                fcgi_body += "--";
+                fcgi_body += boundary;
+                fcgi_body += "--\r\n";
+                fcgi_ct = "multipart/form-data; boundary=" + boundary;
+            } else {
+                fcgi_body = req.body;
+                fcgi_ct   = content_type;
+            }
+
             FcgiResponse fr = g_fcgi->forward(
                 req.method,
                 script_filename, script_name,
                 query_string, request_uri,
-                content_type, req.body,
+                fcgi_ct, fcgi_body,
                 g_webroot,
                 remote_addr, "localhost", server_port,
                 extra
@@ -824,19 +1145,67 @@ static void setup_routes(httplib::Server& svr)
             }
 
             res.status = fr.status;
+
+            /* We detect 206 responses where PHP has already set Content-Range.
+             * httplib's apply_ranges() would add a SECOND Content-Range using
+             * res.body.size() (the partial length) as the total, which is wrong.
+             * We fix this by stripping PHP's Content-Range, using a content_provider
+             * with the real file size so httplib computes a single correct header. */
+            auto cr_it = fr.headers.find("Content-Range");
+            if (fr.status == 206 && cr_it != fr.headers.end()) {
+                long long range_start = 0, range_end = 0, file_size = 0;
+                if (std::sscanf(cr_it->second.c_str(), "bytes %lld-%lld/%lld",
+                                &range_start, &range_end, &file_size) == 3
+                    && file_size > 0) {
+                    fr.headers.erase("Content-Range"); /* httplib will regenerate correctly */
+                    for (auto& [k, v] : fr.headers)
+                        res.set_header(k.c_str(), v.c_str());
+                    auto data = std::move(fr.body);
+                    res.set_content_provider(
+                        (size_t)file_size, fr.content_type.c_str(),
+                        [data = std::move(data), range_start]
+                        (size_t offset, size_t length, httplib::DataSink &sink) {
+                            /* We serve only the bytes PHP gave us; offset is the
+                             * file-absolute byte position requested by httplib. */
+                            size_t data_idx = (offset >= (size_t)range_start)
+                                              ? (offset - (size_t)range_start) : 0;
+                            if (data_idx < data.size()) {
+                                size_t avail = data.size() - data_idx;
+                                sink.write(data.data() + data_idx,
+                                           std::min(length, avail));
+                            }
+                            return true;
+                        });
+                    return;
+                }
+            }
+
+            /* Normal (non-range) PHP response — forward headers and body as-is. */
             for (auto& [k, v] : fr.headers)
                 res.set_header(k.c_str(), v.c_str());
             res.set_content(fr.body, fr.content_type.c_str());
         });
     };
 
-    // /app/foo.php  (top-level app pages)
+    // Block /app/inc/ — includes must never be served directly
+    svr.Get(R"(/app/inc/.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.status = 403;
+        res.set_content(R"({"error":"Forbidden"})", "application/json");
+    });
+
+    // /app/api/foo.php  (JSON API endpoints — most-specific first)
+    svr.Get(R"(/app/api/[^/]+\.php)",  handle_php);
+    svr.Post(R"(/app/api/[^/]+\.php)", handle_php);
+    svr.Put(R"(/app/api/[^/]+\.php)",  handle_php);
+    svr.Delete(R"(/app/api/[^/]+\.php)", handle_php);
+
+    // /app/foo.php  (legacy app pages — backward compat)
     svr.Get(R"(/app/[^/]+\.php)",  handle_php);
     svr.Post(R"(/app/[^/]+\.php)", handle_php);
 
-    // /app/api/foo.php  (JSON API endpoints)
-    svr.Get(R"(/app/api/[^/]+\.php)",  handle_php);
-    svr.Post(R"(/app/api/[^/]+\.php)", handle_php);
+    // Root-level PHP pages: /dashboard.php, /media.php, etc.
+    svr.Get(R"(/[a-zA-Z0-9_\-]+\.php)",  handle_php);
+    svr.Post(R"(/[a-zA-Z0-9_\-]+\.php)", handle_php);
 
     // ── 404 catch-all ─────────────────────────────────────────────────────
     svr.set_error_handler([](const httplib::Request&, httplib::Response& res) {
@@ -849,6 +1218,16 @@ static void setup_routes(httplib::Server& svr)
 
 void http_api_start(const std::string& webroot)
 {
+    // Initialise logger — log_dir from config, default /var/log/mcaster1
+    {
+        std::string log_dir = "/var/log/mcaster1";
+        if (gAdminConfig.log_dir[0] != '\0') log_dir = gAdminConfig.log_dir;
+        int  lv = (gAdminConfig.log_level > 0) ? gAdminConfig.log_level : MC1_LOG_INFO;
+        mc1log.init(log_dir, lv, /*also_stderr=*/true);
+        MC1_INFO("mcaster1-encoder starting — log_level=" + std::to_string(lv)
+                 + " log_dir=" + log_dir);
+    }
+
     // Resolve webroot to absolute path so SCRIPT_FILENAME is correct for php-fpm
     {
         char resolved[PATH_MAX];

@@ -7,8 +7,7 @@
 if (!defined('MC1_BOOT')) {
     http_response_code(403);
     echo '403 Forbidden';
-    // (uopz is active on this server so exit() is intercepted — using defined()
-    // guards in callers instead)
+    return;
 }
 
 // Returns true if the C++ server marked this request as authenticated.

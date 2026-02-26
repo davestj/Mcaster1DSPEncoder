@@ -82,50 +82,153 @@ ssize_t StreamClient::write(const uint8_t* data, size_t len)
     if (sock_fd_ < 0 || state_.load() != State::CONNECTED) return -1;
 
     ssize_t sent = tcp_write(data, len);
-    if (sent > 0) {
+    if (sent > 0)
         bytes_sent_.fetch_add(static_cast<uint64_t>(sent));
-        bytes_since_meta_ += static_cast<size_t>(sent);
-    }
     return sent;
 }
 
 // ---------------------------------------------------------------------------
-// send_icy_metadata — inject ICY inline metadata block
+// url_encode — RFC 3986 percent-encoding for HTTP query parameters
 // ---------------------------------------------------------------------------
-bool StreamClient::send_icy_metadata(const std::string& title,
-                                      const std::string& artist,
-                                      const std::string& /*url*/)
+std::string StreamClient::url_encode(const std::string& in)
 {
-    if (target_.icy_metaint <= 0) return false;
+    static const char hex[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(in.size() * 3);
+    for (unsigned char c : in) {
+        // Unreserved: ALPHA / DIGIT / "-" / "." / "_" / "~"
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') ||
+            c == '-' || c == '.' || c == '_' || c == '~') {
+            out += static_cast<char>(c);
+        } else {
+            out += '%';
+            out += hex[(c >> 4) & 0xF];
+            out += hex[c & 0xF];
+        }
+    }
+    return out;
+}
 
-    std::lock_guard<std::mutex> lk(sock_mutex_);
-    if (sock_fd_ < 0) return false;
-
-    // Build StreamTitle string
-    std::string stream_title;
+// ---------------------------------------------------------------------------
+// send_admin_metadata — update stream title via HTTP GET /admin/metadata
+//
+// Opens a new TCP connection to the DNAS/Icecast server and sends the full
+// set of metadata parameters supported by Mcaster1DNAS:
+//
+//   Icecast2 / Mcaster1DNAS:
+//     GET /admin/metadata?pass=<pass>&mode=updinfo&mount=<mount>
+//          &song=<artist - title>        ← ICY1/Shoutcast compat (combined)
+//          &title=<title>                ← Separate title
+//          &artist=<artist>              ← Separate artist
+//          &icy-meta-track-title=<title> ← ICY2.2 track title
+//          &icy-meta-track-artist=<art>  ← ICY2.2 track artist
+//          [&icy-meta-track-album=<alb>] ← ICY2.2 album (if provided)
+//          [&icy-meta-track-artwork=<u>] ← ICY2.2 artwork URL (if provided)
+//
+//   Shoutcast v1:
+//     GET /admin.cgi?pass=<pass>&mode=updinfo&song=<combined>
+//
+// Mcaster1DNAS stores all icy-meta-* fields in the stats system for delivery
+// to web players and API consumers. The combined song= is for legacy ICY1
+// clients and Shoutcast compatibility.
+// ---------------------------------------------------------------------------
+bool StreamClient::send_admin_metadata(const std::string& title,
+                                        const std::string& artist,
+                                        const std::string& album,
+                                        const std::string& artwork)
+{
+    // Build the combined "Artist - Title" song string (ICY1 / Shoutcast compat)
+    std::string song;
     if (!artist.empty() && !title.empty())
-        stream_title = artist + " - " + title;
+        song = artist + " - " + title;
     else if (!title.empty())
-        stream_title = title;
+        song = title;
     else
-        stream_title = "Unknown";
+        song = "Unknown";
 
-    std::string meta_str = "StreamTitle='" + stream_title + "';";
+    std::string enc_song    = url_encode(song);
+    std::string enc_title   = url_encode(title);
+    std::string enc_artist  = url_encode(artist);
+    std::string enc_album   = url_encode(album);
+    std::string enc_artwork = url_encode(artwork);
+    std::string enc_mount   = url_encode(target_.mount);
+    std::string enc_pass    = url_encode(target_.password);
 
-    // Pad to multiple of 16 bytes
-    size_t payload_len = meta_str.size();
-    size_t block_len   = (payload_len + 15) / 16;  // number of 16-byte chunks
-    size_t padded_len  = block_len * 16;
+    // Build Basic auth header
+    std::string cred = target_.username + ":" + target_.password;
+    std::string b64  = base64_encode(cred);
 
-    std::vector<uint8_t> block;
-    block.reserve(1 + padded_len);
-    block.push_back(static_cast<uint8_t>(block_len));
-    for (char c : meta_str) block.push_back(static_cast<uint8_t>(c));
-    while (block.size() < 1 + padded_len) block.push_back(0);
+    std::string req;
+    if (target_.protocol == StreamTarget::Protocol::SHOUTCAST_V1) {
+        // Shoutcast v1: combined song only
+        req = "GET /admin.cgi?pass=" + enc_pass +
+              "&mode=updinfo&song=" + enc_song +
+              " HTTP/1.0\r\n"
+              "User-Agent: Mcaster1DSPEncoder/1.3.0\r\n"
+              "\r\n";
+    } else {
+        // Icecast2 / Mcaster1DNAS: full ICY1 + ICY2.2 parameter set
+        std::string query =
+              "pass="    + enc_pass   +
+              "&mode=updinfo"         +
+              "&mount="  + enc_mount  +
+              "&song="   + enc_song   +   // ICY1 compat combined string
+              "&title="  + enc_title  +   // separate title
+              "&artist=" + enc_artist +   // separate artist
+              "&icy-meta-track-title="  + enc_title  +  // ICY2.2
+              "&icy-meta-track-artist=" + enc_artist;   // ICY2.2
 
-    tcp_write(block.data(), block.size());
-    bytes_since_meta_ = 0;
-    return true;
+        if (!album.empty())
+            query += "&icy-meta-track-album=" + enc_album;
+        if (!artwork.empty())
+            query += "&icy-meta-track-artwork=" + enc_artwork;
+
+        req = "GET /admin/metadata?" + query + " HTTP/1.0\r\n"
+              "Host: " + target_.host + ":" + std::to_string(target_.port) + "\r\n"
+              "Authorization: Basic " + b64 + "\r\n"
+              "User-Agent: Mcaster1DSPEncoder/1.3.0\r\n"
+              "\r\n";
+    }
+
+    // Open a fresh TCP connection for the metadata update (separate from audio stream)
+    struct addrinfo hints{}, *res = nullptr;
+    hints.ai_family   = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    std::string port_str = std::to_string(target_.port);
+    if (::getaddrinfo(target_.host.c_str(), port_str.c_str(), &hints, &res) != 0)
+        return false;
+
+    int fd = -1;
+    for (auto* p = res; p; p = p->ai_next) {
+        fd = ::socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+        if (fd < 0) continue;
+        if (::connect(fd, p->ai_addr, p->ai_addrlen) == 0) break;
+        ::close(fd);
+        fd = -1;
+    }
+    ::freeaddrinfo(res);
+    if (fd < 0) return false;
+
+    // Send the request
+    size_t sent = 0;
+    const auto* rdata = reinterpret_cast<const uint8_t*>(req.c_str());
+    size_t rlen = req.size();
+    while (sent < rlen) {
+        ssize_t n = ::send(fd, rdata + sent, rlen - sent, MSG_NOSIGNAL);
+        if (n <= 0) { ::close(fd); return false; }
+        sent += static_cast<size_t>(n);
+    }
+
+    // Read response — check for <return>1</return> (DNAS success indicator)
+    char resp[512] = {};
+    ssize_t rn = ::recv(fd, resp, sizeof(resp) - 1, 0);
+    ::close(fd);
+
+    bool accepted = (rn > 0 && std::string(resp, static_cast<size_t>(rn)).find("<return>1</return>") != std::string::npos);
+    fprintf(stderr, "[StreamClient] Metadata update: %s%s\n",
+            song.c_str(), accepted ? "" : " (no ACK from server)");
+    return accepted;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,8 +351,7 @@ bool StreamClient::send_icecast2_headers()
         "Ice-Description: %s\r\n"
         "Ice-Genre: %s\r\n"
         "Ice-Url: %s\r\n"
-        "Ice-Audio-Info: ice-samplerate=%d;ice-bitrate=%d;ice-channels=%d\r\n"
-        "Icy-MetaData: %d\r\n",
+        "Ice-Audio-Info: ice-samplerate=%d;ice-bitrate=%d;ice-channels=%d\r\n",
         target_.mount.c_str(),
         target_.host.c_str(), target_.port,
         b64.c_str(),
@@ -261,8 +363,7 @@ bool StreamClient::send_icecast2_headers()
         target_.url.c_str(),
         target_.sample_rate,
         target_.bitrate,
-        target_.channels,
-        (target_.icy_metaint > 0 ? 1 : 0));
+        target_.channels);
 
     std::string req(fixed);
 

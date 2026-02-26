@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <stdexcept>
 #include <filesystem>
+#include <thread>
 
 #ifdef HAVE_MPG123
 #include <mpg123.h>
@@ -153,37 +154,59 @@ bool FileSource::seek(int64_t pos_ms)
 
 // ---------------------------------------------------------------------------
 // decode_loop — dispatcher
+// We only fire the EOF callback when the track ends naturally (natural_eof=true).
+// When stop_req_ causes early exit (natural_eof=false), we do NOT fire the
+// callback — the caller that set stop_req_ (advance_playlist / fs->stop) is
+// already taking care of the next track.  Firing here in that case would race
+// with the caller and produce a duplicate advance_playlist() invocation, which
+// leads to EDEADLK when both threads try to join each other's decode thread.
 // ---------------------------------------------------------------------------
 void FileSource::decode_loop()
 {
+    bool natural_eof = false;
     if (decoder_ == Decoder::MPG123)
-        decode_loop_mpg123();
+        natural_eof = decode_loop_mpg123();
     else
-        decode_loop_avcodec();
+        natural_eof = decode_loop_avcodec();
 
     running_.store(false);
-    if (eof_cb_) eof_cb_();
+
+    // Fire EOF callback only on natural track end, not when stop_req_ caused
+    // early exit.  The callback (set by open_next_track) already dispatches
+    // advance_playlist() to a new detached thread, so we call it directly here —
+    // no need to wrap it in yet another thread.
+    if (natural_eof && eof_cb_) {
+        eof_cb_();
+    }
 }
 
 // ---------------------------------------------------------------------------
-// decode_loop_mpg123
+// decode_loop_mpg123 — returns true on natural EOF, false when stop_req_ fired
 // ---------------------------------------------------------------------------
-void FileSource::decode_loop_mpg123()
+bool FileSource::decode_loop_mpg123()
 {
 #ifdef HAVE_MPG123
     auto* mh = static_cast<mpg123_handle*>(mpg123_handle_);
-    if (!mh) return;
+    if (!mh) return false;
 
     // Buffer for decoded output: 4096 frames × channels × sizeof(float)
     const size_t BUF_FRAMES = 4096;
     size_t       buf_bytes  = BUF_FRAMES * static_cast<size_t>(target_ch_) * sizeof(float);
     std::vector<uint8_t> buf(buf_bytes);
 
+    // Real-time pacing: deliver audio at wall-clock speed so the DNAS/Icecast server
+    // receives data at the encoded bitrate rather than at CPU decode speed.
+    // Without pacing the DNAS reads the entire file in seconds, causing rapid
+    // playlist advancement.  Track total frames produced vs. elapsed real time
+    // and sleep for the difference after each callback.
+    auto   pace_start  = std::chrono::steady_clock::now();
+    int64_t pace_frames = 0;
+
     while (!stop_req_.load()) {
         size_t done = 0;
         int err = mpg123_read(mh, buf.data(), buf_bytes, &done);
 
-        if (err == MPG123_DONE || err == MPG123_ERR) break;
+        if (err == MPG123_DONE || err == MPG123_ERR) return true;  // natural EOF
         if (err != MPG123_OK && err != MPG123_NEW_FORMAT) continue;
         if (done == 0) continue;
 
@@ -193,37 +216,53 @@ void FileSource::decode_loop_mpg123()
                       frames, target_ch_, target_sr_);
         }
 
+        // Pace to real-time: sleep until wall-clock catches up with audio clock
+        pace_frames += static_cast<int64_t>(frames);
+        int64_t expected_us = pace_frames * 1000000LL / target_sr_;
+        int64_t elapsed_us  = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - pace_start).count();
+        if (expected_us > elapsed_us)
+            std::this_thread::sleep_for(std::chrono::microseconds(expected_us - elapsed_us));
+
         // Update position
         off_t sample = mpg123_tell(mh);
         if (sample >= 0)
             position_ms_.store(static_cast<int64_t>(sample) * 1000 / target_sr_);
     }
+    return false;  // stop_req_ caused early exit — NOT a natural EOF
+#else
+    return false;
 #endif
 }
 
 // ---------------------------------------------------------------------------
-// decode_loop_avcodec
+// decode_loop_avcodec — returns true on natural EOF, false when stop_req_ fired
 // ---------------------------------------------------------------------------
-void FileSource::decode_loop_avcodec()
+bool FileSource::decode_loop_avcodec()
 {
 #ifdef HAVE_AVFORMAT
     auto* fmt_ctx   = static_cast<AVFormatContext*>(av_fmt_ctx_);
     auto* codec_ctx = static_cast<AVCodecContext*>(av_codec_ctx_);
     auto* swr       = static_cast<SwrContext*>(swr_ctx_);
 
-    if (!fmt_ctx || !codec_ctx) return;
+    if (!fmt_ctx || !codec_ctx) return false;
 
     AVPacket* pkt  = av_packet_alloc();
     AVFrame*  frame = av_frame_alloc();
-    if (!pkt || !frame) return;
+    if (!pkt || !frame) return false;
 
     // Output float32 buffer
     const size_t OUT_FRAMES = 4096;
     std::vector<float> out_buf(OUT_FRAMES * static_cast<size_t>(target_ch_));
+    bool natural_eof = false;
+
+    // Real-time pacing — same as decode_loop_mpg123 (see comments there)
+    auto    pace_start  = std::chrono::steady_clock::now();
+    int64_t pace_frames = 0;
 
     while (!stop_req_.load()) {
         int ret = av_read_frame(fmt_ctx, pkt);
-        if (ret < 0) break;  // EOF or error
+        if (ret < 0) { natural_eof = true; break; }  // EOF — natural end
 
         if (pkt->stream_index != av_stream_idx_) {
             av_packet_unref(pkt);
@@ -257,6 +296,13 @@ void FileSource::decode_loop_avcodec()
                     callback_(out_buf.data(),
                               static_cast<size_t>(ret),
                               target_ch_, target_sr_);
+                    // Pace to real-time
+                    pace_frames += static_cast<int64_t>(ret);
+                    int64_t exp_us = pace_frames * 1000000LL / target_sr_;
+                    int64_t ela_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - pace_start).count();
+                    if (exp_us > ela_us)
+                        std::this_thread::sleep_for(std::chrono::microseconds(exp_us - ela_us));
                 }
             } else {
                 // Direct float32 — no resampling needed
@@ -264,6 +310,13 @@ void FileSource::decode_loop_avcodec()
                     callback_(reinterpret_cast<const float*>(frame->data[0]),
                               static_cast<size_t>(frame->nb_samples),
                               target_ch_, target_sr_);
+                    // Pace to real-time
+                    pace_frames += static_cast<int64_t>(frame->nb_samples);
+                    int64_t exp_us = pace_frames * 1000000LL / target_sr_;
+                    int64_t ela_us = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - pace_start).count();
+                    if (exp_us > ela_us)
+                        std::this_thread::sleep_for(std::chrono::microseconds(exp_us - ela_us));
                 }
             }
 
@@ -282,6 +335,9 @@ void FileSource::decode_loop_avcodec()
 done:
     av_packet_free(&pkt);
     av_frame_free(&frame);
+    return natural_eof;  // true = natural EOF, false = stop_req_ caused exit
+#else
+    return false;
 #endif
 }
 
