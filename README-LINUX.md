@@ -2,7 +2,7 @@
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
 **Binary:** `mcaster1-encoder`
-**Version:** v1.3.0 (Phase L4 — DSP Chain + ICY2 + DNAS Stats)
+**Version:** v1.4.5 (Phase L5.5 — Standalone Popup Player + Category UX Overhaul)
 **Platform:** Debian 12 / Ubuntu 22.04+ (amd64)
 
 ---
@@ -15,16 +15,19 @@
 4. [Phase L1 — Infrastructure](#phase-l1--infrastructure-v100--complete)
 5. [Phase L2 — HTTP Admin Server](#phase-l2--httphttps-admin-server-v111--complete)
 6. [Phase L3 — Audio Engine](#phase-l3--audio-encoding--streaming-engine-v120--complete)
-7. [Phase L4 — DSP + Media Library + AI](#phase-l4--dsp-chain--media-library--ai-playlist-v130--planned)
-8. [Phase L5 — DNAS Integration](#phase-l5--mcaster1dnas-integration-v140--planned)
+7. [Phase L4 — DSP + ICY2 + DNAS Stats](#phase-l4--dsp-chain--icy2-headers--dnas-stats-v130--complete)
+8. [Phase L5 — PHP Frontend + Logging](#phase-l5--full-php-frontend-overhaul--logging-v140--complete)
 9. [Phase L6 — Analytics](#phase-l6--analytics--listener-metrics-v150--planned)
 10. [Build Instructions](#build-instructions)
-11. [Configuration](#configuration)
-12. [API Reference](#api-reference)
-13. [Database Schema](#database-schema)
-14. [PHP App Layer](#php-app-layer)
-15. [Default Credentials](#default-credentials)
-16. [Deployment](#deployment)
+11. [PHP-FPM Setup](#php-fpm-setup)
+12. [Logging System](#logging-system)
+13. [Authentication System](#authentication-system)
+14. [Configuration](#configuration)
+15. [API Reference](#api-reference)
+16. [Database Schema](#database-schema)
+17. [PHP App Layer](#php-app-layer)
+18. [Default Credentials](#default-credentials)
+19. [Deployment](#deployment)
 
 ---
 
@@ -81,9 +84,16 @@ All Linux source lives under `src/linux/`.
 | L1 | v1.0.0 | Infrastructure (platform.h, ICY 2.2 structs, build system) | **COMPLETE** |
 | L2 | v1.1.1 | HTTP/HTTPS admin server + login + web UI | **COMPLETE** |
 | L3 | v1.2.0 | Audio encoding + streaming engine + FastCGI + PHP app | **COMPLETE** |
-| **L4** | **v1.3.0** | **DSP chain (EQ/AGC/crossfade) + ICY2 headers + DNAS stats proxy** | **COMPLETE** |
-| L5 | v1.4.0 | Mcaster1DNAS deep integration + live dashboard | PLANNED |
-| L6 | v1.5.0 | Analytics, listener metrics, engagement platform | PLANNED |
+| L4 | v1.3.0 | DSP chain (EQ/AGC/crossfade) + ICY2 headers + DNAS stats proxy | **COMPLETE** |
+| L5 | v1.4.0 | Full PHP frontend overhaul + logging system + auth bridge + rAF progress | **COMPLETE** |
+| L5.1 | v1.4.1 | Media library — folder browser, track tags, artwork, playlists, DB paths | **COMPLETE** |
+| L5.2 | v1.4.2 | Browser media player — queue, audio streaming (206 Range), drag-select | **COMPLETE** |
+| L5.3 | v1.4.3 | Session fix, Content-Range fix (Firefox), 30-day cookie TTL | **COMPLETE** |
+| L5.4 | v1.4.4 | Encoder editor, playlist generator wizard (8 algorithms), user profile | **COMPLETE** |
+| **L5.5** | **v1.4.5** | **Standalone popup player, category UX overhaul, HTML quoting bug sweep** | **COMPLETE** |
+| L6 | v1.5.0 | Streaming Server Relay Monitor (SAM Broadcaster-style multi-server) | PLANNED |
+| L7 | v1.6.0 | Listener Analytics & Full Metrics Dashboard | PLANNED |
+| L8 | v1.7.0 | System Health Monitoring (CPU/Mem/Net via /proc) | PLANNED |
 
 ---
 
@@ -271,21 +281,58 @@ listen.owner = mediacast1
 listen.group = www-data
 ```
 
-#### PHP App Files
+#### PHP App Files (Phase L5.5 — current)
 
 ```
-web_ui/app/
-  inc/
-    auth.php           mc1_is_authed() — checks HTTP_X_MC1_AUTHENTICATED header
-    db.php             mc1_db($dbname) — PDO connection cache + helpers (h(), mc1_format_duration())
-    header.php         Page header with sidebar nav (expects $page_title, $active_nav)
-    footer.php         Page footer + toast helper + data-confirm handlers
-    user_auth.php      MySQL session-based auth (mc1_current_user, mc1_login, mc1_logout)
-  api/
-    tracks.php         POST /app/api/tracks.php — actions: list, search, add, delete, scan
-    metrics.php        POST /app/api/metrics.php — actions: summary, daily_stats, sessions, top_tracks
-  media.php            Media library browser (paginated track list with search)
-  metrics.php          Listener metrics dashboard (stat cards + tables)
+web_ui/
+  login.html              Pre-auth login page (plain HTML, no PHP needed)
+  style.css               Dark navy/teal theme + responsive sidebar + Chart.js styles
+  dashboard.php           Live encoder cards + rAF 60fps progress bars + Chart.js bandwidth
+  encoders.php            Per-slot DSP panel + live stats + SLEEP/Wake state handling
+  edit_encoders.php       Full 6-tab per-slot encoder config editor
+  media.php               Track library (folder browser) + categories + scan + playlist files
+  mediaplayer.php         Embedded browser audio player with DB-backed queue
+  mediaplayerpro.php      Standalone WMP-style 3-column popup player (NEW in L5.5)
+  playlists.php           DB-backed playlist CRUD + 4-step generation wizard (8 algorithms)
+  metrics.php             Chart.js listener analytics
+  profile.php             User profile page (display_name, email, password change)
+  settings.php            Server info + encoder config table + DB admin panel
+  app/
+    inc/
+      auth.php            mc1_is_authed() — checks HTTP_X_MC1_AUTHENTICATED header
+      db.php              mc1_db($dbname) — PDO connection cache + helpers (h(), fmtDur())
+      traits.db.class.php Mc1Db trait — rows(), row(), run(), scalar(), lastId()
+      header.php          HTML head, sidebar nav, Chart.js flag
+      footer.php          Toasts, mc1Api(), mc1Toast(), mc1State, auto PHP session bootstrap
+      user_auth.php       MySQL session auth — mc1_current_user(), mc1_require_auth(), mc1_can()
+      logger.php          mc1_log(), mc1_log_request(), mc1_api_respond()
+      mc1_config.php      Constants: MC1_AUDIO_ROOT, MC1_PLAYLIST_DIR, MC1_ARTWORK_DIR
+      edit.encoders.class.php  EditEncoders: load(), all(), validate(), save(), delete()
+      playlist.builder.algorithm.class.php  PlaylistBuilderAlgorithm: 8 generation algorithms
+      playlist.manager.pro.class.php  PlaylistManagerPro: generate(), preview() orchestrator
+      profile.usr.class.php  ProfileUser: get(), update(), change_password()
+      metrics.serverstats.class.php  Mc1MetricsServerStats: server stat queries
+      media.lib.player.php  Player queue helpers (add, list, remove, clear)
+      icons.php            SVG icon helper functions
+    api/
+      tracks.php          list, search, add, update, delete, scan, playlist_files,
+                          browse, get_categories, create_category, delete_category,
+                          add_to_category, list_category_tracks, remove_from_category,
+                          get_artwork, set_artwork, fetch_artwork_musicbrainz
+      metrics.php         summary, daily_stats, sessions, top_tracks
+      playlists.php       list, get_tracks, create, delete, add_track, remove_track,
+                          load, get_categories, get_algorithms, get_rotation_rules,
+                          preview, generate, get_clock_templates, save_clock_template
+      player.php          queue_add, queue_list, queue_remove, queue_clear, queue_move_top
+      audio.php           HTTP Range (206) audio file streaming
+      artwork.php         Cover art serving by hash
+      encoders.php        list_configs, get_config, save_config, delete_config,
+                          update_playlist, add_user, update_user, delete_user,
+                          toggle_user, reset_password, db_stats, get_token, generate_token
+      auth.php            login, logout, auto_login, whoami
+      servers.php         CRUD for streaming_servers table + live stat proxy
+      serverstats.php     Server statistics queries
+      profile.php         get_profile, update_profile, change_password
 ```
 
 **Note on `uopz` PHP extension:** This server has the `uopz` extension active, which
@@ -377,13 +424,100 @@ bash src/linux/make_phase4.sh
 
 ---
 
-## Phase L5 — Mcaster1DNAS Integration `v1.4.0` — PLANNED
+## Phase L5 — Full PHP Frontend Overhaul + Logging `v1.4.0` — COMPLETE
 
-- Connect to Mcaster1DNAS stats API for real-time listener counts
-- ICY 2.2 listener fingerprint / retention signals
-- Multi-mount simulcast coordination
-- DNAS-authenticated SOURCE with ICY 2.2 extended headers
-- Live dashboard with WebSocket listener count updates
+**Goal:** Replace the single-page HTML SPA with a full PHP-driven multi-page web UI,
+add production-grade logging, and wire all pages to the C++ API.
+
+### New PHP Pages (all served at root level via FastCGI)
+
+| Page | URL | Description |
+|------|-----|-------------|
+| `dashboard.php` | `/dashboard.php` | Live encoder status cards + Chart.js bandwidth graph |
+| `encoders.php` | `/encoders.php` | Per-slot DSP controls, volume, metadata push |
+| `media.php` | `/media.php` | Track library, folder scan, playlist file manager |
+| `playlists.php` | `/playlists.php` | DB-backed playlist CRUD + load-to-slot |
+| `metrics.php` | `/metrics.php` | Chart.js analytics: daily listeners, top tracks, sessions |
+| `settings.php` | `/settings.php` | Server info, DNAS status, SSL cert, API token |
+
+### New PHP API Files
+
+| API | URL | Actions |
+|-----|-----|---------|
+| `app/api/auth.php` | `/app/api/auth.php` | login, logout, auto_login, whoami |
+| `app/api/playlists.php` | `/app/api/playlists.php` | list, get_tracks, create, add_track, remove_track, load |
+| `app/api/encoders.php` | `/app/api/encoders.php` | DB admin: add_user, delete_user, toggle_user |
+| `app/api/tracks.php` | `/app/api/tracks.php` | Extended: + playlist_files action |
+
+### New Include Files
+
+| File | Purpose |
+|------|---------|
+| `app/inc/traits.db.class.php` | `Mc1Db` PDO trait — row(), rows(), run(), lastId() |
+| `app/inc/header.php` | Full sidebar nav with MONITOR/LIBRARY/ANALYTICS/SYSTEM sections |
+| `app/inc/footer.php` | Toasts, `mc1Api()`, `mc1Toast()`, auto PHP session bootstrap |
+| `app/inc/logger.php` | PHP logging — mc1_log(), mc1_log_request(), mc1_api_respond() |
+
+### C++ Route Changes (http_api.cpp)
+
+```cpp
+// 1. Block include files from direct HTTP access
+svr.Get(R"(/app/inc/.*)", [](req, res){ res.status=403; ... });
+
+// 2. Root-level PHP pages (new in L5)
+svr.Get(R"(/([a-zA-Z0-9_\-]+\.php))",  handle_php_authed);
+svr.Post(R"(/([a-zA-Z0-9_\-]+\.php))", handle_php_authed);
+
+// 3. /dashboard now redirects to /dashboard.php
+svr.Get("/dashboard", [](req, res){
+    if (!request_is_authed(req)) { res.status=302; res.set_header("Location","/login"); return; }
+    res.status=302; res.set_header("Location","/dashboard.php");
+});
+```
+
+### Logging System (`mc1_logger.h`)
+
+New C++ singleton logger with 5 verbosity levels:
+
+```
+Level 1 = CRITICAL  — fatal errors
+Level 2 = ERROR     — non-fatal errors
+Level 3 = WARN      — warnings
+Level 4 = INFO      — normal events (default)
+Level 5 = DEBUG     — verbose: raw data, request/response bodies, stack traces
+```
+
+Log files (all under `/var/log/mcaster1/`):
+- `access.log` — Apache combined format (every HTTP request)
+- `error.log` — Errors + startup messages
+- `encoder.log` — Slot events (start/stop/track change)
+- `api.log` — API request/response bodies (level 5 only)
+- `php_error.log` — PHP application errors
+- `php_access.log` — PHP page request log
+- `php_fpm.log` — PHP-FPM pool log
+
+Enable level 5 in YAML:
+```yaml
+http-admin:
+  log-dir:   "/var/log/mcaster1"
+  log-level: 5
+```
+
+Or via CLI: `--log-level 5` or `-v`
+
+### Two-Layer Auth Bridge
+
+- **C++ layer**: `mc1session` cookie, in-memory session map
+- **PHP layer**: `mc1app_session` cookie, MySQL `user_sessions` table
+- **Bridge**: `POST /app/api/auth.php {action:"auto_login"}` — called by `footer.php` on every page load using a `sessionStorage` guard. Transparently creates PHP session from valid C++ session.
+
+### Build (same script, now with -rdynamic)
+
+```bash
+bash src/linux/make_phase4.sh
+```
+
+`-rdynamic` added to LDFLAGS for backtrace symbol resolution at level 5.
 
 ---
 
@@ -395,6 +529,178 @@ bash src/linux/make_phase4.sh
 - Engagement score per track → Pulse AI feedback loop
 - Export: CSV, JSON, RSS
 - Web UI charts: Chart.js time-series, heatmaps, top-track leaderboard
+
+---
+
+## PHP-FPM Setup
+
+### Pool Configuration
+
+The encoder uses a dedicated PHP-FPM pool named `mcaster1`.
+
+**Pool file:** `/etc/php/8.2/fpm/pool.d/mcaster1.conf`
+
+```ini
+[mcaster1]
+user = mediacast1
+group = www-data
+listen = /run/php/php8.2-fpm-mc1.sock
+listen.owner = mediacast1
+listen.group = www-data
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 5
+error_log = /var/log/mcaster1/php_fpm.log
+
+; Logging environment variables
+env[MC1_LOG_DIR] = /var/log/mcaster1
+env[MC1_LOG_LEVEL] = 4
+
+; PHP settings
+php_admin_value[error_reporting] = E_ALL
+php_admin_flag[display_errors] = Off
+php_admin_value[error_log] = /var/log/mcaster1/php_error.log
+```
+
+### Socket Path
+
+The FastCGI socket is:
+```
+/run/php/php8.2-fpm-mc1.sock
+```
+
+The C++ `FastCgiClient` connects to this socket for all PHP page requests.
+
+### Reload After Config Changes
+
+```bash
+sudo systemctl reload php8.2-fpm
+```
+
+### uopz Extension Warning
+
+This server has the `uopz` extension active. It intercepts ALL `exit()` / `die()` calls.
+
+**RULE: Never use `exit()` or `die()` in PHP files.**
+
+```php
+// WRONG — breaks with uopz:
+if (!mc1_is_authed()) { http_response_code(401); die(); }
+
+// CORRECT:
+if (!mc1_is_authed()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Unauthorized']);
+    return;
+}
+```
+
+---
+
+## Logging System
+
+### C++ Logger (`mc1_logger.h`)
+
+Thread-safe singleton logger with Apache combined format access log:
+
+```cpp
+#include "mc1_logger.h"
+
+// Macros
+MC1_INFO("encoder starting");
+MC1_WARN("slot " + std::to_string(slot) + " not found");
+MC1_ERR("connection failed: " + msg);
+MC1_DBG("raw response: " + body);
+
+// Encoder events
+mc1log.encoder(slot_id, "START", "mount=/yolo-rock bitrate=128");
+mc1log.encoder(slot_id, "TRACK", "title=Highway to Hell artist=AC/DC");
+
+// Access log (called automatically via set_logger() callback)
+mc1log.access(remote_addr, method, uri, status, bytes, duration_us, referer, ua);
+```
+
+### Log Level Configuration
+
+Via YAML:
+```yaml
+http-admin:
+  log-dir:   "/var/log/mcaster1"
+  log-level: 4          # 1=CRIT 2=ERR 3=WARN 4=INFO 5=DEBUG
+```
+
+Via CLI:
+```bash
+./build/mcaster1-encoder --config ... --log-level 5
+./build/mcaster1-encoder --config ... -v   # same as --log-level 5
+```
+
+### Log Files
+
+| File | Location | Content |
+|------|----------|---------|
+| `access.log` | `/var/log/mcaster1/` | All HTTP requests (Apache combined format) |
+| `error.log` | `/var/log/mcaster1/` | App errors + startup messages |
+| `encoder.log` | `/var/log/mcaster1/` | Slot start/stop/track events |
+| `api.log` | `/var/log/mcaster1/` | API req/resp bodies (level 5 only) |
+| `php_error.log` | `/var/log/mcaster1/` | PHP application errors |
+| `php_access.log` | `/var/log/mcaster1/` | PHP page request log |
+| `php_fpm.log` | `/var/log/mcaster1/` | PHP-FPM pool log |
+
+### Log Rotation
+
+```
+/etc/logrotate.d/mcaster1
+```
+
+- Daily rotation, 14-day retention, `compress`, `delaycompress`, `missingok`
+- Postrotate: sends `SIGHUP` to encoder (reopen files) + reloads PHP-FPM
+
+---
+
+## Authentication System
+
+### Layer 1: C++ In-Memory Auth
+
+- **Cookie:** `mc1session=<64-byte-hex-token>` (HttpOnly, SameSite=Strict)
+- **Token:** `X-API-Token: <token>` header (for scripts)
+- **Storage:** `std::map<string, SessionEntry>` in memory
+- **TTL:** configurable in YAML (`session_timeout_secs`)
+- **Login:** `POST /api/v1/auth/login` → `{ username, password }`
+
+### Layer 2: PHP/MySQL Auth
+
+- **Cookie:** `mc1app_session=<token>` (HttpOnly, SameSite=Strict)
+- **Storage:** `mcaster1_encoder.user_sessions` table
+- **Check:** `mc1_current_user()` in `app/inc/user_auth.php`
+
+### Auto-Bootstrap Bridge
+
+`footer.php` calls `POST /app/api/auth.php {action:"auto_login"}` on every page load:
+
+1. If C++ auth is valid but no PHP session → creates PHP session for first active admin user
+2. Uses `sessionStorage.getItem('mc1php_ok')` as guard (reset each browser tab)
+3. No password required — C++ already authenticated the user
+
+```javascript
+// footer.php auto-bootstrap (runs once per tab)
+(function(){
+  if (sessionStorage.getItem('mc1php_ok')) return;
+  mc1Api('POST', '/app/api/auth.php', {action:'auto_login'}).then(function(d){
+    if (d && d.ok) sessionStorage.setItem('mc1php_ok', '1');
+  });
+})();
+```
+
+### Credentials (Test Station)
+
+| System | Username | Password | Notes |
+|--------|----------|----------|-------|
+| C++ admin | `djpulse` | `hackme` | In YAML config |
+| MySQL DB | `djpulse` | `hackme` | bcrypt in `mcaster1_encoder.users` |
+| Legacy | `admin` | `changeme` | Fallback admin |
 
 ---
 
@@ -425,16 +731,17 @@ external/include/httplib.h         cpp-httplib v0.18+
 external/include/nlohmann/json.hpp nlohmann/json v3.11+
 ```
 
-### Full Phase 3 Build
+### Full Build (Phase L4/L5)
 
 ```bash
-cd /path/to/Mcaster1DSPEncoder
-bash src/linux/make_phase3.sh
+cd /var/www/mcaster1.com/Mcaster1DSPEncoder
+bash src/linux/make_phase4.sh
 ```
 
 Output: `build/mcaster1-encoder`
 
-Build time: ~30 seconds on a modern server.
+Build time: ~30–45 seconds on a modern server.
+Includes: `-rdynamic` (for backtrace symbol resolution at log level 5)
 
 ### HTTP-only Test Build (no audio deps)
 
@@ -443,6 +750,33 @@ bash src/linux/make_phase2.sh
 ```
 
 This builds with `-DMC1_HTTP_TEST_BUILD` — audio pipeline is stubbed out.
+Useful for fast iteration on the HTTP/PHP layer.
+
+### Run (daemon mode)
+
+```bash
+nohup ./build/mcaster1-encoder \
+  --config src/linux/config/mcaster1_rock_yolo.yaml \
+  > /tmp/mc1enc.log 2>&1 & disown $!
+
+echo "Started PID: $!"
+tail -f /tmp/mc1enc.log
+```
+
+**Always use `disown $!`** — the shell sends SIGHUP on exit which stops the encoder.
+
+### Kill + Restart
+
+```bash
+pkill -9 -f 'build/mcaster1-encoder'
+sleep 2
+nohup ./build/mcaster1-encoder \
+  --config src/linux/config/mcaster1_rock_yolo.yaml \
+  > /tmp/mc1enc.log 2>&1 & disown $!
+```
+
+**Warning:** cpp-httplib uses `SO_REUSEPORT`. If the old instance is still alive when you restart,
+BOTH will bind to the same ports. Always kill all old instances first.
 
 ### Deploy Script
 
@@ -502,14 +836,17 @@ encoders:
 ### CLI Options
 
 ```
---http-port  PORT     HTTP listen port (default: 8080)
---https-port PORT     HTTPS listen port (requires --ssl-cert + --ssl-key)
---bind       ADDR     Bind address (default: 127.0.0.1)
---ssl-cert   PATH     PEM certificate file
---ssl-key    PATH     PEM private key file
---ssl-gencert SUBJECT Generate self-signed cert + key (e.g. /CN=myhost/O=MyOrg)
---config     PATH     YAML config file path
---help                Show help
+--http-port   PORT     HTTP listen port (default: 8080)
+--https-port  PORT     HTTPS listen port (requires --ssl-cert + --ssl-key)
+--bind        ADDR     Bind address (default: 127.0.0.1)
+--ssl-cert    PATH     PEM certificate file
+--ssl-key     PATH     PEM private key file
+--ssl-gencert SUBJECT  Generate self-signed cert + key (e.g. /CN=myhost/O=MyOrg)
+--config      PATH     YAML config file path
+--log-level   N        Log verbosity 1-5 (1=CRIT 2=ERR 3=WARN 4=INFO 5=DEBUG)
+--log-dir     PATH     Log directory (default: /var/log/mcaster1)
+-v                     Verbose — same as --log-level 5
+--help                 Show help
 ```
 
 ---
@@ -859,27 +1196,91 @@ sudo chmod 660 /run/php/php8.2-fpm-mc1.sock
 
 ---
 
-## Completed (Phase L4 — v1.3.0)
+## Completed — Phase L5 Series (v1.4.0–v1.4.5)
 
-- [x] DSP chain: `dsp/eq.cpp`, `dsp/agc.cpp`, `dsp/crossfader.cpp`, `dsp/dsp_chain.cpp`
-- [x] EQ presets: flat, classic_rock, country, modern_rock, broadcast, spoken_word
-- [x] DSP wired into `EncoderSlot::on_audio()` — EQ → AGC per buffer
-- [x] Equal-power crossfader triggered at track boundaries
-- [x] Live DSP reconfigure API: `PUT /api/v1/encoders/{slot}/dsp`
-- [x] EQ preset API: `POST /api/v1/encoders/{slot}/dsp/eq/preset`
-- [x] ICY2 extended headers in `StreamTarget` (Twitter/Facebook/Instagram/email/language/country/city)
-- [x] DNAS stats proxy: `GET /api/v1/dnas/stats` → `dnas.mcaster1.com:9443`
-- [x] Test station config: `config/mcaster1_rock_yolo.yaml` (3 slots, ICY2 headers, DSP presets)
-- [x] Build script: `make_phase4.sh`
+### Phase L5 (v1.4.0)
+- [x] `mc1_logger.h`: 5-level C++ singleton logger (access/error/encoder/api logs)
+- [x] Autotools canonical build (`configure.ac`, `Makefile.am`, `autogen.sh`)
+- [x] `install-deps.sh`: multi-distro dependency installer
+- [x] `dashboard.php`: rAF 60fps progress bars + Chart.js bandwidth graph
+- [x] `encoders.php`: per-slot DSP panel + live stats
+- [x] PHP session auto-bootstrap bridge (footer.php → auth.php)
+- [x] ICY metadata reconnect fix (`first_connect_done_` atomic + `meta_gen_` atomic)
 
-## Up Next (Phase L5)
+### Phase L5.1 (v1.4.1)
+- [x] `media.php` v2: split-pane folder tree + track library (3 tabs)
+- [x] Track right-click menu: Edit Tags, Fetch Art, Add to Playlist, Add to Category, Delete
+- [x] Edit Tags modal with full ID3 metadata + ffmpeg write
+- [x] Category management: create, color-pick, bulk-add tracks
+- [x] MusicBrainz album art auto-fetch
+- [x] `app/api/tracks.php`: extended track CRUD + scan + folder browse + category actions
+- [x] `app/inc/mc1_config.php`: `MC1_AUDIO_ROOT`, `MC1_PLAYLIST_DIR`, `MC1_ARTWORK_DIR`
 
-- [ ] Mcaster1DNAS deep integration: live listener count via `/admin/mcaster1stats` polling
-- [ ] WebSocket push: real-time listener count updates to dashboard
-- [ ] Multi-mount simulcast coordination across slots
-- [ ] Media library manager: `medialib/scanner.h/cpp`, `medialib/database.h/cpp`
-- [ ] BPM + key detection: aubio integration
-- [ ] Pulse AI playlist: `pulse/context_engine.h/cpp`, `pulse/track_scorer.h/cpp`
-- [ ] LLM integration: Ollama + Claude API client
-- [ ] Podcast RSS generation: `archive_writer.cpp` → `podcast_rss_gen()`
-- [ ] Web UI: EQ graph, crossfade waveform, media library browser, Pulse dashboard
+### Phase L5.2 (v1.4.2)
+- [x] `mediaplayer.php`: embedded browser audio player with DB-backed queue
+- [x] `app/api/player.php`: queue CRUD (add, list, remove, clear)
+- [x] `app/api/audio.php`: HTTP Range (206) audio streaming
+- [x] `app/api/artwork.php`: cover art serving by hash
+- [x] Drag-select multi-select in track table
+- [x] `playlists.php`: DB-backed playlist CRUD + load-to-slot
+- [x] `app/api/playlists.php`: full playlist API
+
+### Phase L5.3 (v1.4.3)
+- [x] Content-Range duplicate header fix (C++ httplib + PHP both setting it)
+- [x] Firefox audio streaming 416 fix
+- [x] 30-day session cookie TTL (was session-scoped)
+- [x] Per-user session TTL override from `users.session_ttl_override`
+
+### Phase L5.4 (v1.4.4)
+- [x] `edit_encoders.php`: full 6-tab per-slot encoder config editor
+- [x] `app/inc/edit.encoders.class.php`: EditEncoders static class
+- [x] Playlist generator wizard in `playlists.php`: 4-step modal, 8 algorithms
+- [x] `app/inc/playlist.builder.algorithm.class.php`: 8 generation algorithms
+- [x] `app/inc/playlist.manager.pro.class.php`: orchestrator
+- [x] SLEEP slot state: orange badge, Wake button, forced-Start button
+- [x] `profile.php`: user profile page (display_name, email, password change)
+
+### Phase L5.5 (v1.4.5) — 2026-02-24
+- [x] `mediaplayerpro.php` (NEW): standalone WMP-style 3-column popup player
+  - Left: library tree, Center: track browser, Right: queue
+  - Transport bar: Play/Pause, Prev, Next, Shuffle, Repeat All, Volume
+  - Resizable panes (CSS vars + localStorage persistence)
+  - Album art with MusicBrainz auto-fetch
+  - 13-item track right-click menu + queue right-click menu
+  - Multi-select: Ctrl+click + floating action bar
+  - Full Edit Tags modal (title, artist, album, genre, year, BPM, rating, weight)
+  - Auto-advance: `audio.ended` → next track + queue cleanup
+  - Self-contained: inlines mc1Api, mc1Toast, mc1State (no footer.php dependency)
+- [x] `mediaplayer.php`: queue right-click menu, art auto-fetch, "Launch Standalone Player" button
+- [x] `media.php` category system complete overhaul:
+  - **Root cause fixed**: `json_encode()` in HTML attributes produces double-quoted strings (`"Rock"`)
+    which break double-quoted HTML attributes → silent JS SyntaxError → all handlers broken.
+    Fix: `h(json_encode($name))` in PHP; `esc(JSON.stringify(name))` in JS-generated HTML
+  - `oncontextmenu` added to dynamically-created categories
+  - `doAddToCategory`: live badge count increment + category track list refresh (no page reload)
+  - `catCtxQueue` / `catCtxAddToPlaylist`: `per_page: 500` → `limit: 200`
+  - Context menu dismissal: `click` → `mousedown` + `.contains()` guard (race condition fix)
+  - Batch upload: `dir` param → `directory` param for `tracks.php?action=scan`
+
+---
+
+## Up Next — Phase L6 (v1.5.0)
+
+**Streaming Server Relay Monitor** (SAM Broadcaster-style multi-server management):
+
+- `streaming_servers` table in `mcaster1_encoder`
+- `app/api/servers.php`: CRUD + live stat proxy for Icecast2, Shoutcast v1/v2, Mcaster1DNAS
+- `settings.php` multi-server management panel with per-server listener/bitrate stats
+- Color-coded status: Online/Offline/Unknown
+- Client-side polling at 30s intervals
+- Listener session reconciliation: detect new/departed IPs across polls
+
+**Phase L7 (v1.6.0) — Metrics Dashboard:**
+- Real-time listener count graph (Chart.js)
+- Unique listeners / geographic breakdown / top tracks
+- `metrics.php` full rewrite with System Health + Encoder Slots + Server Monitor tabs
+
+**Phase L8 (v1.7.0) — System Health:**
+- `/proc/stat` CPU, `/proc/meminfo` memory, `/proc/net/dev` network
+- C++ background thread → `/api/v1/system/health` JSON endpoint
+- Live gauges + history sparklines in metrics.php

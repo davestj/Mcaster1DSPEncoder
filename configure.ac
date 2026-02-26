@@ -1,28 +1,34 @@
-dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v5.0
+dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v1.4.0
 dnl
-dnl ./autogen.sh  then  ./configure  then  make
+dnl ./autogen.sh  then  ./configure  then  make -j$(nproc)
 dnl
 dnl Options:
-dnl   --with-webroot=DIR     Web UI directory (default: ${datadir}/mcaster1/web_ui)
-dnl   --disable-portaudio    Skip PortAudio (HTTP-only test build)
-dnl   --disable-encoder      Skip codec libs (HTTP-only test build)
+dnl   --with-webroot=DIR         Web UI directory (default: ${datadir}/mcaster1/web_ui)
+dnl   --disable-portaudio        Skip PortAudio (HTTP-only test build)
+dnl   --disable-encoder          Skip codec libs (HTTP-only test build)
+dnl   --disable-medialib         Skip TagLib/avformat metadata libs
 
 AC_PREREQ([2.69])
-AC_INIT([mcaster1-encoder], [5.0], [support@mcaster1.com])
+AC_INIT([mcaster1-encoder], [1.4.0], [support@mcaster1.com])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 AC_CONFIG_SRCDIR([src/linux/main_cli.cpp])
 AC_CONFIG_HEADERS([config.h])
 
-dnl ── Language ────────────────────────────────────────────────────────────────
+dnl ── Language / C++17 ────────────────────────────────────────────────────────
 AC_PROG_CXX
 AC_PROG_CC
 AC_LANG([C++])
-AX_CXX_COMPILE_STDVER([17], [mandatory])
+dnl AX_CXX_COMPILE_STDCXX is from autoconf-archive (ax_cxx_compile_stdcxx.m4)
+AX_CXX_COMPILE_STDCXX([17], [noext], [mandatory])
 
 dnl ── Basic OS / library checks ────────────────────────────────────────────────
 AC_CHECK_HEADERS([unistd.h pthread.h])
 AC_SEARCH_LIBS([pthread_create], [pthread], [],
     [AC_MSG_ERROR([pthreads not found. Install libpthread-dev])])
+
+dnl ── Extend PKG_CONFIG_PATH so fdk-aac installed to /usr/local is found ───────
+PKG_CONFIG_PATH="/usr/local/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+export PKG_CONFIG_PATH
 
 dnl ── OpenSSL (required for HTTPS and cert generation) ─────────────────────────
 PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.1.0],
@@ -30,31 +36,52 @@ PKG_CHECK_MODULES([OPENSSL], [openssl >= 1.1.0],
     [AC_MSG_ERROR([OpenSSL >= 1.1.0 required. Install: sudo apt install libssl-dev])])
 
 dnl ── libyaml (required for YAML config parsing) ───────────────────────────────
+have_libyaml=no
 PKG_CHECK_MODULES([LIBYAML], [yaml-0.1],
-    [AC_DEFINE([HAVE_LIBYAML], [1], [libyaml available])],
-    [
-        dnl Fallback: try manual header+lib check
-        AC_CHECK_HEADER([yaml.h], [],
-            [AC_MSG_ERROR([libyaml not found. Install: sudo apt install libyaml-dev])])
-        AC_CHECK_LIB([yaml], [yaml_parser_initialize], [LIBYAML_LIBS="-lyaml"],
-            [AC_MSG_ERROR([libyaml not found. Install: sudo apt install libyaml-dev])])
-        LIBYAML_CFLAGS=""
-        AC_SUBST([LIBYAML_CFLAGS])
-        AC_SUBST([LIBYAML_LIBS])
-    ])
+    [have_libyaml=yes
+     AC_DEFINE([HAVE_LIBYAML], [1], [libyaml available])],
+    [AC_CHECK_HEADER([yaml.h],
+        [AC_CHECK_LIB([yaml], [yaml_parser_initialize],
+            [have_libyaml=yes
+             LIBYAML_LIBS="-lyaml"
+             LIBYAML_CFLAGS=""
+             AC_SUBST([LIBYAML_LIBS])
+             AC_SUBST([LIBYAML_CFLAGS])],
+            [AC_MSG_ERROR([libyaml not found. Install: sudo apt install libyaml-dev])])],
+        [AC_MSG_ERROR([yaml.h not found. Install: sudo apt install libyaml-dev])])])
+
+dnl ── MariaDB / MySQL C client (required — encoder loads slots from DB) ─────────
+have_mariadb=no
+PKG_CHECK_MODULES([MARIADB], [libmariadb],
+    [have_mariadb=yes
+     AC_DEFINE([HAVE_MARIADB], [1], [MariaDB Connector/C available])],
+    [PKG_CHECK_MODULES([MARIADB], [mariadb],
+        [have_mariadb=yes
+         AC_DEFINE([HAVE_MARIADB], [1], [MariaDB Connector/C available])],
+        [AC_CHECK_HEADER([mysql/mysql.h],
+            [AC_CHECK_LIB([mariadb], [mysql_init],
+                [have_mariadb=yes
+                 AC_DEFINE([HAVE_MARIADB], [1], [MariaDB Connector/C available])
+                 MARIADB_LIBS="-lmariadb"
+                 MARIADB_CFLAGS="-I/usr/include/mysql"
+                 AC_SUBST([MARIADB_LIBS])
+                 AC_SUBST([MARIADB_CFLAGS])],
+                [AC_MSG_ERROR([libmariadb not found. Install: sudo apt install libmariadb-dev])])],
+            [AC_MSG_ERROR([MariaDB headers not found. Install: sudo apt install libmariadb-dev])])])])
 
 dnl ── PortAudio (optional — disable for HTTP-only test) ────────────────────────
 AC_ARG_ENABLE([portaudio],
-    [AS_HELP_STRING([--disable-portaudio], [Disable PortAudio (HTTP-only test build)])],
+    [AS_HELP_STRING([--disable-portaudio], [Disable PortAudio (no audio device capture)])],
     [enable_portaudio=$enableval], [enable_portaudio=yes])
 
-AM_CONDITIONAL([HAVE_PORTAUDIO], [false])
+have_portaudio=no
 AS_IF([test "x$enable_portaudio" = "xyes"], [
     PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0],
-        [AM_CONDITIONAL([HAVE_PORTAUDIO], [true])
+        [have_portaudio=yes
          AC_DEFINE([HAVE_PORTAUDIO], [1], [PortAudio available])],
-        [AC_MSG_WARN([PortAudio not found — audio input disabled. Install: sudo apt install libportaudio2 portaudio19-dev])])
+        [AC_MSG_WARN([PortAudio not found — audio device capture disabled. Install: sudo apt install portaudio19-dev])])
 ])
+AM_CONDITIONAL([HAVE_PORTAUDIO], [test "x$have_portaudio" = "xyes"])
 
 dnl ── Codec libraries (optional — disable for HTTP-only test) ──────────────────
 AC_ARG_ENABLE([encoder],
@@ -63,66 +90,109 @@ AC_ARG_ENABLE([encoder],
 
 AM_CONDITIONAL([BUILD_ENCODER], [test "x$enable_encoder" = "xyes"])
 
+dnl Per-codec detection — each gets its own AM_CONDITIONAL so Makefile.am
+dnl can add only the CFLAGS/LDADD for codecs that were actually found.
+have_lame=no
+have_vorbis=no
+have_flac=no
+have_opus=no
+have_fdkaac=no
+
 AS_IF([test "x$enable_encoder" = "xyes"], [
-    dnl MP3 — LAME
-    PKG_CHECK_MODULES([LAME], [lame], [],
-        [AC_CHECK_LIB([mp3lame], [lame_init],
-            [LAME_LIBS="-lmp3lame"; LAME_CFLAGS=""],
-            [AC_MSG_WARN([LAME not found. Install: sudo apt install libmp3lame-dev])])])
 
-    dnl Ogg / Vorbis
-    PKG_CHECK_MODULES([VORBIS], [vorbisenc ogg], [],
-        [AC_MSG_WARN([libvorbis not found. Install: sudo apt install libvorbis-dev libogg-dev])])
+    dnl ── LAME (MP3 encoding) ──────────────────────────────────────────────────
+    PKG_CHECK_MODULES([LAME], [lame],
+        [have_lame=yes
+         AC_DEFINE([HAVE_LAME], [1], [LAME MP3 encoder available])],
+        [AC_CHECK_HEADER([lame/lame.h],
+            [AC_CHECK_LIB([mp3lame], [lame_init],
+                [have_lame=yes
+                 AC_DEFINE([HAVE_LAME], [1], [LAME MP3 encoder available])
+                 LAME_LIBS="-lmp3lame"
+                 LAME_CFLAGS=""
+                 AC_SUBST([LAME_LIBS])
+                 AC_SUBST([LAME_CFLAGS])],
+                [AC_MSG_WARN([LAME not found. Install: sudo apt install libmp3lame-dev])])],
+            [AC_MSG_WARN([lame/lame.h not found. Install: sudo apt install libmp3lame-dev])])])
 
-    dnl FLAC
-    PKG_CHECK_MODULES([FLAC], [flac], [],
-        [AC_MSG_WARN([FLAC not found. Install: sudo apt install libflac-dev])])
+    dnl ── Ogg + Vorbis (Ogg/Vorbis encoding) ──────────────────────────────────
+    PKG_CHECK_MODULES([VORBIS], [vorbisenc ogg vorbis],
+        [have_vorbis=yes
+         AC_DEFINE([HAVE_VORBIS], [1], [libvorbis available])],
+        [AC_MSG_WARN([libvorbisenc/libogg not found. Install: sudo apt install libvorbis-dev libogg-dev])])
 
-    dnl Opus
-    PKG_CHECK_MODULES([OPUS], [opus], [],
-        [AC_MSG_WARN([Opus not found. Install: sudo apt install libopus-dev])])
+    dnl ── FLAC ─────────────────────────────────────────────────────────────────
+    PKG_CHECK_MODULES([FLAC], [flac],
+        [have_flac=yes
+         AC_DEFINE([HAVE_FLAC], [1], [FLAC encoder available])],
+        [AC_MSG_WARN([libflac not found. Install: sudo apt install libflac-dev])])
 
-    dnl fdk-aac (optional)
-    PKG_CHECK_MODULES([FDKAAC], [fdk-aac], [],
-        [AC_MSG_WARN([fdk-aac not found (optional). Install: sudo apt install libfdk-aac-dev])])
+    dnl ── Opus (libopusenc for Ogg/Opus container) ──────────────────────────────
+    PKG_CHECK_MODULES([OPUS], [libopusenc],
+        [have_opus=yes
+         AC_DEFINE([HAVE_OPUS], [1], [libopusenc available])],
+        [PKG_CHECK_MODULES([OPUS], [opus],
+            [have_opus=yes
+             AC_DEFINE([HAVE_OPUS], [1], [libopus available])],
+            [AC_MSG_WARN([libopusenc/libopus not found. Install: sudo apt install libopus-dev libopusenc-dev])])])
+
+    dnl ── fdk-aac (AAC-LC / HE-AAC v1+v2 / AAC-ELD) ──────────────────────────
+    PKG_CHECK_MODULES([FDKAAC], [fdk-aac],
+        [have_fdkaac=yes
+         AC_DEFINE([HAVE_FDK_AAC], [1], [fdk-aac available])],
+        [AC_CHECK_HEADER([fdk-aac/aacenc_lib.h],
+            [AC_CHECK_LIB([fdk-aac], [aacEncOpen],
+                [have_fdkaac=yes
+                 AC_DEFINE([HAVE_FDK_AAC], [1], [fdk-aac available])
+                 FDKAAC_LIBS="-lfdk-aac"
+                 FDKAAC_CFLAGS="-I/usr/local/include"
+                 AC_SUBST([FDKAAC_LIBS])
+                 AC_SUBST([FDKAAC_CFLAGS])],
+                [AC_MSG_WARN([fdk-aac not found. Build from: github.com/mstorsjo/fdk-aac])])],
+            [AC_MSG_WARN([fdk-aac headers not found (AAC encoding disabled). Build from source.])])])
 ])
 
-dnl ── Audio metadata / media library (optional — for playlist mgmt + ID3/tags) ─
-dnl    id3lib    — ID3v1/v2 tag reading/writing for MP3
-dnl    taglib    — Cross-format tag library (MP3/OGG/FLAC/OPUS/AAC/M4A) — preferred
-dnl    libvorbis — Ogg comment metadata (already checked above for encoding)
-dnl    libavformat (FFmpeg) — universal audio/video metadata + duration probing
+AM_CONDITIONAL([HAVE_LAME],   [test "x$have_lame"   = "xyes"])
+AM_CONDITIONAL([HAVE_VORBIS], [test "x$have_vorbis" = "xyes"])
+AM_CONDITIONAL([HAVE_FLAC],   [test "x$have_flac"   = "xyes"])
+AM_CONDITIONAL([HAVE_OPUS],   [test "x$have_opus"   = "xyes"])
+AM_CONDITIONAL([HAVE_FDKAAC], [test "x$have_fdkaac" = "xyes"])
 
+dnl ── Media / metadata libs ────────────────────────────────────────────────────
 AC_ARG_ENABLE([medialib],
-    [AS_HELP_STRING([--disable-medialib], [Disable audio metadata libs (playlist manager uses filename only)])],
+    [AS_HELP_STRING([--disable-medialib], [Disable audio metadata libs (filename-only playlist)])],
     [enable_medialib=$enableval], [enable_medialib=yes])
 
-AM_CONDITIONAL([HAVE_TAGLIB], [false])
-AM_CONDITIONAL([HAVE_ID3LIB], [false])
-AM_CONDITIONAL([HAVE_AVFORMAT], [false])
+have_taglib=no
+have_mpg123=no
+have_avformat=no
 
 AS_IF([test "x$enable_medialib" = "xyes"], [
 
-    dnl TagLib — preferred: handles MP3/OGG/FLAC/Opus/AAC/M4A/WavPack
+    dnl ── TagLib (cross-format tag reading: MP3/OGG/FLAC/Opus/AAC/M4A) ─────────
     PKG_CHECK_MODULES([TAGLIB], [taglib >= 1.11],
-        [AM_CONDITIONAL([HAVE_TAGLIB], [true])
+        [have_taglib=yes
          AC_DEFINE([HAVE_TAGLIB], [1], [TagLib available])],
-        [AC_MSG_WARN([TagLib not found (optional). Install: sudo apt install libtag1-dev])])
+        [AC_MSG_WARN([TagLib >= 1.11 not found (optional). Install: sudo apt install libtag1-dev])])
 
-    dnl id3lib — ID3v1/v2 for MP3 (fallback if no TagLib)
-    AC_CHECK_LIB([id3], [ID3Tag_New],
-        [AM_CONDITIONAL([HAVE_ID3LIB], [true])
-         AC_DEFINE([HAVE_ID3LIB], [1], [id3lib available])
-         ID3LIB_LIBS="-lid3"
-         AC_SUBST([ID3LIB_LIBS])],
-        [AC_MSG_WARN([id3lib not found (optional). Install: sudo apt install libid3-dev])])
+    dnl ── libmpg123 (fast MP3 file decode) ─────────────────────────────────────
+    PKG_CHECK_MODULES([MPG123], [libmpg123],
+        [have_mpg123=yes
+         AC_DEFINE([HAVE_MPG123], [1], [libmpg123 available])],
+        [AC_MSG_WARN([libmpg123 not found (optional). Install: sudo apt install libmpg123-dev])])
 
-    dnl libavformat (FFmpeg) — audio duration probing for playlist timing
-    PKG_CHECK_MODULES([AVFORMAT], [libavformat libavcodec libavutil],
-        [AM_CONDITIONAL([HAVE_AVFORMAT], [true])
+    dnl ── FFmpeg: libavformat + libavcodec + libavutil + libswresample ──────────
+    dnl    Used for decoding any audio format FileSource doesn't handle via mpg123.
+    PKG_CHECK_MODULES([AVFORMAT],
+        [libavformat libavcodec libavutil libswresample],
+        [have_avformat=yes
          AC_DEFINE([HAVE_AVFORMAT], [1], [FFmpeg libavformat available])],
-        [AC_MSG_WARN([FFmpeg libavformat not found (optional). Install: sudo apt install libavformat-dev])])
+        [AC_MSG_WARN([FFmpeg not found (optional). Install: sudo apt install libavformat-dev libswresample-dev])])
 ])
+
+AM_CONDITIONAL([HAVE_TAGLIB],   [test "x$have_taglib"   = "xyes"])
+AM_CONDITIONAL([HAVE_MPG123],   [test "x$have_mpg123"   = "xyes"])
+AM_CONDITIONAL([HAVE_AVFORMAT], [test "x$have_avformat" = "xyes"])
 
 dnl ── Web UI install directory ─────────────────────────────────────────────────
 AC_ARG_WITH([webroot],
@@ -132,9 +202,9 @@ AC_ARG_WITH([webroot],
     [WEBROOT='${datadir}/mcaster1/web_ui'])
 AC_SUBST([WEBROOT])
 
-dnl ── External (vendor) header include path ────────────────────────────────────
-VENDOR_CPPFLAGS="-I\$(top_srcdir)/external/include"
-AC_SUBST([VENDOR_CPPFLAGS])
+dnl ── Linux vendor headers: src/linux/external/include ─────────────────────────
+dnl    httplib.h + nlohmann/json.hpp live there (header-only, not in system repos)
+dnl    Windows vendor headers live in external/ at project root — not referenced here
 
 dnl ── Output ───────────────────────────────────────────────────────────────────
 AC_CONFIG_FILES([
@@ -144,13 +214,23 @@ AC_CONFIG_FILES([
 AC_OUTPUT
 
 echo ""
-echo "── Mcaster1 DSP Encoder v5.0 configuration ────────────────────────────────"
+echo "── Mcaster1 DSP Encoder v1.4.0 configuration ──────────────────────────────"
 echo "   Prefix      : $(eval echo ${prefix})"
 echo "   Web UI dir  : $(eval echo ${WEBROOT})"
 echo "   OpenSSL     : yes"
-echo "   PortAudio   : ${enable_portaudio}"
+echo "   MariaDB     : ${have_mariadb}"
+echo "   PortAudio   : ${have_portaudio}"
 echo "   Encoder     : ${enable_encoder}"
-echo "   Media Lib   : ${enable_medialib} (TagLib/id3lib/libavformat)"
+echo "     LAME      : ${have_lame}"
+echo "     Vorbis    : ${have_vorbis}"
+echo "     FLAC      : ${have_flac}"
+echo "     Opus      : ${have_opus}"
+echo "     FDK-AAC   : ${have_fdkaac}"
+echo "   Media libs  : ${enable_medialib}"
+echo "     TagLib    : ${have_taglib}"
+echo "     mpg123    : ${have_mpg123}"
+echo "     FFmpeg    : ${have_avformat}"
 echo ""
 echo "   Run: make -j\$(nproc)"
+echo "   Binary: src/linux/mcaster1-encoder  (or \$(prefix)/bin after make install)"
 echo ""

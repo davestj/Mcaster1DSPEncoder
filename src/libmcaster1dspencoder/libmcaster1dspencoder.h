@@ -501,9 +501,40 @@ typedef struct {
 } mcaster1Globals;
 
 
+/* ── MySQL / MariaDB Connection Configuration ────────────────────────────────
+ *
+ * Parsed from the top-level  database:  block in the startup YAML.
+ * We use one shared connection pool. db_encoder / db_media / db_metrics are
+ * the three logical databases (mcaster1_encoder, mcaster1_media, mcaster1_metrics).
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+    char host[256];          /* MySQL host — default 127.0.0.1              */
+    int  port;               /* MySQL port — default 3306                   */
+    char user[128];          /* DB username                                 */
+    char password[256];      /* DB password                                 */
+    char db_encoder[64];     /* encoder config + users database             */
+    char db_media[64];       /* tracks + playlists database                 */
+    char db_metrics[64];     /* listener metrics database                   */
+} mc1DbConfig;
+
+/* ── Mcaster1DNAS Remote Stats Configuration ─────────────────────────────────
+ *
+ * Parsed from the top-level  dnas:  block in the startup YAML.
+ * Used by /api/v1/dnas/stats proxy endpoint.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+typedef struct {
+    char host[256];          /* DNAS hostname — e.g. dnas.mcaster1.com      */
+    int  port;               /* DNAS port — e.g. 9443                       */
+    char stats_url[256];     /* stats XML path — /admin/mcaster1stats        */
+    char username[128];      /* DNAS admin username                         */
+    char password[256];      /* DNAS admin password                         */
+} mc1DnasConfig;
+
 /* ── HTTP Admin Server Configuration ────────────────────────────────────────
  *
- * Parsed from the top-level  http-admin:  block in mcaster1dspencoder.yaml.
+ * Parsed from the top-level  http-admin:  block in the startup YAML.
  * Independent of per-encoder mcaster1Globals — one instance per process.
  *
  * YAML shape:
@@ -560,6 +591,16 @@ typedef struct {
 	char            ssl_cert[1024];
 	char            ssl_key[1024];
 	char            ssl_ca[1024];                   /* optional CA chain bundle      */
+
+	/* Logging */
+	char            log_dir[1024];                  /* e.g. /var/log/mcaster1        */
+	int             log_level;                      /* 1=CRIT 2=ERR 3=WARN 4=INFO 5=DEBUG */
+
+	/* Database connection (used by C++ MySQL slot loader)                        */
+	mc1DbConfig     db;
+
+	/* Mcaster1DNAS remote stats proxy target                                     */
+	mc1DnasConfig   dnas;
 } mc1AdminConfig;
 
 /* Single global instance — defined in config_yaml.cpp,

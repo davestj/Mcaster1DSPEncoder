@@ -1,312 +1,187 @@
 # Mcaster1DSPEncoder — Claude Session Resume File
 
-**Last Updated:** 2026-02-22
-**Working Directory:** `C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder\`
-**Companion Project:** `C:\Users\dstjohn\dev\00_mcaster1.com\mcaster1dnas\`
+**Session ID:**       `MC1ENC-LINUX-DEV-20260224`
+**Last Updated:**     2026-02-24
+**Branch:**           `linux-dev`
+**Working Directory:** `/var/www/mcaster1.com/Mcaster1DSPEncoder/`
+**Platform:**         Linux (Debian 12, PHP 8.2-FPM, MariaDB)
+**Maintainer:**       Dave St. John <davestj@gmail.com>
+
+---
+
+## Resume Command
+
+To resume this exact session context, start Claude Code in the project root and paste this:
+
+```
+I am resuming session MC1ENC-LINUX-DEV-20260224 on the linux-dev branch of
+Mcaster1DSPEncoder. Working dir: /var/www/mcaster1.com/Mcaster1DSPEncoder/
+Please read CLAUDE-RESUME.md, CLAUDE.md, src/linux/CLAUDE.md, and
+src/linux/web_ui/CLAUDE.md before continuing any work.
+```
 
 ---
 
 ## Project Identity
 
-- **Name:** Mcaster1DSPEncoder
+- **Name:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder (Linux focus)
 - **Fork of:** EdCast / AltaCast DSP encoder by Ed Zaleski
 - **Maintainer:** Dave St. John <davestj@gmail.com>
-- **GitHub:** https://github.com/davestj/Mcaster1DSPEncoder
 - **License:** GPL v2 (inherited)
-- **Toolset:** Visual Studio 2022, v143, Win32 (x64 planned)
+- **Current Active Branch:** `linux-dev`
+- **Main Branch:** `master`
+- **Encoder URL (test):** https://encoder.mcaster1.com:8344 (HTTP: :8330)
+- **Admin Credentials:** `djpulse` / `hackme`
 
 ---
 
-## Phase Completion Status
+## Phase Completion Status (as of 2026-02-24)
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 1 | VS2022 Build Fix | **COMPLETE** |
-| 2 | Rebrand AltaCast → Mcaster1DSPEncoder | **COMPLETE** |
-| 2.5 | Project Reorganization (master .sln, per-project outputs, SDK layout) | **COMPLETE** |
-| 3 | Audio Backend Modernization (Opus, HE-AAC, PortAudio) | **COMPLETE** — all codecs integrated, volume slider fixed |
-| 4 | YAML Multi-Station Config | **COMPLETE** — config_yaml.cpp fully integrated across all targets |
-| 5 | Podcast Feature Set & ICY 2.2 Metadata | **IN PROGRESS** — Podcast tab, RSS gen, ICY 2.2 tab, header injection |
-| 6 | Mcaster1DNAS Integration | PLANNED |
-| 7 | Mcaster1Castit | PLANNED (next major project) |
-| 8 | Analytics/Metrics/Platform Engagement | PLANNED |
+| Phase | Version | Description | Status |
+|-------|---------|-------------|--------|
+| L1 | v1.0.0 | Infrastructure, build system, platform abstraction | **COMPLETE** |
+| L2 | v1.1.1 | HTTP/HTTPS admin server + login + web UI | **COMPLETE** |
+| L3 | v1.2.0 | Audio encoding + streaming + FastCGI + PHP app layer | **COMPLETE** |
+| L4 | v1.3.0 | DSP chain (EQ/AGC/xfade) + ICY2 + DNAS stats proxy | **COMPLETE** |
+| L5 | v1.4.0 | PHP frontend overhaul + logging + autotools + rAF progress | **COMPLETE** |
+| L5.1 | v1.4.1 | Media library (folder browser, track tags, artwork, playlists) | **COMPLETE** |
+| L5.2 | v1.4.2 | Browser media player (queue, audio streaming, drag-select) | **COMPLETE** |
+| L5.3 | v1.4.3 | Session fix, Content-Range fix (Firefox) | **COMPLETE** |
+| L5.4 | v1.4.4 | Encoder editor, playlist generator wizard, user profile | **COMPLETE** |
+| **L5.5** | **v1.4.5** | **Standalone popup player, category UX overhaul, bug sweep** | **COMPLETE — TODAY** |
+| L6 | v1.5.0 | Streaming Server Relay Monitor (SAM Broadcaster-style) | PLANNED |
+| L7 | v1.6.0 | Listener Analytics & Full Metrics Dashboard | PLANNED |
+| L8 | v1.7.0 | System Health Monitoring (CPU/Mem/Net via /proc) | PLANNED |
 
 ---
 
-## 4 Build Targets — All Building Clean
+## Today's Session — 2026-02-24 (L5.5)
 
-| Target | vcxproj | Output |
-|--------|---------|--------|
-| Standalone encoder | `src\Mcaster1DSPEncoder.vcxproj` | `Release\MCASTER1DSPENCODER.exe` |
-| Winamp/WACUP/RadioBoss DSP plugin | `src\mcaster1_winamp.vcxproj` | `Winamp_Plugin\Release\dsp_mcaster1.dll` |
-| foobar2000 component | `src\mcaster1_foobar.vcxproj` | `foobar2000\Release\foo_mcaster1.dll` |
-| Shared encoding engine (static lib) | `src\libmcaster1dspencoder\libmcaster1dspencoder.vcxproj` | `libmcaster1dspencoder\Release\libmcaster1dspencoder.lib` |
+### New Features Built
 
-**Master Solution:** `Mcaster1DSPEncoder_Master.sln` (root) — open this, NOT any src\ .sln
-**MSBuild:** `C:\Program Files\Microsoft Visual Studio\2022\Professional\MSBuild\Current\Bin\MSBuild.exe`
+#### `web_ui/mediaplayerpro.php` — NEW (Standalone Popup Player)
+- WMP-style 3-column popup: Library Tree | Track Browser | Queue
+- Transport bar: Play/Pause, Prev, Next, Shuffle, Repeat All, Volume
+- Resizable left/right panes via mouse drag, widths persisted to `localStorage`
+  - CSS vars `--pro-lib-w`, `--pro-q-w` keep transport bar aligned with resized panes
+- Album art in Now Playing: MusicBrainz auto-fetch when no `art_url` cached
+- 13-item track right-click menu: Edit Tags, Fetch Art, Add to Playlist, New Playlist, Add to Category, Play Now, Add to Queue, Delete, MusicBrainz/Last.fm/Discogs lookups
+- Queue right-click: Play Now, Move to Top, Remove from Queue
+- Multi-select: Ctrl+click toggles, floating action bar (Add to Playlist, Add to Queue, Delete Selected)
+- Full Edit Tags modal: title, artist, album, genre, year, BPM, star rating, weight slider
+- Inline `mc1Api`, `mc1Toast`, `mc1State` (self-contained — no footer.php dependency)
+- Auto-advance: played tracks removed from queue, next track auto-plays
 
-### Build & Deploy Scripts
+#### `web_ui/mediaplayer.php` — MODIFIED
+- Queue right-click context menu (Play Now, Move to Top, Remove from Queue)
+- Album art auto-fetch via MusicBrainz when no art cached
+- "Launch Standalone Player" button → opens `mediaplayerpro.php` popup
+- Auto-advance: `audio.ended` event → `playerNext()`, played tracks removed from queue
 
-```powershell
-# Full clean + build all targets + stage DLLs
-.\build-all.ps1 -Config Release
+#### `web_ui/media.php` — MODIFIED
+- Category "Add to Playlist…" bulk action in right-click context menu
+- Auto-library-sync after batch upload completes
+- All category onclick/oncontextmenu HTML-quoting fixed
 
-# Build standalone only
-.\build-main.ps1 -Config Release
+### Bugs Fixed Today
 
-# Build plugins only
-.\build-plugins.ps1 -Config Release
+| # | Bug | File | Root Cause | Fix |
+|---|-----|------|-----------|-----|
+| 1 | All category onclick/oncontextmenu broken | `media.php` lines 321-322 | `json_encode('Name')` = `"Name"` (double-quoted). Inside double-quoted HTML attr → JS SyntaxError. Browser never calls the handler. | Wrapped with `h()` → `&quot;Name&quot;` → browser decodes to `"Name"` → valid JS |
+| 2 | Dynamically-created categories also broken | `media.php` ~line 1977 | `JSON.stringify(name)` in `li.innerHTML` had same quoting issue | Applied `esc(JSON.stringify(name))` |
+| 3 | Right-click menu missing on new categories | `media.php` ~line 1972 | `doCreateCategory` appended `li` without `oncontextmenu` attribute | Added `oncontextmenu="catCtxShow(event,id,name)"` to generated HTML |
+| 4 | Clicking category doesn't load tracks | `media.php` | Same as bug #1 — onclick SyntaxError | Fixed by quoting fix |
+| 5 | Add-to-category requires page refresh | `media.php` `doAddToCategory` | Success handler only toasted, never refreshed | Now updates sidebar badge count + re-fetches tracks if viewing that category |
+| 6 | `catCtxShow` TypeError crash | `media.php` line 1381 | `ctxMenu.style.display = 'none'` had no null guard | Added `if (ctxMenu)` guard |
+| 7 | Cat context menu closes immediately | `media.php` line 1389 | `document.addEventListener('click')` could fire on some browsers after contextmenu | Changed to `mousedown` + `catCtxMenu.contains(e.target)` check |
+| 8 | `catCtxQueue` only fetched 50 tracks max | `media.php` | Used `per_page: 500` but PHP only reads `limit` | Changed to `limit: 200` |
+| 9 | Batch upload scan param wrong | `media.php` upload handler | Sent `dir:` but `tracks.php` expects `directory:` | Fixed to `directory:` |
 
-# Deploy (each self-elevates via UAC)
-.\deploy-winamp.ps1    -Config Release   # C:\Program Files (x86)\Winamp\
-.\deploy-wacup.ps1     -Config Release   # C:\Program Files (x86)\WACUP\  ← x86 build
-.\deploy-radioboss.ps1 -Config Release   # C:\Program Files (x86)\RadioBoss\
-.\deploy-radiodj.ps1   -Config Release   # C:\RadioDJv2\
-.\deploy-foobar.ps1    -Config Release   # C:\Program Files\foobar2000\
+---
+
+## Architecture — Key Rules (Must Not Violate)
+
+1. **No PHP→C++ loopback curl** — Browser JS calls `/api/v1/...` directly. PHP never curls back to C++ on the same port. Thread pool deadlock.
+2. **No `exit()` or `die()` in PHP** — `uopz` extension is active. Use `return` inside functions.
+3. **`DOMContentLoaded` wrapper required** — `mc1Api` is defined in `footer.php` (included AFTER the page `<script>` block). Any top-level `mc1Api()` call in the IIFE throws `ReferenceError`. Always wrap startup calls in `document.addEventListener('DOMContentLoaded', ...)`.
+4. **`Mc1Db` trait for all DB** — No raw PDO; no ORMs. Run `SET foreign_key_checks=0` at connection time.
+5. **`h()` on all PHP→HTML output** — `htmlspecialchars(ENT_QUOTES|ENT_HTML5)`.
+6. **`h(json_encode($var))` in HTML attributes** — Never bare `json_encode()` in double-quoted HTML attributes; the outer double-quotes in JSON break the attribute. Use `h()` or `JSON_HEX_QUOT` flag.
+7. **SO_REUSEPORT deadlock** — Always `pkill -9 -f mcaster1-encoder && sleep 2` before restarting. Two instances can bind the same port simultaneously.
+8. **Codec -DHAVE_XXX must be explicit** — Source files don't include `config.h`. Autotools `AM_CPPFLAGS` must explicitly add `-DHAVE_LAME`, `-DHAVE_OPUS`, etc. in each `if HAVE_XXX` conditional.
+
+---
+
+## Database Layout
+
+```
+mcaster1_encoder   — users, roles, user_sessions, encoder_configs, streaming_servers
+mcaster1_media     — tracks, playlists, playlist_tracks, player_queue, cover_art,
+                     categories, track_categories, media_library_paths
+mcaster1_metrics   — listener_sessions, daily_stats
 ```
 
-**Note on WACUP:** WACUP x64 is at `C:\Program Files\WACUP\` but our build is Win32/x86.
-x86 WACUP is installed at `C:\Program Files (x86)\WACUP\` — deploy-wacup.ps1 already points there.
-When we do x64 build, change deploy-wacup.ps1 back to `C:\Program Files\WACUP\`.
+MySQL CLI: `mysql --defaults-extra-file=~/.my.cnf`
+Never inline credentials.
 
 ---
 
-## Fixes Applied This Session (2026-02-21)
+## Build & Run
 
-### 1. YAML Config — Full Transition from .cfg (COMPLETE)
+```bash
+# Kill existing instance first (SO_REUSEPORT gotcha)
+pkill -9 -f 'build/mcaster1-encoder'; sleep 2
 
-**Problem:** `MCASTER1DSPENCODER_0.cfg` was still being created on app init despite transitioning to YAML.
+# Build (autotools)
+./configure && make -j$(nproc)
 
-**Root causes:**
-- `MainWindow.cpp LoadConfigs()` called `readConfigFile(&gMain)` directly, bypassing YAML
-- `readConfigFile()` internally calls `writeConfigFile()` unconditionally at line 676 — creates .cfg even if none existed
-- All 3 plugin files (`mcaster1_winamp.cpp`, `mcaster1_foobar.cpp`, `mcaster1_radiodj.cpp`) still called `readConfigFile(g)` with no YAML path
+# Start
+nohup ./build/mcaster1-encoder \
+  --config src/linux/config/mcaster1_rock_yolo.yaml \
+  > /tmp/mc1enc.log 2>&1 & disown $!
 
-**Fixes:**
+# Logs
+tail -f /var/log/mcaster1/error.log
+tail -f /var/log/mcaster1/encoder.log
+tail -f /var/log/mcaster1/access.log
+tail -f /var/log/mcaster1/php_error.log
+```
+
+---
+
+## File Inventory — Modified Today
+
 | File | Change |
 |------|--------|
-| `src/MainWindow.cpp` `LoadConfigs()` | Replaced bare `readConfigFile(&gMain)` with YAML-first block |
-| `src/Mcaster1DSPEncoder.cpp` `mcaster1_init()` | Changed `readConfigFile(g)` → `readConfigFile(g, 1)` (readOnly, no .cfg recreation) |
-| `src/mcaster1_winamp.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
-| `src/mcaster1_foobar.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
-| `src/mcaster1_radiodj.cpp` | Added `#include "config_yaml.h"`, YAML-first init block |
-| `src/mcaster1_winamp.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
-| `src/mcaster1_foobar.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
-| `src/mcaster1_radiodj.vcxproj` | Added `config_yaml.cpp` + `config_yaml.h` to build |
-
-**Config file naming convention:**
-- Encoder 0 (first): `MCASTER1DSPENCODER_0.yaml`
-- Encoder 1 (second): `MCASTER1DSPENCODER_1.yaml`
-- Encoder N: `MCASTER1DSPENCODER_N.yaml`
-- Migration: old `.cfg` → renamed to `.cfg.bak` on first YAML run
-- No `.cfg` files should ever be created going forward
-
-### 2. Volume Slider for Live Recording — FIXED
-
-**Problem:** When selecting a sound device for live streaming, volume pegged at 100% with slider having no effect. Slider appeared all the way to the left (position 0) but audio was at full.
-
-**Root causes:**
-- `m_RecVolume` initialized to 0 in constructor — slider started at minimum
-- `OnHScroll()` read slider position but only stored it "for UI state only" (commented-out stub)
-- No volume factor was ever applied to audio samples anywhere in the pipeline
-- `handleAllOutput()` passed raw PortAudio float32 samples to encoders with no scaling
-
-**Fix — 4 changes to `src/MainWindow.cpp`:**
-
-```cpp
-// 1. New global (~line 40)
-volatile float g_recVolumeFactor = 1.0f;   // 0.0=silent, 1.0=unity
-
-// 2. OnInitDialog — slider starts at full volume
-m_RecVolumeCtrl.SetRange(0, 100);
-m_RecVolumeCtrl.SetPos(100);
-m_RecVolume = 100;
-g_recVolumeFactor = 1.0f;
-
-// 3. OnHScroll — compute factor from slider position
-g_recVolumeFactor = (float)m_RecVolume / 100.0f;
-
-// 4. handleAllOutput — scale samples before peak detection + encoding
-if (g_recVolumeFactor < 0.9999f) {
-    int total = nsamples * nchannels;
-    for (int i = 0; i < total; i++)
-        samples[i] *= g_recVolumeFactor;
-}
-```
-
-Scaling happens before VU meter peak calculation AND before `handle_output()` — so meters, all codecs (MP3/AAC/Opus), and encoded output all reflect the adjusted level.
-
-### 3. Build Scripts Updated
-
-| Script | Change |
-|--------|--------|
-| `build-all.ps1` | NEW — full clean+build all 4 targets + DLL staging + deploy hint |
-| `build-main.ps1` | Now auto-runs `copy-dlls.ps1` after successful build |
-| `deploy-winamp.ps1` | Added `yaml.dll` to runtime DLL list |
-| `deploy-wacup.ps1` | Added `yaml.dll`; fixed path to `C:\Program Files (x86)\WACUP\` |
-| `deploy-radioboss.ps1` | Added `yaml.dll` |
-| `deploy-radiodj.ps1` | Added `yaml.dll` |
-| `deploy-foobar.ps1` | Added `yaml.dll` |
-
-### 4. Confirmed Working
-
-- Standalone EXE: **working** (tested by user)
-- Winamp plugin: **working** (deployed, tested by user)
-- WACUP x86 plugin: **working** (deployed to `C:\Program Files (x86)\WACUP\`)
-- MP3, AAC, Opus streaming: **working**
-- Volume slider: **fixed** (previously broken, now functional)
-
-### 5. Windows Smart App Control
-
-User's machine was in **Evaluation mode (1)** — blocking unsigned dev binaries.
-To disable permanently (one-way, requires admin PowerShell + reboot):
-```powershell
-Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" `
-    -Name "VerifiedAndReputablePolicyState" -Value 0 -Type DWord
-```
-Long-term solution: EV code-signing cert (Sectigo, DigiCert, etc.) for public releases.
+| `src/linux/web_ui/media.php` | Category quoting bug fix, mousedown listener fix, doAddToCategory refresh, batch upload scan param fix, catCtxQueue limit fix, Add-to-Playlist from category context |
+| `src/linux/web_ui/mediaplayerpro.php` | NEW — Standalone WMP-style popup player |
+| `src/linux/web_ui/mediaplayer.php` | Queue ctx menu, art auto-fetch, launch popup button |
 
 ---
 
-## Phase 5 Progress (2026-02-22)
+## Next Session Priorities (L6)
 
-### What Was Implemented
+1. **Phase L6 — Streaming Server Relay Monitor**
+   - `streaming_servers` table in `mcaster1_encoder`
+   - `app/api/servers.php` — CRUD + live stat proxy for Icecast2, Shoutcast v1/v2, Mcaster1DNAS
+   - `settings.php` — multi-server management panel with per-server listener/bitrate stats
+   - Client-side polling at 30s intervals (no PHP cron)
+   - Color-coded status: Online/Offline/Unknown
 
-| File | Status | Notes |
-|------|--------|-------|
-| `src/resource.h` | **DONE** | Added IDC_ 1110–1185, IDD_PROPPAGE_LARGE3=304 |
-| `src/libmcaster1dspencoder/libmcaster1dspencoder.h` | **DONE** | +11 podcast fields, +~55 gICY22* fields |
-| `src/mcaster1dspencoder.rc` | **DONE** | Reworked podcast tab (IDD_PROPPAGE_LARGE2), added ICY 2.2 tab (IDD_PROPPAGE_LARGE3) |
-| `src/AdvancedSettings.h/.cpp` | **DONE** | Podcast DDX, Browse button, EnableDisablePodcast, OnRSSUseYP |
-| `src/ICY22Settings.h/.cpp` | **NEW** | 4th config tab — all 55 ICY 2.2 fields + UUID auto-gen |
-| `src/Config.h/.cpp` | **DONE** | 4th tab wired, GlobalsToDialog/DialogToGlobals extended |
-| `src/config_yaml.cpp` | **DONE** | 75+ new YAML keys for podcast + ICY 2.2 fields |
-| `src/podcast_rss_gen.h/.cpp` | **NEW** | RSS 2.0 + iTunes NS generator (pure C, fprintf) |
-| `src/libmcaster1dspencoder/libmcaster1dspencoder.cpp` | **DONE** | Path capture in openArchiveFile, RSS call in closeArchiveFile, appendICY22Headers(), Icecast2 integration |
-| `src/MainWindow.cpp` | **DONE** | writeMainConfig in OnClose + ProcessConfigDone, Pa_Terminate in CleanUp |
-| `src/Mcaster1DSPEncoder.vcxproj` | **DONE** | Added ICY22Settings.cpp/.h, podcast_rss_gen.cpp/.h |
-| `src/mcaster1_winamp.vcxproj` | **DONE** | Same additions |
-| `src/mcaster1_foobar.vcxproj` | **DONE** | Same additions |
+2. **Phase L7 — Metrics Dashboard**
+   - Real-time listener count graph
+   - Unique listeners / geographic breakdown / top tracks
+   - `metrics.php` full rewrite
 
-### What Remains for Phase 5
-
-- **Build verification** — `.\build-all.ps1 -Config Release` on all 4 targets
-- **E2E test** — Connect to Mcaster1DNAS, verify ICY 2.2 headers in server log; stream, record, check .rss file
-- **REFACTOR-REPORT.html** — Phases 3/4 → COMPLETE badges, Phase 5 → IN PROGRESS sections
+3. **Phase L8 — System Health**
+   - `/proc/stat` CPU, `/proc/meminfo` memory, `/proc/net/dev` network
+   - `health.php` or System tab in `settings.php`
 
 ---
 
-## Next Session Priorities
+## Personal History
 
-1. **Build Phase 5** — Run `.\build-all.ps1 -Config Release`; fix any compilation errors
-2. **E2E test podcast RSS** — Enable archive, stream, disconnect, verify `.rss` file alongside audio file
-3. **E2E test ICY 2.2 headers** — Connect to Mcaster1DNAS, check server log for `icy-metadata-version: 2.2` and all metadata fields
-4. **x64 build** — Add x64 platform configuration to all 4 targets; update deploy-wacup.ps1 back to `C:\Program Files\WACUP\`
-5. **Phase 6: Mcaster1DNAS Integration** — DNAS API, listener stats, song history feed in the encoder
-6. **Code signing cert** — For public release builds (EV cert from Sectigo/DigiCert)
-7. **Mcaster1Castit** — Next major project: VC6 → VS2022 upgrade of original Castit tool
-
----
-
-## Key Architecture Notes
-
-### YAML Config System (Phase 4 — COMPLETE)
-- `src/config_yaml.cpp` + `src/config_yaml.h` — libyaml-based read/write
-- All 4 build targets compile `config_yaml.cpp`
-- YAML-first init in ALL entry points: `mcaster1_init()`, `LoadConfigs()`, plugin inits
-- Migration path: INI → YAML on first run, `.cfg` renamed to `.cfg.bak`
-- `yaml.dll` (vcpkg x86-windows) required at runtime — included in all deploy scripts
-
-### PortAudio Volume Pipeline
-```
-Device → paRecordCallback (const float*) → handleAllOutput (float*)
-           ↓                                      ↓
-      raw samples                    [1] apply g_recVolumeFactor
-                                     [2] VU meter peak detection
-                                     [3] handle_output() → all encoders
-```
-
-### ResizableLib Integration
-- All dialogs: `CDialog` → `CResizableDialog`
-- `AddAnchor(IDC_METER, TOP_LEFT, BOTTOM_RIGHT)` in MainWindow
-- `AddAnchor(IDC_RECVOLUME, TOP_LEFT, TOP_RIGHT)` — slider stretches with window
-
-### CRT Runtime
-- All 4 targets: `/MD` (MultiThreadedDLL) — never mix with `/MT`
-
-### PortAudio Build
-- Static lib at `external\portaudio\built\portaudio_static.lib`
-- Script: `.\build-portaudio.ps1`
-- Known debt: `Pa_Terminate()` not called at app exit
-
----
-
-## vcpkg Packages (C:\vcpkg, x86-windows)
-
-```powershell
-vcpkg install opus:x86-windows libopusenc:x86-windows mp3lame:x86-windows `
-              libflac:x86-windows libogg:x86-windows libvorbis:x86-windows `
-              fdk-aac[he-aac]:x86-windows libxml2:x86-windows `
-              libiconv:x86-windows curl:x86-windows libyaml:x86-windows
-```
-
-Runtime DLLs deployed to host app directories:
-`fdk-aac.dll`, `libmp3lame.dll`, `opus.dll`, `opusenc.dll`, `yaml.dll` (from vcpkg bin)
-`ogg.dll`, `vorbis.dll`, `vorbisenc.dll`, `libFLAC.dll`, `pthreadVSE.dll`, `libcurl.dll`, `iconv.dll` (from external\lib)
-
----
-
-## Directory Structure (Current)
-
-```
-Mcaster1DSPEncoder\               ← repo root
-  Mcaster1DSPEncoder_Master.sln   ← Master solution — open this in VS2022
-  build-all.ps1                   ← NEW: full clean+build all targets
-  build-main.ps1                  ← standalone EXE (now auto-stages DLLs)
-  build-plugins.ps1               ← Winamp + foobar2000 plugins
-  build-portaudio.ps1             ← PortAudio static lib (CMake)
-  deploy-winamp.ps1               ← → C:\Program Files (x86)\Winamp\
-  deploy-wacup.ps1                ← → C:\Program Files (x86)\WACUP\ (x86!)
-  deploy-radioboss.ps1            ← → C:\Program Files (x86)\RadioBoss\
-  deploy-radiodj.ps1              ← → C:\RadioDJv2\
-  deploy-foobar.ps1               ← → C:\Program Files\foobar2000\
-  src\
-    Mcaster1DSPEncoder.vcxproj
-    mcaster1_winamp.vcxproj
-    mcaster1_foobar.vcxproj
-    config_yaml.cpp / .h          ← YAML config engine (Phase 4)
-    MainWindow.cpp / .h           ← volume slider fix, YAML init
-    FlexMeters.cpp / .h           ← GDI leak fixed, immediate redraw
-    Config.cpp / .h               ← resize flicker fixed
-    libmcaster1dspencoder\
-      libmcaster1dspencoder.vcxproj
-      libmcaster1dspencoder.cpp/.h
-  external\
-    include\, lib\, ASIOSDK\
-    portaudio\src\, portaudio\built\
-    foobar2000\, ResizableLib\
-```
-
----
-
-## Personal History / Project Context
-
-- **Dave St. John** began working with **Ed Zaleski** in 2001 on **Castit** for **casterclub.com**
-- Ed mentored Dave in C/C++ and MFC/Windows programming
-- Dave sponsored hosting for **oddsock.org** (Ed's project site) in exchange for guidance
-- Dave sold **mediacast1.com** to **Spacial Audio** (later acquired by **Triton Digital**)
-- Dave kept **casterclub.com** as internet radio history
-- EdCast VC6 source was the starting point for this entire codebase
-- **Mcaster1Castit** is the next project — upgrading the original Castit tool to VS2022
-- **Castit DB choice:** MariaDB preferred over MySQL (open-source, no Oracle constraints)
-
----
-
-## Companion Project: Mcaster1DNAS
-
-`C:\Users\dstjohn\dev\00_mcaster1.com\mcaster1dnas\`
-- Active branch: `windows-dev`
-- Maintained fork of Icecast 2.4
-- Recent: song history API (in-memory ring buffer), Track History pages with music service icons
-- ICY 2.2 protocol integration — Phase 5 encoder sends `icy-metadata-version: 2.2` + full header set to DNAS on Icecast2 SOURCE connect
-- See `CLAUDE-RESUME.md` in that directory for its session state
+- **Dave St. John** and **Ed Zaleski** — collaboration since 2001 (Castit, casterclub.com)
+- EdCast/AltaCast VC6 source → Mcaster1DSPEncoder
+- Dave sold mediacast1.com to Spacial Audio (→ Triton Digital); kept casterclub.com
+- **Companion project:** Mcaster1DNAS — Icecast 2.4 fork at `/var/www/mcaster1.com/mcaster1dnas/`
