@@ -30,6 +30,10 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #define close(fd) closesocket(fd)
+#ifdef gai_strerror
+#  undef gai_strerror
+#endif
+#define gai_strerror gai_strerrorA
 #else
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -632,14 +636,26 @@ bool RtmpClient::parse_rtmp_url(const std::string& url,
     auto colon = host_port.find(':');
     if (colon != std::string::npos) {
         host = host_port.substr(0, colon);
-        port = static_cast<uint16_t>(std::atoi(host_port.substr(colon + 1).c_str()));
+        char *end = nullptr;
+        long p = std::strtol(host_port.substr(colon + 1).c_str(), &end, 10);
+        if (!end || *end != '\0' || p < 1 || p > 65535) return false;
+        port = static_cast<uint16_t>(p);
     } else {
         host = host_port;
         port = 1935;
     }
 
     app = path;
-    return !host.empty();
+
+    // SEC-012: Validate hostname — reject empty, whitespace-only, or containing path separators
+    if (host.empty() || host.find(' ') != std::string::npos ||
+        host.find('\t') != std::string::npos ||
+        host.find('\\') != std::string::npos ||
+        host.find('/') != std::string::npos) {
+        return false;
+    }
+
+    return !app.empty();
 }
 
 void RtmpClient::set_error(const std::string& msg)

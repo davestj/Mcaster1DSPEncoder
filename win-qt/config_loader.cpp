@@ -14,6 +14,9 @@
 #include <QTextStream>
 #include <QDebug>
 #include <yaml.h>
+#ifdef _WIN32
+#  define strcasecmp _stricmp
+#endif
 
 namespace mc1 {
 
@@ -237,7 +240,16 @@ static void parse_slot(yaml_document_t *doc, yaml_node_t *node, EncoderConfig &c
     std::string it = yaml_str(doc, node, "input_type");
     if (it == "device") cfg.input_type = EncoderConfig::InputType::DEVICE;
     else if (it == "url") cfg.input_type = EncoderConfig::InputType::URL;
-    else cfg.input_type = EncoderConfig::InputType::PLAYLIST;
+    else if (it == "playlist") cfg.input_type = EncoderConfig::InputType::PLAYLIST;
+    else {
+        // Win-Qt is a live audio capture encoder — default to DEVICE when unspecified.
+        // Linux defaults to PLAYLIST (file-based encoding), but Windows never does.
+#ifdef _WIN32
+        cfg.input_type = EncoderConfig::InputType::DEVICE;
+#else
+        cfg.input_type = EncoderConfig::InputType::PLAYLIST;
+#endif
+    }
 
     cfg.device_index  = yaml_int_key(doc, node, "device_index", -1);
     cfg.playlist_path = yaml_str(doc, node, "playlist_path");
@@ -305,6 +317,12 @@ bool loadConfig(const QString &yaml_path,
     QFile file(yaml_path);
     if (!file.open(QIODevice::ReadOnly)) {
         error_out = QStringLiteral("Cannot open config file: ") + yaml_path;
+        return false;
+    }
+    constexpr qint64 kMaxConfigSize = 10 * 1024 * 1024; /* 10 MB */
+    if (file.size() > kMaxConfigSize) {
+        error_out = QStringLiteral("Config file too large (max 10 MB): ") + yaml_path;
+        file.close();
         return false;
     }
     QByteArray data = file.readAll();

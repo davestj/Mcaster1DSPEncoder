@@ -77,7 +77,11 @@ bool ArchiveWriter::open(int sample_rate, int channels)
     // Generate filename from timestamp
     time_t now = std::time(nullptr);
     struct tm tm_buf;
+#ifdef _WIN32
+    localtime_s(&tm_buf, &now);
+#else
     localtime_r(&now, &tm_buf);
+#endif
     char ts[32];
     strftime(ts, sizeof(ts), "%Y-%m-%d_%H-%M-%S", &tm_buf);
 

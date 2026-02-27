@@ -6,6 +6,137 @@ Versioning follows `vMAJOR.MINOR.PATCH` conventions.
 
 ---
 
+## [winqt-dev v1.3.1-beta] — 2026-03-20 — Next Generation DSP Encoder Release
+
+### Added
+- **TransitionEngine rewrite**: 12 broadcast-grade transitions with sRGB gamma-correct blending
+  (256-entry LUT), 24px feathered wipe edges, cubic Hermite easing, FNV-1a dissolve pattern.
+  New types: Dip to White, Wipe Up/Down, Push Left/Right, Iris Circle, Dissolve
+- **WASAPI loopback audio capture**: System audio output capture via IAudioClient loopback mode
+- **DXGI Desktop Duplication**: GPU-accelerated screen capture via IDXGIOutputDuplication
+- **MF H.264 encoder**: Hardware-accelerated encoding (NVENC/QSV/AMF), software fallback,
+  SPS/PPS extraction from first keyframe
+- **MF video file decoder**: IMFSourceReader for MP4/MKV/AVI/WMV/MOV with HW decode
+- **Platform integration**: ITaskbarList3 taskbar badge overlay, Shell_NotifyIcon notifications,
+  COM init, DPI awareness. Renamed `macos_init()` → `windows_init()`
+- **NSIS installer**: `Mcaster1DSPEncoderQT_Setup_1.3.0.exe` — user-space install, LZMA
+  compression, config preservation, Start Menu + Desktop shortcuts, Add/Remove Programs
+- **Help menu**: Documentation (local/web), Encoder Product Page, Mcaster1 DNAS,
+  Mcaster1AMP Player links via QDesktopServices
+- **FEATURES.md**: Comprehensive feature comparison (Qt 6 vs Legacy MFC, ~60 features)
+- **RELEASENOTES.md**: v1.3.0 release notes with bundled deps and system requirements
+- **VERSION.txt**: Version tracking file for win-qt branch
+- **About dialog**: Mcaster1 ecosystem links (7 products), video pipeline info
+- Code signing: self-signed cert (CN=David St. John, O=Mcaster1 Software) on exe + installer
+
+### Changed
+- Version bump: 1.2.0 → 1.3.1-beta (app.h)
+- Live Video Studio transition combo: 4 → 11 types, duration slider extended to 5.0s
+- vcxproj: added d3d11.lib, dxgi.lib, mfplat.lib, mfreadwrite.lib, mfuuid.lib, mf.lib
+- `.gitignore`: ASIO SDK, .claude/, .bat scripts, installer artifacts, signing keys, MOC generated
+- README.md: complete rewrite with next-gen features, ecosystem links, quick start guide
+- CLAUDE.md: added Mcaster1 ecosystem URLs, version info, W1.3.1 phase entry
+- `build_installer.ps1`: bundles all .md docs, FFmpeg DLLs, SSL DLLs, installer output to installer/
+- `sign.ps1`: fixed PowerShell `${env:ProgramFiles(x86)}` syntax for signtool path
+
+### Fixed
+- `#ifndef WIN32_LEAN_AND_MEAN` guards on all Windows platform .cpp files (was C4005 warning)
+- Removed orphaned ASIOSDK git submodule reference (proprietary, now gitignored)
+
+---
+
+## [winqt-dev] — 2026-03-07 — Video Stream Monitor + Documentation
+
+### Added
+- `video/video_stream_monitor.h/cpp` — AIR/CUE broadcast-grade video stream monitoring dialog
+  - **AIR mode**: decode live encoded stream from server via QMediaPlayer/QVideoSink (round-trip QC)
+  - **CUE mode**: raw pre-encoded program output pushed from Live Video Studio (full quality)
+  - Audio output device selector (prevents feedback into main stream)
+  - Stream target dropdown populated from studio targets
+  - Stats bar: codec, resolution, bitrate, FPS
+  - Mode badge: green CUE / red AIR
+- CUE frame taps in `live_video_studio.cpp` at 3 locations:
+  camera source callback, transition engine blend output, image source callback
+- "Stream Monitor" button in studio transition control row
+
+### Changed
+- Updated all project documentation (CHANGELOG, CLAUDE.md, PLANNING, ROADMAP, README, MEMORY)
+  to reflect current triple-platform Qt 6 architecture
+
+---
+
+## [winqt-dev] — 2026-03-06 — Video Pipeline + Virtual Camera + ON-AIR
+
+### Added
+- `video/video_capture_windows.cpp` — Media Foundation capture pipeline + DirectShow fallback
+  - MF: `MFEnumDeviceSources` → `ActivateObject` → source reader with `ENABLE_VIDEO_PROCESSING`
+  - Multi-format: RGB32 → NV12 → YUY2 fallback with software conversion to BGRA
+  - DirectShow: `ICreateDevEnum` + `CLSID_VideoInputDeviceCategory` for virtual cameras
+- Live Video Studio overhaul (`live_video_studio.h/cpp`):
+  - 3 source preview panes + 1 program monitor with click-to-select transitions
+  - TransitionEngine A/B blending (Cut, Crossfade, Fade to Black, Wipe)
+  - Audio device selector, codec constraint cascade (Video Codec → Container → Audio Codecs)
+  - Drag-and-drop file loading, context menus, image/video file sources
+- Virtual Camera system:
+  - `virtual_camera/vcam_frame_writer.h/cpp` — app-side shared memory writer
+  - `virtual_camera/vcam_filter.h/cpp` — DirectShow IBaseFilter + IPin + IAMStreamConfig
+  - `virtual_camera/vcam_dll_main.cpp` — COM DLL (DllRegisterServer/DllUnregisterServer)
+  - `virtual_camera/vcam_shared_memory.h` — 64-byte header + BGRA pixels layout
+  - `virtual_camera/Mcaster1VirtualCam.vcxproj` — VS2022 DLL project (built by build_winqt.ps1)
+  - `video/manage_devices_dialog.h/cpp` — register/unregister with UAC elevation
+- VP8/VP9 video encoding via libvpx (`vcpkg install libvpx:x64-windows`, static link)
+- ON-AIR flashing indicator: red pill-shaped label, 600ms timer, window title + tray notification
+- `confirmLive()` / `confirmStopped()` — pipeline state feedback from MainWindow
+- BasicSettingsTab: admin username/password fields, source username greyed out, password eye toggle
+- Live Video Studio YAML persistence (`live_video_studio.yaml`)
+
+### Fixed
+- GO LIVE pipeline: added `programSource()` accessor — returns active pane's VideoSource*
+  (was using MainWindow's null `camera_source_`)
+- DNAS slot poller: admin creds (not source creds) for `/admin/stats.xml`
+- SSL auto-detection from port (443, 8443, 9443, 8243)
+- `CameraPreviewWidget` pixel format: `QImage::Format_RGB32` (not ARGB32 — MF alpha=0x00)
+
+---
+
+## [winqt-dev] — 2026-03-05 — Win-Qt Port Progress
+
+### Platform
+- Branch: `winqt-dev` — Windows Qt 6 port of the macOS encoder GUI
+- Source: `win-qt/` (ported from `src/macos/`)
+- Build: VS2022 Professional + Qt 6.9.3 msvc2022_64 + vcpkg codec libs
+- Build script: `win-qt/build_winqt.ps1` → MSBuild Debug x64
+
+### Added
+- `win-qt/build_winqt.ps1` — one-shot MSBuild Debug build script (PowerShell)
+- `event_log.h/cpp` — thread-safe C++ event logging system with Qt UI bridge
+- Metadata file poller: global and per-encoder `nowplaying.txt` polling with configurable interval
+- Per-encoder metadata config (`MetadataConfig` with FILE/URL/MANUAL/DISABLED source)
+- `EditMetadataDialog` — Set/Lock Metadata dialog (lock, manual text, append, URL, file, interval)
+- Single-instance detection via `QLocalServer` IPC — duplicate shows dialog, sends "show" to existing
+- Encoder name field in Basic Settings tab — editable, persists to YAML profile on save
+- PTT mic native sample rate: `set_ptt_mic_device()` queries `enumerate_devices()` for device's
+  actual default SR and channel count instead of hardcoded 44100 Hz mono
+
+### Fixed
+- Audio Input group layout: split into 2 rows (device+rate+ch+vol / PTT+preview) — Rate/Ch combos now visible
+- `StreamClient::disconnect()` → `State::DISCONNECTED` instead of `State::STOPPED`
+  (prevents immediate SLEEP on first connect attempt)
+- `ProfileManager::profiles_dir()` on Windows returns `applicationDirPath()` (exe directory);
+  macOS strips `.app/Contents/MacOS` suffix
+- Encoder profile 00 (radio_encoder_00.yaml) now loads correctly alongside 01 and 02
+- All yaml files (encoder profiles + DSP effect configs) always saved next to running exe
+
+### Architecture / Port Notes
+- Config policy: ALL yaml files saved in exe directory — never AppData or user profile
+- Windows platform stubs: `platform_windows.h/cpp`, `audio_capture_windows.h/cpp`,
+  `video/video_capture_windows.h/cpp`, `video/video_encoder_windows.h/cpp`,
+  `video/screen_capture_windows.h/cpp`, `video/video_file_source_windows.h/cpp`
+- Windows compat: `_stricmp` for `strcasecmp`, `localtime_s` for `localtime_r`,
+  `SHUT_RDWR`→`SD_BOTH`, `gai_strerrorA`, `_USE_MATH_DEFINES`, `/Zc:__cplusplus`
+
+---
+
 ## [v1.1.5 — macos-dev] — 2026-03-04 — Phase M11.5 COMPLETE
 
 ### Fixed (Critical DSP Persistence Bug Fixes)

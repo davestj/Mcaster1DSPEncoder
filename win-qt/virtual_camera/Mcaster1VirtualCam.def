@@ -1,0 +1,7 @@
+; Mcaster1VirtualCam.dll — COM DLL exports for DirectShow virtual camera
+LIBRARY Mcaster1VirtualCam
+EXPORTS
+    DllGetClassObject   PRIVATE
+    DllCanUnloadNow     PRIVATE
+    DllRegisterServer   PRIVATE
+    DllUnregisterServer PRIVATE

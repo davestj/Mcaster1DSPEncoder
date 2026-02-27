@@ -232,6 +232,9 @@ bool DspEq31::apply_preset(const std::string& name)
 {
     for (int p = 0; p < kPresetCount; ++p) {
         if (name == kPresets[p].name) {
+            // SEC-018: Verify preset gains array matches band count
+            static_assert(sizeof(kPresets[0].gains) / sizeof(kPresets[0].gains[0]) >= NUM_BANDS,
+                          "Preset gains array must have at least NUM_BANDS elements");
             for (int b = 0; b < NUM_BANDS; ++b)
                 set_band_both(b, kPresets[p].gains[b]);
             return true;

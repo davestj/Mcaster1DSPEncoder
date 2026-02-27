@@ -4,7 +4,9 @@
 // Ported from src/linux/stream_client.cpp.
 // macOS adaptation: MSG_NOSIGNAL → SO_NOSIGPIPE socket option.
 #include "stream_client.h"
+#include "event_log.h"
 
+#include <algorithm>
 #include <cstring>
 #include <cstdio>
 #include <ctime>
@@ -16,6 +18,13 @@
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 #define close(fd) closesocket(fd)
+#define SHUT_RDWR SD_BOTH
+// On Windows with Unicode charset, gai_strerror maps to gai_strerrorW (wchar_t*).
+// Force the ANSI variant so it works with std::string concatenation.
+#ifdef gai_strerror
+#  undef gai_strerror
+#endif
+#define gai_strerror gai_strerrorA
 #else
 // POSIX sockets
 #include <sys/socket.h>
@@ -76,6 +85,11 @@ bool StreamClient::connect()
     if (state_.load() != State::DISCONNECTED) return false;
     set_state(State::CONNECTING);
 
+    log_connect("[StreamClient]",
+        "Watchdog starting — target: " + target_.host + ":" + std::to_string(target_.port) +
+        target_.mount + "  max_retries=" + std::to_string(target_.max_retries) +
+        "  retry_interval=" + std::to_string(target_.retry_interval_sec) + "s");
+
     watchdog_stop_.store(false);
     watchdog_thread_ = std::thread(&StreamClient::watchdog_loop, this);
     return true;
@@ -91,7 +105,10 @@ void StreamClient::disconnect()
 
     std::lock_guard<std::mutex> lk(sock_mutex_);
     do_disconnect_locked();
-    set_state(State::STOPPED);
+    // Use DISCONNECTED (not STOPPED) — STOPPED is reserved for watchdog giving up
+    // after exhausting retries, which signals the encoder slot to enter SLEEP mode.
+    // A deliberate disconnect() call must NOT trigger SLEEP.
+    set_state(State::DISCONNECTED);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +208,13 @@ bool StreamClient::send_admin_metadata(const std::string& title,
               "\r\n";
     }
 
+    // SEC-010: Warn when sending credentials over plain HTTP (raw sockets — no TLS support)
+    // This client uses raw TCP sockets without TLS. Credentials (Basic auth, password params)
+    // are transmitted in cleartext. A future enhancement should add OpenSSL/Schannel support.
+    fprintf(stderr, "[StreamClient] WARNING: Metadata push uses plain HTTP — "
+            "credentials sent in cleartext to %s:%d\n",
+            target_.host.c_str(), target_.port);
+
     // Open a fresh TCP connection for the metadata update
     struct addrinfo hints{}, *res = nullptr;
     hints.ai_family   = AF_UNSPEC;
@@ -226,8 +250,9 @@ bool StreamClient::send_admin_metadata(const std::string& title,
     ::close(fd);
 
     bool accepted = (rn > 0 && std::string(resp, static_cast<size_t>(rn)).find("<return>1</return>") != std::string::npos);
-    fprintf(stderr, "[StreamClient] Metadata update: %s%s\n",
-            song.c_str(), accepted ? "" : " (no ACK from server)");
+    log_icy("[StreamClient]",
+        "Metadata push: \"" + song + "\" → " + target_.host + " — " +
+        (accepted ? "ACK OK" : "no ACK / rejected"));
     return accepted;
 }
 
@@ -245,22 +270,44 @@ std::string StreamClient::last_error() const
 // ---------------------------------------------------------------------------
 void StreamClient::watchdog_loop()
 {
+    log_connect("[StreamClient]", "Watchdog thread started");
+
     while (!watchdog_stop_.load()) {
         if (!do_connect()) {
             ++retry_count_;
+            std::string err_msg = last_error();
             if (target_.max_retries >= 0 && retry_count_ > target_.max_retries) {
+                log_error("[StreamClient]",
+                    "Max retries (" + std::to_string(target_.max_retries) +
+                    ") exceeded after " + std::to_string(retry_count_) +
+                    " attempts — entering SLEEP. Last error: " + err_msg);
                 set_error("Max retries exceeded");
                 set_state(State::STOPPED);
                 return;
             }
+            log_warn("[StreamClient]",
+                "Connect attempt " + std::to_string(retry_count_) + " failed: " + err_msg +
+                " — retrying in " + std::to_string(target_.retry_interval_sec) + "s" +
+                (target_.max_retries >= 0
+                    ? " (" + std::to_string(target_.max_retries - retry_count_) + " remaining)"
+                    : " (unlimited retries)"));
             set_state(State::RECONNECTING);
             for (int i = 0; i < target_.retry_interval_sec * 10 && !watchdog_stop_.load(); ++i) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
-            set_state(State::CONNECTING);
+            if (!watchdog_stop_.load()) {
+                log_connect("[StreamClient]",
+                    "Retry " + std::to_string(retry_count_ + 1) +
+                    " — reconnecting to " + target_.host + ":" + std::to_string(target_.port));
+                set_state(State::CONNECTING);
+            }
         } else {
             retry_count_ = 0;
             set_state(State::CONNECTED);
+            log_connect("[StreamClient]",
+                "CONNECTED to " + target_.host + ":" + std::to_string(target_.port) +
+                target_.mount + " — monitoring for disconnect");
+
             // Monitor connection — poll for disconnect via MSG_PEEK
             while (!watchdog_stop_.load() && state_.load() == State::CONNECTED) {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -281,19 +328,27 @@ void StreamClient::watchdog_loop()
                     if (r == 0) {
                         do_disconnect_locked();
                         set_error("Server disconnected");
+                        log_warn("[StreamClient]", "Server closed the connection — will reconnect");
                         break;
                     }
                 }
             }
             if (!watchdog_stop_.load() && state_.load() != State::STOPPED) {
+                log_connect("[StreamClient]",
+                    "Connection lost — waiting " + std::to_string(target_.retry_interval_sec) +
+                    "s before reconnect");
                 set_state(State::RECONNECTING);
                 for (int i = 0; i < target_.retry_interval_sec * 10 && !watchdog_stop_.load(); ++i) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
-                set_state(State::CONNECTING);
+                if (!watchdog_stop_.load()) {
+                    set_state(State::CONNECTING);
+                }
             }
         }
     }
+
+    log_connect("[StreamClient]", "Watchdog thread exiting (stop requested)");
 }
 
 // ---------------------------------------------------------------------------
@@ -301,8 +356,8 @@ void StreamClient::watchdog_loop()
 // ---------------------------------------------------------------------------
 bool StreamClient::do_connect()
 {
-    fprintf(stderr, "[StreamClient] Connecting to %s:%d%s\n",
-            target_.host.c_str(), target_.port, target_.mount.c_str());
+    log_connect("[StreamClient]",
+        "TCP connect → " + target_.host + ":" + std::to_string(target_.port) + target_.mount);
 
     if (!tcp_connect(target_.host, target_.port)) return false;
 
@@ -319,8 +374,9 @@ bool StreamClient::do_connect()
 
     if (ok) {
         connect_time_.store(static_cast<uint64_t>(std::time(nullptr)));
-        fprintf(stderr, "[StreamClient] Connected.\n");
+        log_connect("[StreamClient]", "Handshake OK — source connection live");
     } else {
+        log_error("[StreamClient]", "Handshake FAILED: " + last_error());
         std::lock_guard<std::mutex> lk(sock_mutex_);
         do_disconnect_locked();
     }
@@ -344,36 +400,29 @@ void StreamClient::do_disconnect_locked()
 // ---------------------------------------------------------------------------
 bool StreamClient::send_icecast2_headers()
 {
+    log_auth("[StreamClient]",
+        "ICY2/Icecast2 PUT handshake — user=" + target_.username +
+        " content-type=" + target_.content_type +
+        " mount=" + target_.mount);
+
     std::string cred = target_.username + ":" + target_.password;
     std::string b64  = base64_encode(cred);
 
-    char fixed[2048];
-    snprintf(fixed, sizeof(fixed),
-        "PUT %s HTTP/1.1\r\n"
-        "Host: %s:%d\r\n"
-        "Authorization: Basic %s\r\n"
-        "User-Agent: Mcaster1DSPEncoder/0.4.0\r\n"
-        "Content-Type: %s\r\n"
-        "Ice-Public: %d\r\n"
-        "Ice-Name: %s\r\n"
-        "Ice-Description: %s\r\n"
-        "Ice-Genre: %s\r\n"
-        "Ice-Url: %s\r\n"
-        "Ice-Audio-Info: ice-samplerate=%d;ice-bitrate=%d;ice-channels=%d\r\n",
-        target_.mount.c_str(),
-        target_.host.c_str(), target_.port,
-        b64.c_str(),
-        target_.content_type.c_str(),
-        (target_.icy2_is_public ? 1 : 0),
-        target_.station_name.c_str(),
-        target_.description.c_str(),
-        target_.genre.c_str(),
-        target_.url.c_str(),
-        target_.sample_rate,
-        target_.bitrate,
-        target_.channels);
-
-    std::string req(fixed);
+    std::string req;
+    req.reserve(4096);
+    req += "PUT " + target_.mount + " HTTP/1.1\r\n";
+    req += "Host: " + target_.host + ":" + std::to_string(target_.port) + "\r\n";
+    req += "Authorization: Basic " + b64 + "\r\n";
+    req += "User-Agent: Mcaster1DSPEncoder/1.3.1\r\n";
+    req += "Content-Type: " + target_.content_type + "\r\n";
+    req += "Ice-Public: " + std::to_string(target_.icy2_is_public ? 1 : 0) + "\r\n";
+    req += "Ice-Name: " + target_.station_name + "\r\n";
+    req += "Ice-Description: " + target_.description + "\r\n";
+    req += "Ice-Genre: " + target_.genre + "\r\n";
+    req += "Ice-Url: " + target_.url + "\r\n";
+    req += "Ice-Audio-Info: ice-samplerate=" + std::to_string(target_.sample_rate)
+        + ";ice-bitrate=" + std::to_string(target_.bitrate)
+        + ";ice-channels=" + std::to_string(target_.channels) + "\r\n";
 
     // ICY2 extended social / identity headers — emitted only when set
     if (!target_.icy2_twitter.empty())
@@ -406,11 +455,19 @@ bool StreamClient::send_icecast2_headers()
     if (n <= 0) { set_error("No response from server"); return false; }
 
     std::string rs(resp, static_cast<size_t>(n));
-    if (rs.find("100") == std::string::npos && rs.find("200") == std::string::npos) {
+    // Log the server's response (first line, truncated)
+    std::string rs_preview = rs.substr(0, std::min((size_t)120, rs.size()));
+    // Strip CR/LF for cleaner log output
+    rs_preview.erase(std::remove(rs_preview.begin(), rs_preview.end(), '\r'), rs_preview.end());
+    rs_preview.erase(std::remove(rs_preview.begin(), rs_preview.end(), '\n'), rs_preview.end());
+    if (rs.find("100") != std::string::npos || rs.find("200") != std::string::npos) {
+        log_auth("[StreamClient]", "Server accepted PUT: " + rs_preview);
+        return true;
+    } else {
+        log_error("[StreamClient]", "Server rejected PUT: " + rs_preview);
         set_error("Server rejected connection: " + rs.substr(0, 80));
         return false;
     }
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -418,6 +475,10 @@ bool StreamClient::send_icecast2_headers()
 // ---------------------------------------------------------------------------
 bool StreamClient::send_shoutcast_v1_headers()
 {
+    log_auth("[StreamClient]",
+        "Shoutcast v1 SOURCE handshake — mount=" + target_.mount +
+        "  br=" + std::to_string(target_.bitrate) + "kbps");
+
     char req[2048];
     snprintf(req, sizeof(req),
         "SOURCE %s ICY/1.0\r\n"
@@ -448,11 +509,17 @@ bool StreamClient::send_shoutcast_v1_headers()
     if (n <= 0) { set_error("No response"); return false; }
 
     std::string rs(resp, static_cast<size_t>(n));
-    if (rs.find("OK") == std::string::npos && rs.find("200") == std::string::npos) {
+    std::string rs_preview = rs.substr(0, std::min((size_t)80, rs.size()));
+    rs_preview.erase(std::remove(rs_preview.begin(), rs_preview.end(), '\r'), rs_preview.end());
+    rs_preview.erase(std::remove(rs_preview.begin(), rs_preview.end(), '\n'), rs_preview.end());
+    if (rs.find("OK") != std::string::npos || rs.find("200") != std::string::npos) {
+        log_auth("[StreamClient]", "Shoutcast v1 accepted: " + rs_preview);
+        return true;
+    } else {
+        log_error("[StreamClient]", "Shoutcast v1 rejected: " + rs_preview);
         set_error("Shoutcast rejected: " + rs.substr(0, 60));
         return false;
     }
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,9 +551,11 @@ bool StreamClient::tcp_connect(const std::string& host, uint16_t port)
 
     if (fd < 0) {
         set_error("Could not connect to " + host + ":" + port_str);
+        log_error("[StreamClient]", "TCP connect FAILED: " + host + ":" + port_str);
         return false;
     }
 
+    log_connect("[StreamClient]", "TCP connect OK: " + host + ":" + port_str);
     std::lock_guard<std::mutex> lk(sock_mutex_);
     do_disconnect_locked();
     sock_fd_ = fd;
@@ -527,7 +596,36 @@ void StreamClient::set_error(const std::string& msg)
 {
     std::lock_guard<std::mutex> lk(err_mutex_);
     last_error_ = msg;
-    fprintf(stderr, "[StreamClient] Error: %s\n", msg.c_str());
+    // SEC-009: Scrub potential credentials from log output
+    std::string safe_msg = msg;
+    // Redact Base64 auth tokens
+    auto pos = safe_msg.find("Basic ");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("\r\n ", pos + 6);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 6, end - pos - 6, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 6, std::string::npos, "[REDACTED]");
+    }
+    // Redact password= query parameters
+    pos = safe_msg.find("pass=");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("&\r\n ", pos + 5);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 5, end - pos - 5, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 5, std::string::npos, "[REDACTED]");
+    }
+    // Redact icy-password header values
+    pos = safe_msg.find("icy-password: ");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("\r\n", pos + 14);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 14, end - pos - 14, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 14, std::string::npos, "[REDACTED]");
+    }
+    fprintf(stderr, "[StreamClient] Error: %s\n", safe_msg.c_str());
 }
 
 void StreamClient::set_state(State s)

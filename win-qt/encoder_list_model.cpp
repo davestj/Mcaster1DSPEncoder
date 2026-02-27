@@ -122,6 +122,10 @@ void EncoderListModel::addPlaceholderSlots(int count)
         cfg.slot_id      = i;
         cfg.name         = s.name.toStdString();
         cfg.bitrate_kbps = 128;
+        // Win-Qt is a live audio capture encoder (PortAudio / WASAPI loopback).
+        // It does NOT do file/playlist playback — that is Linux-only.
+        cfg.input_type   = mc1::EncoderConfig::InputType::DEVICE;
+        cfg.device_index = -1;  // -1 = PortAudio default input
         configs_.push_back(cfg);
     }
     endResetModel();

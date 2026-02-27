@@ -11,10 +11,16 @@
 
 #include <algorithm>
 #include <cstring>
-#include <dirent.h>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>   // _mkdir
+#else
+#include <dirent.h>
+#include <sys/stat.h>
+#endif
 
 namespace mc1 {
 
@@ -49,7 +55,11 @@ std::string RssGenerator::formatRfc2822(time_t t)
 {
     if (t == 0) t = time(nullptr);
     struct tm tm_buf;
+#ifdef _WIN32
+    gmtime_s(&tm_buf, &t);
+#else
     gmtime_r(&t, &tm_buf);
+#endif
     char buf[64];
     strftime(buf, sizeof(buf), "%a, %d %b %Y %H:%M:%S +0000", &tm_buf);
     return buf;
@@ -71,8 +81,23 @@ std::string RssGenerator::generate(const PodcastConfig &cfg,
 {
     if (cfg.rss_output_dir.empty()) return {};
 
+    // SEC-016: Validate output path — reject path traversal
+    {
+        std::string clean = cfg.rss_output_dir;
+        // Normalize separators
+        std::replace(clean.begin(), clean.end(), '\\', '/');
+        if (clean.find("..") != std::string::npos) {
+            fprintf(stderr, "[RssGenerator] Rejected output dir with path traversal: %s\n", clean.c_str());
+            return {};
+        }
+    }
+
     /* Ensure output dir exists */
+#ifdef _WIN32
+    _mkdir(cfg.rss_output_dir.c_str());
+#else
     mkdir(cfg.rss_output_dir.c_str(), 0755);
+#endif
 
     std::string path = cfg.rss_output_dir;
     if (path.back() != '/') path += '/';
@@ -152,13 +177,14 @@ std::vector<Episode> RssGenerator::scanEpisodes(const std::string &episode_dir)
     std::vector<Episode> episodes;
     if (episode_dir.empty()) return episodes;
 
-    DIR *dir = opendir(episode_dir.c_str());
-    if (!dir) return episodes;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::is_directory(episode_dir, ec)) return episodes;
 
     int ep_num = 0;
-    struct dirent *ent;
-    while ((ent = readdir(dir)) != nullptr) {
-        std::string name = ent->d_name;
+    for (const auto &entry : fs::directory_iterator(episode_dir, ec)) {
+        if (!entry.is_regular_file()) continue;
+        std::string name = entry.path().filename().string();
         if (name.empty() || name[0] == '.') continue;
 
         /* Find extension */
@@ -171,18 +197,14 @@ std::vector<Episode> RssGenerator::scanEpisodes(const std::string &episode_dir)
             ext != ".flac" && ext != ".m4a" && ext != ".aac")
             continue;
 
-        std::string full_path = episode_dir;
-        if (full_path.back() != '/') full_path += '/';
-        full_path += name;
-
-        /* Get file size and mtime */
+        /* Get file size and mtime via stat (portable) */
         struct stat st;
-        if (stat(full_path.c_str(), &st) != 0) continue;
+        if (stat(entry.path().string().c_str(), &st) != 0) continue;
 
         Episode ep;
         ep.audio_file = name;
-        ep.file_size  = st.st_size;
-        ep.pub_date   = st.st_mtime;
+        ep.file_size  = static_cast<int64_t>(st.st_size);
+        ep.pub_date   = static_cast<time_t>(st.st_mtime);
         ep.mime_type  = mimeForExtension(ext);
         ep.episode_number = ++ep_num;
 
@@ -195,8 +217,6 @@ std::vector<Episode> RssGenerator::scanEpisodes(const std::string &episode_dir)
 
         episodes.push_back(std::move(ep));
     }
-
-    closedir(dir);
 
     /* Sort by modification time */
     std::sort(episodes.begin(), episodes.end(),

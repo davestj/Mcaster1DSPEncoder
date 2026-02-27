@@ -37,8 +37,10 @@ public:
     bool is_ptt_active()       const { return ptt_active_.load(std::memory_order_relaxed); }
 
     // Feed PTT microphone PCM data (called before process, from same audio callback).
-    // Stores a pointer — caller must keep buffer valid through process() call.
-    void set_mic_buffer(const float* mic_pcm, size_t mic_frames, int mic_channels);
+    // Copies data internally — safe to release the source lock immediately after.
+    // mic_sample_rate: actual capture rate; used to resample to encoder rate.
+    void set_mic_buffer(const float* mic_pcm, size_t mic_frames, int mic_channels,
+                        int mic_sample_rate = 0);
 
     // Clear mic buffer reference (call after process or when no mic data available)
     void clear_mic_buffer();
@@ -63,10 +65,13 @@ private:
     float duck_target_lin_   = 0.25f;   // 10^(duck_level_db/20)
     float mic_gain_lin_      = 1.0f;    // 10^(mic_gain_db/20)
 
-    // Mic buffer reference (set each callback, not owned)
-    const float* mic_pcm_    = nullptr;
-    size_t       mic_frames_ = 0;
-    int          mic_ch_     = 0;
+    // Mic buffer — INTERNAL COPY (safe from concurrent writes by PTT mic PortAudio thread)
+    static constexpr size_t kMicBufMax = 4096 * 2; // MAX_FRAMES * max_ch
+    float  mic_copy_buf_[kMicBufMax] = {};
+    float* mic_pcm_        = nullptr;   // points into mic_copy_buf_ or nullptr
+    size_t mic_frames_     = 0;
+    int    mic_ch_         = 0;
+    int    mic_sample_rate_ = 0;         // 0 = same as encoder SR (no resampling needed)
 
     std::atomic<float> duck_reduction_db_{0.0f};
 

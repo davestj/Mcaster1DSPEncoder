@@ -37,7 +37,7 @@ struct DnasConfig {
 
 struct AdminConfig {
     std::string               username       = "admin";
-    std::string               password       = "changeme";
+    std::string               password;
     std::string               api_token;
     std::string               log_dir        = "/tmp";
     int                       log_level      = 4;
@@ -56,6 +56,10 @@ struct StreamTarget {
     std::string mount          = "/stream";
     std::string username       = "source";
     std::string password;
+
+    /* Admin/Stats credentials (Icecast2 / Mcaster1 DNAS) */
+    std::string admin_username = "admin";
+    std::string admin_password;
 
     std::string station_name;
     std::string description;
@@ -407,6 +411,14 @@ struct GlobalConfig {
     /* User directories */
     std::string playlist_dir;
     std::string archive_dir;
+
+    /* Global metadata polling config */
+    MetadataConfig global_metadata;
+
+    /* PTT mic device persistence (device name used as stable ID on Windows) */
+    std::string ptt_mic_device_name;
+    int         ptt_mic_sample_rate = 48000;
+    int         ptt_mic_channels    = 1;
 };
 
 /* ── DSP effects rack global defaults ──────────────────────────────── */

@@ -11,11 +11,14 @@
 #include "audio_source.h"
 #include "audio_pipeline.h"
 #include "edit_metadata_dialog.h"
+#include "video/video_capture_windows.h"
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QPalette>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 
@@ -40,6 +43,15 @@ void BasicSettingsTab::buildUI()
     auto *content = new QWidget;
     auto *top = new QVBoxLayout(content);
     top->setContentsMargins(8, 8, 8, 8);
+
+    /* ── Encoder Name ─────────────────────────────────────────── */
+    auto *name_grp  = new QGroupBox(QStringLiteral("Encoder Name"));
+    auto *name_form = new QFormLayout(name_grp);
+    name_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+    edit_encoder_name_ = new QLineEdit;
+    edit_encoder_name_->setPlaceholderText(QStringLiteral("e.g. Rock Station 128k"));
+    name_form->addRow(QStringLiteral("Name:"), edit_encoder_name_);
+    top->addWidget(name_grp);
 
     /* ── Preset selector ──────────────────────────────────────── */
     auto *preset_grp = new QGroupBox(QStringLiteral("Encoder Preset"));
@@ -90,11 +102,16 @@ void BasicSettingsTab::buildUI()
     spin_quality_->setValue(5);
     codec_form->addRow(lbl_quality_, spin_quality_);
 
-    spin_sample_rate_ = new QSpinBox;
-    spin_sample_rate_->setRange(8000, 96000);
-    spin_sample_rate_->setValue(44100);
-    spin_sample_rate_->setSuffix(QStringLiteral(" Hz"));
-    codec_form->addRow(QStringLiteral("Sample Rate:"), spin_sample_rate_);
+    lbl_sample_rate_ = new QLabel(QStringLiteral("Sample Rate:"));
+    combo_sample_rate_ = new QComboBox;
+    combo_sample_rate_->addItem(QStringLiteral("22050 Hz"), 22050);
+    combo_sample_rate_->addItem(QStringLiteral("32000 Hz"), 32000);
+    combo_sample_rate_->addItem(QStringLiteral("44100 Hz"), 44100);
+    combo_sample_rate_->addItem(QStringLiteral("48000 Hz"), 48000);
+    combo_sample_rate_->addItem(QStringLiteral("88200 Hz"), 88200);
+    combo_sample_rate_->addItem(QStringLiteral("96000 Hz"), 96000);
+    combo_sample_rate_->setCurrentIndex(2); /* 44100 Hz default */
+    codec_form->addRow(lbl_sample_rate_, combo_sample_rate_);
 
     combo_channels_ = new QComboBox;
     combo_channels_->addItem(QStringLiteral("Mono (1)"), 1);
@@ -151,8 +168,24 @@ void BasicSettingsTab::buildUI()
 
     video_group_->setVisible(encoder_type_ == EncoderConfig::EncoderType::TV_VIDEO);
 
-    /* For TV/Video: video settings come FIRST, then audio */
+    /* ── Video Source (TV/Video only) — camera/capture device selector ── */
+    video_src_group_ = new QGroupBox(QStringLiteral("Video Source"));
+    auto *vsrc_form = new QFormLayout(video_src_group_);
+    vsrc_form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
+
+    combo_video_device_ = new QComboBox;
+    combo_video_device_->addItem(QStringLiteral("(No video device)"), -1);
+    {
+        auto cam_devs = CameraSource::enumerate_devices();
+        for (const auto &d : cam_devs)
+            combo_video_device_->addItem(QString::fromStdString(d.name), d.index);
+    }
+    vsrc_form->addRow(QStringLiteral("Camera / Capture:"), combo_video_device_);
+    video_src_group_->setVisible(encoder_type_ == EncoderConfig::EncoderType::TV_VIDEO);
+
+    /* For TV/Video: video source → video encoding → audio encoding */
     if (encoder_type_ == EncoderConfig::EncoderType::TV_VIDEO) {
+        top->addWidget(video_src_group_);
         top->addWidget(video_group_);
         top->addWidget(codec_grp);
     } else {
@@ -203,6 +236,8 @@ void BasicSettingsTab::buildUI()
                 combo_device_override_->addItem(QString::fromStdString(d.name), d.index);
         }
     });
+    connect(combo_device_override_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &BasicSettingsTab::onDeviceOverrideChanged);
     src_lay->addLayout(src_form);
     top->addWidget(src_grp);
 
@@ -271,6 +306,17 @@ void BasicSettingsTab::buildUI()
     lbl_password_ = new QLabel(QStringLiteral("Password:"));
     edit_password_ = new QLineEdit;
     edit_password_->setEchoMode(QLineEdit::Password);
+    {
+        auto *eye = edit_password_->addAction(
+            style()->standardIcon(QStyle::SP_DialogResetButton),
+            QLineEdit::TrailingPosition);
+        connect(eye, &QAction::triggered, this, [this, eye]() {
+            bool hidden = edit_password_->echoMode() == QLineEdit::Password;
+            edit_password_->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+            eye->setIcon(style()->standardIcon(
+                hidden ? QStyle::SP_DialogApplyButton : QStyle::SP_DialogResetButton));
+        });
+    }
     srv_form->addRow(lbl_password_, edit_password_);
 
     /* Shoutcast v2: Stream ID for multi-stream DNAS */
@@ -284,6 +330,30 @@ void BasicSettingsTab::buildUI()
     edit_mountpoint_ = new QLineEdit;
     edit_mountpoint_->setPlaceholderText(QStringLiteral("/stream"));
     srv_form->addRow(lbl_mountpoint_, edit_mountpoint_);
+
+    /* Admin/Stats credentials (Icecast2 / Mcaster1 DNAS only) */
+    lbl_admin_username_ = new QLabel(QStringLiteral("Admin Username:"));
+    edit_admin_username_ = new QLineEdit;
+    edit_admin_username_->setPlaceholderText(QStringLiteral("admin"));
+    edit_admin_username_->setText(QStringLiteral("admin"));
+    srv_form->addRow(lbl_admin_username_, edit_admin_username_);
+
+    lbl_admin_password_ = new QLabel(QStringLiteral("Admin Password:"));
+    edit_admin_password_ = new QLineEdit;
+    edit_admin_password_->setEchoMode(QLineEdit::Password);
+    edit_admin_password_->setPlaceholderText(QStringLiteral("for /admin/stats access"));
+    {
+        auto *eye = edit_admin_password_->addAction(
+            style()->standardIcon(QStyle::SP_DialogResetButton),
+            QLineEdit::TrailingPosition);
+        connect(eye, &QAction::triggered, this, [this, eye]() {
+            bool hidden = edit_admin_password_->echoMode() == QLineEdit::Password;
+            edit_admin_password_->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
+            eye->setIcon(style()->standardIcon(
+                hidden ? QStyle::SP_DialogApplyButton : QStyle::SP_DialogResetButton));
+        });
+    }
+    srv_form->addRow(lbl_admin_password_, edit_admin_password_);
 
     chk_auto_reconnect_ = new QCheckBox(QStringLiteral("Auto-reconnect"));
     chk_auto_reconnect_->setChecked(true);
@@ -345,7 +415,14 @@ void BasicSettingsTab::onPresetChanged(int index)
     }
     spin_bitrate_->setValue(p->bitrate_kbps);
     spin_quality_->setValue(p->quality);
-    spin_sample_rate_->setValue(p->sample_rate);
+    {
+        int best = -1, nearest_diff = INT_MAX;
+        for (int i = 0; i < combo_sample_rate_->count(); ++i) {
+            int diff = std::abs(combo_sample_rate_->itemData(i).toInt() - p->sample_rate);
+            if (diff < nearest_diff) { nearest_diff = diff; best = i; }
+        }
+        if (best >= 0) combo_sample_rate_->setCurrentIndex(best);
+    }
 
     for (int i = 0; i < combo_channels_->count(); ++i) {
         if (combo_channels_->itemData(i).toInt() == p->channels) {
@@ -484,16 +561,23 @@ void BasicSettingsTab::updateFieldsForServerType()
     bool show_password   = true;
     bool show_stream_id  = false;
     bool show_mountpoint = true;
+    bool show_admin      = false;  /* Admin/Stats creds for Icecast2/DNAS */
+
+    bool lock_username = false;  /* true = grey out "source" (Icecast2/DNAS) */
 
     switch (proto) {
         case StreamTarget::Protocol::ICECAST2:
-            edit_username_->setPlaceholderText(QStringLiteral("source"));
-            lbl_password_->setText(QStringLiteral("Password:"));
+            edit_username_->setText(QStringLiteral("source"));
+            lbl_password_->setText(QStringLiteral("Source Password:"));
+            lock_username = true;
+            show_admin = true;
             break;
 
         case StreamTarget::Protocol::MCASTER1_DNAS:
-            edit_username_->setPlaceholderText(QStringLiteral("source"));
+            edit_username_->setText(QStringLiteral("source"));
             lbl_password_->setText(QStringLiteral("Source Password:"));
+            lock_username = true;
+            show_admin = true;
             break;
 
         case StreamTarget::Protocol::LIVE365:
@@ -531,6 +615,14 @@ void BasicSettingsTab::updateFieldsForServerType()
             break;
     }
 
+    /* Grey out source username for Icecast2/DNAS (always "source") */
+    edit_username_->setReadOnly(lock_username);
+    QPalette upal = edit_username_->palette();
+    upal.setColor(QPalette::Base, lock_username
+        ? palette().color(QPalette::Window)    /* greyed background */
+        : palette().color(QPalette::Base));     /* normal background */
+    edit_username_->setPalette(upal);
+
     lbl_username_->setVisible(show_username);
     edit_username_->setVisible(show_username);
     lbl_password_->setVisible(show_password);
@@ -539,10 +631,17 @@ void BasicSettingsTab::updateFieldsForServerType()
     edit_stream_id_->setVisible(show_stream_id);
     lbl_mountpoint_->setVisible(show_mountpoint);
     edit_mountpoint_->setVisible(show_mountpoint);
+    lbl_admin_username_->setVisible(show_admin);
+    edit_admin_username_->setVisible(show_admin);
+    lbl_admin_password_->setVisible(show_admin);
+    edit_admin_password_->setVisible(show_admin);
 }
 
 void BasicSettingsTab::loadFromConfig(const EncoderConfig &cfg)
 {
+    /* Encoder name */
+    edit_encoder_name_->setText(QString::fromStdString(cfg.name));
+
     /* Codec */
     for (int i = 0; i < combo_codec_->count(); ++i) {
         if (combo_codec_->itemData(i).toInt() == static_cast<int>(cfg.codec)) {
@@ -552,7 +651,14 @@ void BasicSettingsTab::loadFromConfig(const EncoderConfig &cfg)
     }
     spin_bitrate_->setValue(cfg.bitrate_kbps);
     spin_quality_->setValue(cfg.quality);
-    spin_sample_rate_->setValue(cfg.sample_rate);
+    {
+        int best = -1, nearest_diff = INT_MAX;
+        for (int i = 0; i < combo_sample_rate_->count(); ++i) {
+            int diff = std::abs(combo_sample_rate_->itemData(i).toInt() - cfg.sample_rate);
+            if (diff < nearest_diff) { nearest_diff = diff; best = i; }
+        }
+        if (best >= 0) combo_sample_rate_->setCurrentIndex(best);
+    }
 
     for (int i = 0; i < combo_channels_->count(); ++i) {
         if (combo_channels_->itemData(i).toInt() == cfg.channels) {
@@ -589,6 +695,10 @@ void BasicSettingsTab::loadFromConfig(const EncoderConfig &cfg)
         if (fi >= 0) combo_video_fps_->setCurrentIndex(fi);
 
         spin_video_bitrate_->setValue(cfg.video.bitrate_kbps);
+
+        /* Video source device */
+        int vdi = combo_video_device_->findData(cfg.video.device_index);
+        if (vdi >= 0) combo_video_device_->setCurrentIndex(vdi);
     }
 
     /* Per-encoder audio device */
@@ -619,6 +729,8 @@ void BasicSettingsTab::loadFromConfig(const EncoderConfig &cfg)
     edit_username_->setText(QString::fromStdString(cfg.stream_target.username));
     edit_password_->setText(QString::fromStdString(cfg.stream_target.password));
     edit_mountpoint_->setText(QString::fromStdString(cfg.stream_target.mount));
+    edit_admin_username_->setText(QString::fromStdString(cfg.stream_target.admin_username));
+    edit_admin_password_->setText(QString::fromStdString(cfg.stream_target.admin_password));
     chk_auto_reconnect_->setChecked(cfg.auto_reconnect);
     spin_reconnect_sec_->setValue(cfg.reconnect_interval_sec);
 
@@ -628,10 +740,14 @@ void BasicSettingsTab::loadFromConfig(const EncoderConfig &cfg)
 
 void BasicSettingsTab::saveToConfig(EncoderConfig &cfg) const
 {
+    /* Encoder name */
+    if (!edit_encoder_name_->text().isEmpty())
+        cfg.name = edit_encoder_name_->text().toStdString();
+
     cfg.codec        = static_cast<EncoderConfig::Codec>(combo_codec_->currentData().toInt());
     cfg.bitrate_kbps = spin_bitrate_->value();
     cfg.quality      = spin_quality_->value();
-    cfg.sample_rate  = spin_sample_rate_->value();
+    cfg.sample_rate  = combo_sample_rate_->currentData().toInt();
     cfg.channels     = combo_channels_->currentData().toInt();
     cfg.encode_mode  = static_cast<EncoderConfig::EncodeMode>(combo_encode_mode_->currentData().toInt());
     cfg.channel_mode = static_cast<EncoderConfig::ChannelMode>(combo_channel_mode_->currentData().toInt());
@@ -649,6 +765,7 @@ void BasicSettingsTab::saveToConfig(EncoderConfig &cfg) const
         }
         cfg.video.fps          = combo_video_fps_->currentText().toInt();
         cfg.video.bitrate_kbps = spin_video_bitrate_->value();
+        cfg.video.device_index = combo_video_device_->currentData().toInt();
     }
 
     /* Per-encoder audio device */
@@ -658,14 +775,16 @@ void BasicSettingsTab::saveToConfig(EncoderConfig &cfg) const
     cfg.use_global_metadata = (combo_metadata_source_->currentIndex() == 0);
     cfg.per_encoder_metadata = per_encoder_metadata_;
 
-    cfg.stream_target.protocol = static_cast<StreamTarget::Protocol>(combo_server_type_->currentData().toInt());
-    cfg.stream_target.host     = edit_server_host_->text().toStdString();
-    cfg.stream_target.port     = static_cast<uint16_t>(spin_server_port_->value());
-    cfg.stream_target.username = edit_username_->text().toStdString();
-    cfg.stream_target.password = edit_password_->text().toStdString();
-    cfg.stream_target.mount    = edit_mountpoint_->text().toStdString();
-    cfg.auto_reconnect         = chk_auto_reconnect_->isChecked();
-    cfg.reconnect_interval_sec = spin_reconnect_sec_->value();
+    cfg.stream_target.protocol       = static_cast<StreamTarget::Protocol>(combo_server_type_->currentData().toInt());
+    cfg.stream_target.host           = edit_server_host_->text().toStdString();
+    cfg.stream_target.port           = static_cast<uint16_t>(spin_server_port_->value());
+    cfg.stream_target.username       = edit_username_->text().toStdString();
+    cfg.stream_target.password       = edit_password_->text().toStdString();
+    cfg.stream_target.mount          = edit_mountpoint_->text().toStdString();
+    cfg.stream_target.admin_username = edit_admin_username_->text().toStdString();
+    cfg.stream_target.admin_password = edit_admin_password_->text().toStdString();
+    cfg.auto_reconnect               = chk_auto_reconnect_->isChecked();
+    cfg.reconnect_interval_sec       = spin_reconnect_sec_->value();
 }
 
 void BasicSettingsTab::onVideoCodecChanged(int /*index*/)
@@ -687,7 +806,47 @@ void BasicSettingsTab::onEditMetadata()
 
 void BasicSettingsTab::onDeviceOverrideChanged(int /*index*/)
 {
-    /* Selection change handled; saveToConfig reads currentData() */
+    /* Repopulate sample rate and channels combos for the selected device */
+    int pa_idx = combo_device_override_->currentData().toInt();
+    if (pa_idx < 0) return; /* "(Select a device...)" row */
+
+    auto devs = PortAudioSource::enumerate_devices();
+    int  max_ch  = 2;
+    double def_sr = 44100.0;
+    for (const auto &d : devs) {
+        if (d.index == pa_idx) {
+            max_ch = std::max(d.max_input_channels, 1);
+            def_sr = d.default_sample_rate;
+            break;
+        }
+    }
+
+    /* Update sample rate combo — find nearest common rate to device default */
+    {
+        QSignalBlocker blk(combo_sample_rate_);
+        int target = static_cast<int>(def_sr);
+        int best   = -1, nearest_diff = INT_MAX;
+        for (int i = 0; i < combo_sample_rate_->count(); ++i) {
+            int diff = std::abs(combo_sample_rate_->itemData(i).toInt() - target);
+            if (diff < nearest_diff) { nearest_diff = diff; best = i; }
+        }
+        if (best >= 0) combo_sample_rate_->setCurrentIndex(best);
+    }
+
+    /* Update channels combo based on device capability */
+    {
+        QSignalBlocker blk(combo_channels_);
+        int prev_ch = combo_channels_->currentData().toInt();
+        combo_channels_->clear();
+        combo_channels_->addItem(QStringLiteral("Mono (1)"), 1);
+        if (max_ch >= 2)
+            combo_channels_->addItem(QStringLiteral("Stereo (2)"), 2);
+        int restore = -1;
+        for (int i = 0; i < combo_channels_->count(); ++i) {
+            if (combo_channels_->itemData(i).toInt() == prev_ch) { restore = i; break; }
+        }
+        combo_channels_->setCurrentIndex(restore >= 0 ? restore : combo_channels_->count() - 1);
+    }
 }
 
 void BasicSettingsTab::updateFieldsForEncoderType()

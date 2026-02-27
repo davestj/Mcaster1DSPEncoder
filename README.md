@@ -1,341 +1,216 @@
-# Mcaster1DSPEncoder
+# Mcaster1 DSP Encoder
 
-**Modern, open-source, multi-format audio streaming DSP encoder for live internet radio.**
+**Next Generation Broadcast DSP Encoder for Live Internet Radio & Video Streaming**
 
-A maintained, modernized fork of the [EdCast/Oddsock DSP encoder](https://www.oddsock.org/)
-by **Ed Zaleski** — rebuilt for Visual Studio 2022, extended with Opus and HE-AAC encoding,
-PortAudio device capture (WASAPI loopback + ASIO), and full integration with the
-**Mcaster1DNAS** streaming server ecosystem.
+A professional broadcast encoder built with **Qt 6 Widgets** — featuring a 7-effect DSP chain,
+8 audio codecs, hardware-accelerated video streaming with 12 broadcast transitions, virtual
+camera output, and multi-server broadcasting to Icecast2, Shoutcast, Mcaster1DNAS, YouTube
+Live, and Twitch.
 
+**Product Page:** [mcaster1.com/encoder.php](https://mcaster1.com/encoder.php)
 **Maintainer:** Dave St. John `<davestj@gmail.com>`
-**Repository:** https://github.com/davestj/Mcaster1DSPEncoder
-**License:** GPL v2 (inherited from EdCast lineage — see [LICENSE](LICENSE))
-**Original Author:** Ed Zaleski — see [CREDITS.md](CREDITS.md) for the full story
+**License:** GPL v2 (inherited from EdCast lineage)
+**Version:** 1.3.1-beta (Windows Qt)
 
 ---
 
-## What It Does
+## Key Features
 
-Mcaster1DSPEncoder captures live audio and streams it to Shoutcast and Icecast servers
-in multiple formats simultaneously. It ships as a standalone encoder application and
-as plugin DLLs for popular broadcast software.
+### Professional DSP Effects Rack
 
-### Standalone Encoder Application
-`Mcaster1DSPEncoder.exe` — captures from any Windows audio device (soundcard, USB
-interface, virtual audio cable, WASAPI loopback) and encodes to one or more streams.
-Ideal for use with RadioDJ v2, VirtualDJ, SAM Broadcaster, or any software that outputs
-to a Windows audio device.
+7-effect broadcast processing chain — the legacy MFC encoder had zero audio processing:
 
-### DSP Plugins — Intercept Audio Directly From Your Broadcast Software
-| Plugin | File | Host Application |
-|--------|------|-----------------|
-| Winamp DSP | `dsp_mcaster1.dll` | Winamp 5.x, WACUP, RadioBoss, RadioDJ v2 |
-| foobar2000 | `foo_mcaster1.dll` | foobar2000 1.6+ |
+| Effect | Description |
+|--------|-------------|
+| **10-Band Parametric EQ** | RBJ biquad IIR filters, ±24dB, frequency/Q/gain per band |
+| **31-Band Graphic EQ** | Independent L/R channels, linked stereo mode |
+| **AGC / Compressor / Limiter** | Soft-knee, noise gate, makeup gain, hard limiter ceiling |
+| **Sonic Enhancer** | BBE Sonic Maximizer clone — LR4 crossover, phase alignment, saturation |
+| **PTT Push-to-Talk Duck** | Mic input with automatic sample rate conversion |
+| **DBX 286s Voice Processor** | Gate, compressor, de-esser, LF/HF enhancement |
+| **Equal-Power Crossfader** | Smooth playlist transitions (cos/sin curves) |
 
-> **RadioDJ v2 users:** RadioDJ v2 uses the Winamp DSP plugin format.
-> Use `dsp_mcaster1.dll` via RadioDJ's DSP plugin loader, or use `Mcaster1DSPEncoder.exe`
-> in standalone mode with a virtual audio cable.
+### 8 Audio Codecs
+
+| Codec | Library | Bitrate Range | Mode |
+|-------|---------|---------------|------|
+| MP3 | LAME 3.100 | 32–320 kbps | CBR |
+| Ogg Vorbis | libvorbis | Quality 0–10 | VBR |
+| Opus | libopusenc | 32–320 kbps | VBR (48kHz internal) |
+| FLAC | libFLAC | Lossless | Level 0–8 |
+| AAC-LC | fdk-aac | 64–320 kbps | CBR |
+| HE-AAC v1 | fdk-aac | 24–128 kbps | SBR |
+| HE-AAC v2 | fdk-aac | 16–64 kbps | SBR+PS (stereo only) |
+| AAC-ELD | fdk-aac | 24–192 kbps | Low delay |
+
+### Live Video Studio
+
+Professional multi-source video switcher with broadcast-grade transitions:
+
+- **4 video sources**: Camera (Media Foundation + DirectShow), DXGI screen capture,
+  image files, video files (MP4/MKV/AVI/WMV/MOV)
+- **12 transitions**: Cut, Crossfade, Fade to Black, Dip to White, 4 directional Wipes,
+  2 Push transitions, Iris Circle, Dissolve — all with sRGB gamma-correct blending
+  and 24px feathered edges
+- **H.264 encoding**: Hardware-accelerated via NVENC, Intel QSV, or AMD AMF (software fallback)
+- **VP8/VP9 encoding**: Open-source via libvpx
+- **Stream to**: YouTube Live (RTMP), Twitch (RTMP), Icecast2 (WebM/FLV), HLS (MPEG-TS)
+- **Virtual Camera**: DirectShow output — use your broadcast in Zoom, OBS, Teams, Discord
+- **Stream Monitor**: AIR mode (decode live stream) + CUE mode (raw preview)
+- **ON-AIR indicator**: Flashing red indicator with tray notification
+
+### Multi-Server Broadcasting
+
+Stream simultaneously to multiple servers with independent codec/bitrate per slot:
+
+- **Mcaster1DNAS** — ICY 2.2 extended metadata (50+ headers, social, engagement, compliance)
+- **Icecast 2.x** — Standard open-source streaming
+- **Shoutcast v1/v2** — Legacy ICY protocol
+- **YouTube Live / Twitch** — RTMP publishing (video + audio)
+- **HLS** — HTTP Live Streaming (local segment generation)
+
+### Podcast Publishing
+
+Archive recording with multi-destination publishing:
+
+- Simultaneous WAV + MP3 archival
+- RSS 2.0 + iTunes podcast extension
+- Publish to: SFTP, WordPress (REST API), Buzzsprout, Transistor.fm, Podbean (OAuth 2.0)
 
 ---
 
-## Supported Formats
+## Supported Platforms
 
-| Format | Library | License | Notes |
-|--------|---------|---------|-------|
-| **MP3 — LAME built-in** | LAME 3.100 | LGPL | CBR / VBR (V0–V9) / ABR. Patents expired April 2017 |
-| **MP3 — ACM** | Windows `msacm32` | System | CBR, runtime detection of installed ACM codec |
-| **Opus** | libopusenc 0.3 | BSD | Modern, royalty-free, recommended for new streams |
-| **Ogg Vorbis** | libvorbis 1.3.7 | BSD | Patent-free, widely supported |
-| **FLAC** | libFLAC 1.5.0 | BSD | Lossless, Icecast-compatible |
-| **AAC-LC** | fdk-aac 2.0.3 | BSD-like | Broad player compatibility |
-| **HE-AAC v1 (AAC+)** | fdk-aac | BSD-like | Low-bitrate streaming (32–96 kbps) |
-| **HE-AAC v2 (AAC++)** | fdk-aac | BSD-like | Very low bitrate (16–48 kbps, SBR+PS) |
-| ~~WMA~~ | ~~basswma~~ | — | Removed — Windows Media Services is EOL |
+| Platform | Source | Build | Branch | Version |
+|----------|--------|-------|--------|---------|
+| **Windows Qt** | `win-qt/` | VS2022 + Qt 6.9.3 | `winqt-dev` | **v1.3.1-beta** |
+| **macOS** | `src/macos/` | Autotools + Qt 6 | `macos-dev` | v1.1.5 |
+| **Linux** | `src/linux/` | Autotools + g++ | `linux-dev` | v1.4.5 |
+| **Windows MFC** | `src/` | VS2022 .sln | `master` | v5.0 (legacy) |
 
-> **On AAC/HE-AAC patents:** AAC-LC baseline patents expire ~2028; HE-AAC v2 ~2026–2027.
-> Via Licensing clarifies that *content distribution does not require a license*.
-> See [FORKS.md](FORKS.md) for full detail.
+All three Qt-era codebases are parallel — they share **no source code**.
 
 ---
 
-## Supported Servers
+## Quick Start (Windows)
 
-- Icecast 2.x (recommended — Mcaster1DNAS is our actively maintained Icecast fork)
-- SHOUTcast DNAS v1 (legacy ICY protocol)
-- SHOUTcast DNAS v2
-- Any ICY/HTTP-compatible streaming server
+### Install
+
+Download and run `Mcaster1DSPEncoderQT_Setup_1.3.0.exe`. Installs to:
+```
+C:\Users\USERNAME\Mcaster1\Mcaster1DSPEncoder\
+```
+
+No admin rights required. Fully portable — all config files saved next to the exe.
+
+### Build from Source
+
+**Prerequisites:** VS2022 Professional, Qt 6.9.3 msvc2022_64, vcpkg
+
+```powershell
+# Install vcpkg dependencies
+vcpkg install lame:x64-windows vorbis:x64-windows opus:x64-windows `
+              opusenc:x64-windows flac:x64-windows fdk-aac:x64-windows `
+              portaudio:x64-windows yaml:x64-windows openssl:x64-windows `
+              libvpx:x64-windows
+
+# Build (ALWAYS use build_winqt.ps1)
+powershell.exe -NoProfile -File "win-qt\build_winqt.ps1"
+
+# Build installer
+powershell.exe -NoProfile -File "installer\build_installer.ps1"
+```
+
+**Output:** `build\win-qt\Debug\Mcaster1DSPEncoder_Qt.exe`
+
+### Build (macOS)
+
+```bash
+bash install-deps.sh && ./autogen.sh && ./configure --enable-macos-gui && make -j$(sysctl -n hw.ncpu)
+```
+
+### Build (Linux)
+
+```bash
+bash install-deps.sh && ./autogen.sh && ./configure && make -j$(nproc)
+```
 
 ---
 
-## What Changed From AltaCast
+## Mcaster1 Product Ecosystem
 
-| Area | AltaCast | Mcaster1DSPEncoder |
-|------|----------|--------------------|
-| Compiler | VS2008 (v90) | VS2022 (v143) |
-| Platform | Win32 only | Win32 |
-| Windows target | XP (`0x0501`) | Windows 7+ (`0x0601`) |
-| MP3 | BladeMP3EncDLL (obsolete) | Native LAME — CBR / VBR / ABR |
-| Opus | Not supported | libopusenc — royalty-free |
-| HE-AAC | libfaac (LC only) | fdk-aac — LC / HE-v1 / HE-v2 |
-| WMA | basswma.dll (proprietary) | Removed |
-| Audio capture | bass.dll (capture only) | PortAudio — WASAPI loopback / ASIO / MME / DS |
-| Dialog UI | Fixed-size, MS Sans Serif | Resizable (ResizableLib), Segoe UI |
-| VU Meters | Fixed-size FlexMeters | FlexMeters + resize-aware (scales with dialog) |
-| Solution | Multiple per-project .sln files | Single master .sln — all 4 targets |
-| SDK layout | Root-level clutter | Organized under `external/` |
-| Build outputs | All mixed in `src\Release\` | Per-project: `Release\`, `Winamp_Plugin\`, `foobar2000\` |
-| Deployment | Manual DLL copy | PowerShell deploy scripts per host |
-| Maintenance | Unmaintained since ~2015 | Actively maintained |
+Mcaster1DSPEncoder is part of the **Mcaster1** open-source broadcast platform:
 
-See [FORKS.md](FORKS.md) for the complete fork rationale including codec patent status.
+| Product | Description | URL |
+|---------|-------------|-----|
+| **Mcaster1 DSP Encoder** | This project — broadcast DSP encoder | [mcaster1.com/encoder.php](https://mcaster1.com/encoder.php) |
+| **Mcaster1 DNAS** | Icecast fork with ICY 2.2, song history, video streaming | [mcaster1.com/mcaster1_dnas.php](https://mcaster1.com/mcaster1_dnas.php) |
+| **Mcaster1 Studio** | Broadcast automation — 9 surfaces, 43+ modules | [mcaster1.com/mcaster1studio.php](https://mcaster1.com/mcaster1studio.php) |
+| **Mcaster1AMP** | Desktop media player — dual A/B decks, video playback | [mcaster1.com/mcaster1amp.php](https://mcaster1.com/mcaster1amp.php) |
+| **Mcaster1 AudioPipe** | Virtual audio routing — Qt6 3D patch bay | [mcaster1.com/audiopipes.php](https://mcaster1.com/audiopipes.php) |
+| **Mcaster1 TagStack** | Content management — ICY 2.2 composer, media library | [mcaster1.com/tagstack.php](https://mcaster1.com/tagstack.php) |
+| **Mcaster1 CastIt** | Statistics monitor for Shoutcast/Icecast2 | [mcaster1.com/mcaster1_castit.php](https://mcaster1.com/mcaster1_castit.php) |
+
+**Typical broadcast workflow:**
+TagStack (content prep) → DSP Encoder (streaming) → DNAS (server) → Studio (automation)
+
+Use **Mcaster1AMP** as a video/radio player to monitor DSP Encoder video streams.
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [FEATURES.md](FEATURES.md) | Complete feature comparison — Qt 6 vs Legacy MFC |
+| [RELEASENOTES.md](RELEASENOTES.md) | v1.3.0 release notes, bundled deps, system requirements |
+| [CHANGELOG.md](CHANGELOG.md) | Version history with per-release changes |
+| [ROADMAP.md](ROADMAP.md) | Development roadmap and feature matrix |
+| [PLANNING.md](PLANNING.md) | Future phase specifications |
+| [CREDITS.md](CREDITS.md) | EdCast lineage, dependency credits |
+| [FORKS.md](FORKS.md) | Fork rationale and codec patent status |
+| [docs/index.html](docs/index.html) | HTML technical documentation |
 
 ---
 
 ## Project Structure
 
 ```
-Mcaster1DSPEncoder_Master.sln   ← Open this in VS2022 — all 4 targets
-src\
-  Mcaster1DSPEncoder.vcxproj        — Standalone EXE (default startup project)
-  mcaster1_winamp.vcxproj           — Winamp/WACUP/RadioBoss DSP plugin DLL
-  mcaster1_foobar.vcxproj           — foobar2000 component DLL
-  libmcaster1dspencoder\
-    libmcaster1dspencoder.vcxproj   — Shared encoding engine (static lib)
-external\
-  include\                          — Shared headers
-  lib\                              — Pre-built runtime DLLs and import libs
-  ASIOSDK\                          — Steinberg ASIO SDK
-  portaudio\src\                    — PortAudio source
-  portaudio\built\                  — PortAudio compiled libs (after build-portaudio.ps1)
-  foobar2000\                       — foobar2000 SDK
-  ResizableLib\                     — MFC ResizableLib (resizable dialog support)
-Release\                        ← Standalone EXE output
-Winamp_Plugin\Release\          ← dsp_mcaster1.dll output
-foobar2000\Release\             ← foo_mcaster1.dll output
-libmcaster1dspencoder\Release\  ← shared static lib output
-build\                          ← Intermediate object files (gitignored)
+Mcaster1DSPEncoder/
+├── win-qt/                         ← Windows Qt 6 source (active)
+│   ├── build_winqt.ps1             ← Build script (ALWAYS use this)
+│   ├── main_window.h/cpp           ← Main application window
+│   ├── audio_pipeline.h/cpp        ← Multi-slot audio orchestrator
+│   ├── encoder_slot.h/cpp          ← Per-slot state machine
+│   ├── stream_client.h/cpp         ← Icecast2/Shoutcast/DNAS client
+│   ├── dsp/                        ← DSP chain (EQ, AGC, PTT, DBX, etc.)
+│   ├── video/                      ← Video pipeline
+│   │   ├── live_video_studio.h/cpp ← 3-source switcher + transitions
+│   │   ├── transition_engine.h/cpp ← 12 broadcast transitions (gamma-correct)
+│   │   ├── rtmp_client.h/cpp       ← RTMP publishing
+│   │   ├── video_encoder_windows.* ← MF H.264 (NVENC/QSV/AMF)
+│   │   ├── screen_capture_windows.*← DXGI desktop capture
+│   │   └── video_file_source_*     ← MF video file decoder
+│   ├── virtual_camera/             ← DirectShow virtual camera DLL
+│   ├── podcast/                    ← RSS, SFTP, WordPress, Buzzsprout
+│   └── resources/                  ← Icons, QRC, theme
+├── src/linux/                      ← Linux source (CLI + PHP web admin)
+├── src/macos/                      ← macOS Qt 6 source
+├── src/                            ← Legacy Windows MFC source
+├── installer/                      ← NSIS installer scripts
+├── docs/                           ← HTML documentation
+├── VERSION.txt                     ← Current version (1.3.1-beta)
+└── CLAUDE.md                       ← Project memory / build instructions
 ```
-
----
-
-## Building From Source
-
-### Prerequisites
-
-- **Windows 10 or later**
-- **Visual Studio 2022** with Desktop C++ workload (v143 toolset, Windows 10 SDK, MFC)
-- **vcpkg** at `C:\vcpkg` with the following packages:
-
-```powershell
-vcpkg install opus:x86-windows libopusenc:x86-windows mp3lame:x86-windows `
-              libflac:x86-windows libogg:x86-windows libvorbis:x86-windows `
-              fdk-aac[he-aac]:x86-windows libxml2:x86-windows `
-              libiconv:x86-windows curl:x86-windows
-```
-
-- **PortAudio** built from source with Steinberg ASIO SDK (run `.\build-portaudio.ps1` first)
-- **PowerShell 5+**
-
-### Quick Build (All Targets)
-
-```powershell
-# From the repo root:
-.\build-portaudio.ps1  # Build PortAudio with ASIO (first time only)
-.\build-main.ps1       # Standalone encoder → Release\Mcaster1DSPEncoder.exe
-.\build-plugins.ps1    # DSP plugins → Winamp_Plugin\Release\ and foobar2000\Release\
-```
-
-### Visual Studio 2022 (Recommended for Development)
-
-Open `Mcaster1DSPEncoder_Master.sln` — all four projects load in Solution Explorer.
-`Mcaster1DSPEncoder` (standalone EXE) is the default startup project.
-
-Right-click any project → **Set as Startup Project** to switch build targets.
-
-### Manual MSBuild
-
-```powershell
-# All targets via master solution:
-msbuild Mcaster1DSPEncoder_Master.sln /p:Configuration=Release /p:Platform=Win32 /m
-
-# Individual targets:
-msbuild Mcaster1DSPEncoder_Master.sln /t:Mcaster1DSPEncoder  /p:Configuration=Release /p:Platform=Win32 /m
-msbuild Mcaster1DSPEncoder_Master.sln /t:mcaster1_winamp     /p:Configuration=Release /p:Platform=Win32 /m
-msbuild Mcaster1DSPEncoder_Master.sln /t:mcaster1_foobar     /p:Configuration=Release /p:Platform=Win32 /m
-```
-
-### Build Outputs
-
-```
-Release\
-  Mcaster1DSPEncoder.exe          — Standalone encoder
-
-Winamp_Plugin\Release\
-  dsp_mcaster1.dll                — Winamp / WACUP / RadioBoss DSP plugin
-
-foobar2000\Release\
-  foo_mcaster1.dll                — foobar2000 component
-
-libmcaster1dspencoder\Release\
-  libmcaster1dspencoder.lib       — Shared encoding engine (linked into above)
-
-(Runtime DLLs from vcpkg and external/lib — copy via deploy scripts)
-```
-
----
-
-## Deployment
-
-Use the included PowerShell deploy scripts to copy the built plugin and all required
-runtime DLLs to your host application's directory:
-
-```powershell
-.\deploy-winamp.ps1    -Config Release   # → C:\Program Files (x86)\Winamp\
-.\deploy-wacup.ps1     -Config Release   # → C:\Program Files\WACUP\
-.\deploy-radioboss.ps1 -Config Release   # → C:\Program Files (x86)\RadioBoss\
-.\deploy-radiodj.ps1   -Config Release   # → C:\RadioDJv2\
-.\deploy-foobar.ps1    -Config Release   # → C:\Program Files\foobar2000\
-```
-
-Each script self-elevates via UAC, validates the build exists, and copies the plugin DLL
-plus all dependency DLLs in one step. Use `-Config Debug` for debug builds.
-
----
-
-## Installation
-
-### Standalone Encoder (`Mcaster1DSPEncoder.exe`)
-
-Copy `Release\Mcaster1DSPEncoder.exe` and all DLLs from `external\lib\` and the vcpkg
-bin directory to a folder of your choice and run `Mcaster1DSPEncoder.exe`.
-
-### Winamp / WACUP DSP Plugin
-
-Run `.\deploy-winamp.ps1` or `.\deploy-wacup.ps1`, then:
-- **Winamp:** Options → Preferences → Plug-ins → DSP/Effect → Mcaster1 DSP Encoder
-- **WACUP:** Preferences → Plug-ins → DSP/Effect → Mcaster1 DSP Encoder
-
-### foobar2000 Component
-
-Run `.\deploy-foobar.ps1`, restart foobar2000, then:
-File → Preferences → Playback → DSP Manager → Add → Mcaster1 DSP Encoder
-
-### RadioBoss
-
-Run `.\deploy-radioboss.ps1`, then:
-Options → DSP/Effect Plugins → Add → select `dsp_mcaster1.dll`
-
----
-
-## Configuration
-
-### Encoder Connection (per encoder slot)
-
-Each encoder slot has its own config tab in the UI:
-
-| Setting | Description |
-|---------|-------------|
-| Server Type | Icecast2 / SHOUTcast v1 / SHOUTcast v2 |
-| Server Host / Port | Stream server address |
-| Password | Source/stream password |
-| Mount Point | Icecast mount (e.g. `/live`) |
-| Format | MP3 / Opus / Vorbis / FLAC / AAC / HE-AAC |
-| Bitrate | Format-dependent (CBR / VBR / quality) |
-| ICY Name / Genre / URL | Stream metadata for directory listings |
-
-### Config Files
-
-`MCASTER1DSPENCODER_1.cfg`, `_2.cfg`, ... — one file per active encoder slot (auto-generated at runtime, not committed to repo).
-
----
-
-## Audio Device Capture (Standalone Mode)
-
-The standalone encoder uses **PortAudio** with full Windows audio backend support:
-
-| Backend | Use Case |
-|---------|----------|
-| **WASAPI Loopback** | Capture what's playing from any application (no virtual cable needed) |
-| **WASAPI Exclusive** | Low-latency dedicated capture device |
-| **ASIO** | Professional audio interfaces (Steinberg, UA, Focusrite, RME, MOTU) |
-| **DirectSound** | Broad device compatibility |
-| **MME** | Legacy and broad hardware support |
-| **WDM-KS** | Kernel streaming — lowest latency on older hardware |
-
-Supported capture sample rates: 44100 / 48000 / 88200 / 96000 / 176400 / 192000 Hz.
-When capture rate differs from encoder rate, the built-in resample stage handles conversion
-automatically (e.g. 192kHz ASIO capture → 48kHz Opus encode).
-
----
-
-## Mcaster1 Ecosystem
-
-Mcaster1DSPEncoder is part of the **Mcaster1** open-source internet radio platform:
-
-| Project | Description | Status |
-|---------|-------------|--------|
-| **Mcaster1DNAS** | Maintained fork of Icecast 2.4 with ICY 2.1, song history API, and track history pages | Active |
-| **Mcaster1DSPEncoder** | This project — encoder suite for Windows | Active |
-| **Mcaster1Castit** | Modernized broadcast scheduler (VC6 → VS2022 upgrade of original Castit) | Planned |
-
----
-
-## Roadmap
-
-See **[ROADMAP.md](ROADMAP.md)** for the full development roadmap. Summary of completed and planned work:
-
-### Completed
-- [x] VS2022 upgrade (v90 → v143 toolset)
-- [x] Master solution `Mcaster1DSPEncoder_Master.sln` with all 4 targets
-- [x] Per-project output directories (no more mixed `src\Release\`)
-- [x] External SDKs organized under `external\`
-- [x] Opus encoding (libopusenc)
-- [x] HE-AAC v1/v2 (fdk-aac)
-- [x] PortAudio integration (WASAPI loopback / ASIO / MME / DS)
-- [x] ResizableLib — fully resizable main dialog
-- [x] VU meter resize fix — FlexMeters bars now scale correctly with dialog resize
-- [x] PowerShell deploy scripts for all 5 host applications
-- [x] Debug/Release both build cleanly (CRT-consistent across all linked projects)
-- [x] WMA removed (basswma dependency eliminated)
-
-### In Progress
-- [ ] Phase 3 — Audio Backend Modernization (PortAudio WASAPI loopback refinement)
-- [ ] YAML multi-station configuration
-
-### Planned
-- [ ] Phase 4 — YAML Multi-Station Configuration
-- [ ] Phase 5 — ICY 2.1 Enhanced Metadata Protocol
-- [ ] Phase 6 — Mcaster1DNAS Deep Integration
-- [ ] Phase 7 — Mcaster1Castit
-- [ ] Phase 8 — Analytics, Metrics & Platform Engagement
 
 ---
 
 ## Credits
 
-See **[CREDITS.md](CREDITS.md)** for the full story — including:
-- Ed Zaleski's mentorship and the EdCast / Oddcast / AltaCast lineage
-- The history of casterclub.com, mediacast1.com, and oddsock.org
-- All dependency library authors and licenses
-
-See **[FORKS.md](FORKS.md)** for the detailed fork rationale and codec patent status.
-
-See **[AUTHORS](AUTHORS)** for the author list.
-
----
+See **[CREDITS.md](CREDITS.md)** — including Ed Zaleski's original EdCast/Oddcast/AltaCast
+lineage, the history of casterclub.com and mediacast1.com, and all dependency library authors.
 
 ## License
 
 **GPL v2** — inherited from the EdCast/AltaCast lineage.
-
-Original EdCast/AltaCast copyright © Ed Zaleski.
-Fork and modifications copyright © 2024–2026 Dave St. John.
-
-See [LICENSE](LICENSE) for details.
-
----
-
-## Contributing
-
-Pull requests, issues, and discussion are welcome on GitHub.
-Please read [FORKS.md](FORKS.md) to understand the project's goals before contributing.
+Copyright (c) 2024-2026 Dave St. John. Original EdCast copyright (c) Ed Zaleski.

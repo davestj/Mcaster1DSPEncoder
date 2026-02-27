@@ -11,6 +11,8 @@
 
 #include <QApplication>
 #include <QString>
+#include <QLocalServer>
+#include <QLocalSocket>
 
 namespace mc1 {
 
@@ -32,8 +34,8 @@ public:
     Theme     theme() const { return theme_; }
 
     /* Version info */
-    static QString versionString() { return QStringLiteral("1.0.0"); }
-    static QString buildPhase()    { return QStringLiteral("Phase M10"); }
+    static QString versionString() { return QStringLiteral("1.3.1-beta"); }
+    static QString buildPhase()    { return QStringLiteral("Phase Win-Qt v1.3.1-beta"); }
 
     MainWindow *mainWindow() const { return main_window_; }
 
@@ -44,9 +46,15 @@ private:
     void applyNativeTheme();
     void applyBrandedTheme();
 
-    MainWindow    *main_window_ = nullptr;
-    AudioPipeline *pipeline_    = nullptr;
-    Theme          theme_       = Theme::Native;
+    /* Single-instance IPC */
+    bool isAlreadyRunning();
+    void bringExistingToFront();
+
+    MainWindow    *main_window_      = nullptr;
+    AudioPipeline *pipeline_         = nullptr;
+    Theme          theme_            = Theme::Native;
+    QLocalServer  *instance_server_  = nullptr;
+    bool           is_duplicate_     = false;
 };
 
 } // namespace mc1

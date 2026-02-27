@@ -52,6 +52,9 @@ private:
 
     EncoderConfig::EncoderType encoder_type_;
 
+    /* Encoder name */
+    QLineEdit   *edit_encoder_name_ = nullptr;
+
     /* Preset */
     QComboBox   *combo_preset_;
 
@@ -59,7 +62,8 @@ private:
     QComboBox   *combo_codec_;
     QSpinBox    *spin_bitrate_;
     QSpinBox    *spin_quality_;
-    QSpinBox    *spin_sample_rate_;
+    QComboBox   *combo_sample_rate_;
+    QLabel      *lbl_sample_rate_;
     QComboBox   *combo_channels_;
     QComboBox   *combo_encode_mode_;
     QComboBox   *combo_channel_mode_;
@@ -83,6 +87,12 @@ private:
     QLabel      *lbl_mountpoint_;
     QLineEdit   *edit_mountpoint_;
 
+    /* Admin/Stats credentials (Icecast2 / Mcaster1 DNAS) */
+    QLabel      *lbl_admin_username_ = nullptr;
+    QLineEdit   *edit_admin_username_ = nullptr;
+    QLabel      *lbl_admin_password_ = nullptr;
+    QLineEdit   *edit_admin_password_ = nullptr;
+
     /* Reconnect */
     QSpinBox    *spin_reconnect_sec_;
     QCheckBox   *chk_auto_reconnect_;
@@ -93,6 +103,10 @@ private:
     QComboBox   *combo_video_resolution_ = nullptr;
     QComboBox   *combo_video_fps_   = nullptr;
     QSpinBox    *spin_video_bitrate_ = nullptr;
+
+    /* Video source (TV_VIDEO only) */
+    QWidget     *video_src_group_       = nullptr;
+    QComboBox   *combo_video_device_    = nullptr;
 
     /* Per-encoder audio source */
     QComboBox   *combo_device_override_ = nullptr;

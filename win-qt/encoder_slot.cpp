@@ -22,6 +22,8 @@
 #include "encoder_slot.h"
 #include "file_source.h"
 #include "audio_source.h"
+#include "event_log.h"
+#include "ptt_mic_store.h"
 
 #include <cstring>
 #include <cstdio>
@@ -33,13 +35,17 @@
 #include <array>
 
 // ---------------------------------------------------------------------------
-// Logging macros -- simple fprintf replacements for mc1_logger.h
-// These print to stderr with a [Slot N] prefix where possible.
+// Logging macros — route through mc1::event_log so entries appear in the
+// Event Log tab as well as stderr.  Tag is always "[Encoder N]" where N is
+// cfg_.slot_id when inside EncoderSlot member functions.
 // ---------------------------------------------------------------------------
-#define MC1_INFO(msg)  do { fprintf(stderr, "[INFO]  %s\n", (msg).c_str()); } while(0)
-#define MC1_WARN(msg)  do { fprintf(stderr, "[WARN]  %s\n", (msg).c_str()); } while(0)
-#define MC1_ERR(msg)   do { fprintf(stderr, "[ERROR] %s\n", (msg).c_str()); } while(0)
-#define MC1_DBG(msg)   do { fprintf(stderr, "[DEBUG] %s\n", (msg).c_str()); } while(0)
+#define SLOT_TAG  ("[Encoder " + std::to_string(cfg_.slot_id) + "]")
+#define MC1_INFO(msg)  do { mc1::log_info (SLOT_TAG, (msg)); } while(0)
+#define MC1_WARN(msg)  do { mc1::log_warn (SLOT_TAG, (msg)); } while(0)
+#define MC1_ERR(msg)   do { mc1::log_error(SLOT_TAG, (msg)); } while(0)
+#define MC1_DBG(msg)   do { mc1::log_debug(SLOT_TAG, (msg)); } while(0)
+#define MC1_CONN(msg)  do { mc1::log_connect(SLOT_TAG, (msg)); } while(0)
+#define MC1_AUTH(msg)  do { mc1::log_auth  (SLOT_TAG, (msg)); } while(0)
 
 // ---------------------------------------------------------------------------
 // Codec headers -- guarded so encoder_slot compiles without every codec
@@ -51,7 +57,7 @@
 #include <vorbis/vorbisenc.h>
 #endif
 #ifdef HAVE_OPUS
-#include <opusenc.h>
+#include <opus/opusenc.h>
 #endif
 #ifdef HAVE_FLAC
 #include <FLAC/stream_encoder.h>
@@ -170,7 +176,7 @@ bool EncoderSlot::start()
             // set_error() also acquires mtx_ -- write fields directly here
             last_error_ = "Codec init failed";
             state_.store(State::ERROR);
-            fprintf(stderr, "[EncoderSlot %d] Error: Codec init failed\n", cfg_.slot_id);
+            MC1_ERR("Codec init FAILED — check codec library is available");
             return false;
         }
 
@@ -184,6 +190,7 @@ bool EncoderSlot::start()
         stream_client_->set_state_callback([this](mc1::StreamClient::State cs) {
             if (cs == mc1::StreamClient::State::CONNECTED) {
                 set_state(State::LIVE);
+                MC1_CONN("State → LIVE (server accepted source connection)");
                 // first_connect_done_ guards metadata re-push:
                 // false on first connect (track-start callback will push),
                 // true on reconnect (we re-push current title after delay).
@@ -192,26 +199,44 @@ bool EncoderSlot::start()
                     std::string ttl, art;
                     { std::lock_guard<std::mutex> lk(mtx_); ttl = current_title_; art = current_artist_; }
                     if (!ttl.empty()) {
+                        MC1_INFO("Reconnect: re-pushing metadata after 500ms: \"" + ttl + "\"");
                         auto sc = stream_client_;
                         std::thread([sc, ttl, art]() {
                             std::this_thread::sleep_for(std::chrono::milliseconds(500));
                             if (sc) sc->send_admin_metadata(ttl, art);
                         }).detach();
                     }
+                } else {
+                    MC1_CONN("First connect — metadata will be pushed via track-start callback");
                 }
             }
-            if (cs == mc1::StreamClient::State::RECONNECTING)
+            if (cs == mc1::StreamClient::State::RECONNECTING) {
                 set_state(State::RECONNECTING);
+                MC1_WARN("State → RECONNECTING (connection lost, watchdog will retry)");
+            }
             if (cs == mc1::StreamClient::State::STOPPED) {
                 // Watchdog gave up (max retries exceeded) — enter SLEEP
+                // NOTE: disconnect() uses DISCONNECTED, not STOPPED, so this
+                // branch only fires when the watchdog exhausts retries.
+                MC1_ERR("State → SLEEP (watchdog exhausted max retries — use Wake to restart)");
                 set_state(State::SLEEP);
+            }
+            if (cs == mc1::StreamClient::State::DISCONNECTED) {
+                // Deliberate disconnect() call (error cleanup or stop()) — no SLEEP
+                MC1_INFO("StreamClient disconnected (deliberate)");
             }
         });
 
-        MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] start(): "
-                 "reconnect=" + (cfg_.auto_reconnect ? "yes" : "no")
-                 + " interval=" + std::to_string(cfg_.reconnect_interval_sec) + "s"
-                 + " max=" + std::to_string(cfg_.reconnect_max_attempts));
+        MC1_INFO("start() — codec=" + std::string(mc1::codec_str(cfg_.codec)) +
+                 " " + std::to_string(cfg_.bitrate_kbps) + "kbps" +
+                 " " + std::to_string(cfg_.sample_rate) + "Hz" +
+                 " ch=" + std::to_string(cfg_.channels));
+        MC1_CONN("Target: " + cfg_.stream_target.host + ":" +
+                 std::to_string(cfg_.stream_target.port) +
+                 cfg_.stream_target.mount +
+                 " user=" + cfg_.stream_target.username +
+                 " max_retries=" + std::to_string(cfg_.stream_target.max_retries) +
+                 " retry_interval=" + std::to_string(cfg_.stream_target.retry_interval_sec) + "s");
 
         // --- Init DSP chain ---
         {
@@ -229,13 +254,17 @@ bool EncoderSlot::start()
             dsp_cfg.eq_mode            = static_cast<mc1dsp::EqMode>(cfg_.dsp_eq_mode);
             dsp_chain_ = std::make_unique<mc1dsp::DspChain>();
             dsp_chain_->configure(dsp_cfg);
-            fprintf(stderr, "[EncoderSlot %d] DSP: EQ=%s AGC=%s XFade=%s (%.1fs) preset='%s'\n",
-                    cfg_.slot_id,
+            {
+                char dsp_buf[256];
+                snprintf(dsp_buf, sizeof(dsp_buf),
+                    "DSP chain: EQ=%s AGC=%s XFade=%s (%.1fs) preset='%s'",
                     cfg_.dsp_eq_enabled  ? "on" : "off",
                     cfg_.dsp_agc_enabled ? "on" : "off",
                     cfg_.dsp_crossfade_enabled ? "on" : "off",
                     cfg_.dsp_crossfade_duration,
                     cfg_.dsp_eq_preset.empty() ? "none" : cfg_.dsp_eq_preset.c_str());
+                MC1_INFO(std::string(dsp_buf));
+            }
         }
 
         // --- Init archive ---
@@ -247,13 +276,38 @@ bool EncoderSlot::start()
             archive_->open(cfg_.sample_rate, cfg_.channels);
         }
 
-        // --- Create audio source object (playlist load happens AFTER lock release) ---
+        // --- Create audio source object ---
+        // Win-Qt is a live audio capture encoder only.
+        // device_index == -2  → WASAPI loopback (system audio output capture)
+        // device_index == -1  → PortAudio default input (microphone / line-in)
+        // device_index >= 0   → specific PortAudio input device
         if (cfg_.input_type == mc1::EncoderConfig::InputType::DEVICE) {
+#ifdef _WIN32
+            if (cfg_.device_index == -2) {
+                // WASAPI loopback — captures system audio output
+                MC1_INFO("Audio source: WASAPI loopback (system audio output)");
+                auto* sys = new mc1::SystemAudioSource(cfg_.sample_rate, cfg_.channels);
+                source_.reset(sys);
+            } else {
+                MC1_INFO("Audio source: PortAudio device index=" +
+                         std::to_string(cfg_.device_index) +
+                         (cfg_.device_index == -1 ? " (system default input)" : ""));
+                auto* pa = new PortAudioSource(cfg_.device_index,
+                                               cfg_.sample_rate,
+                                               cfg_.channels);
+                source_.reset(pa);
+            }
+#else
+            MC1_INFO("Audio source: PortAudio device index=" + std::to_string(cfg_.device_index));
             auto* pa = new PortAudioSource(cfg_.device_index,
                                            cfg_.sample_rate,
                                            cfg_.channels);
             source_.reset(pa);
+#endif
         } else {
+            // FILE/PLAYLIST — Linux only path; on Windows this should not be used
+            MC1_WARN("input_type=PLAYLIST — Win-Qt is a live audio encoder; "
+                     "set input_type to DEVICE in the encoder config");
             auto* fs = new FileSource(cfg_.sample_rate, cfg_.channels);
             source_.reset(fs);
             is_playlist_source = true;
@@ -302,7 +356,7 @@ bool EncoderSlot::start()
         return false;
     }
 
-    fprintf(stderr, "[EncoderSlot %d] Started\n", cfg_.slot_id);
+    MC1_INFO("Encoder started — audio pipeline is active");
     return true;
 }
 
@@ -321,7 +375,7 @@ void EncoderSlot::stop()
 
     close_codec();
     set_state(State::IDLE);
-    fprintf(stderr, "[EncoderSlot %d] Stopped\n", cfg_.slot_id);
+    MC1_INFO("Encoder stopped");
 }
 
 // ---------------------------------------------------------------------------
@@ -383,6 +437,18 @@ void EncoderSlot::clear_audio_tap()
     audio_tap_ = nullptr;
 }
 
+void EncoderSlot::set_pcm_tap(PcmTapCallback cb)
+{
+    std::lock_guard<std::mutex> lk(pcm_tap_mtx_);
+    pcm_tap_ = std::move(cb);
+}
+
+void EncoderSlot::clear_pcm_tap()
+{
+    std::lock_guard<std::mutex> lk(pcm_tap_mtx_);
+    pcm_tap_ = nullptr;
+}
+
 void EncoderSlot::set_volume(float v)
 {
     if (v < 0.0f) v = 0.0f;
@@ -427,8 +493,7 @@ void EncoderSlot::push_metadata(const std::string& title,
             sc->send_admin_metadata(title, artist, album, artwork);
     }).detach();
 
-    fprintf(stderr, "[EncoderSlot %d] Metadata: %s - %s\n",
-            cfg_.slot_id, artist.c_str(), title.c_str());
+    MC1_INFO("Metadata push queued: \"" + artist + " - " + title + "\"");
 }
 
 // ---------------------------------------------------------------------------
@@ -551,8 +616,48 @@ void EncoderSlot::on_audio(const float* pcm, size_t frames, int /*ch*/, int /*sr
         size_t n = frames * static_cast<size_t>(cfg_.channels);
         buf.resize(n);
         for (size_t i = 0; i < n; ++i) buf[i] = pcm[i] * vol;
-        if (dsp_chain_) dsp_chain_->process(buf.data(), frames);
+        if (dsp_chain_) {
+            /* Feed PTT mic PCM into ptt_duck before DSP process.
+             * set_mic_buffer() copies data internally so the mutex can be
+             * released before process() — no race with the PTT mic PA thread. */
+            bool ptt_mic_has_data = false;
+            {
+                std::lock_guard<std::mutex> lk(mc1::g_ptt_mic_store.mtx);
+                if (mc1::g_ptt_mic_store.frames > 0) {
+                    dsp_chain_->ptt_duck().set_mic_buffer(
+                        mc1::g_ptt_mic_store.buf,
+                        mc1::g_ptt_mic_store.frames,
+                        mc1::g_ptt_mic_store.channels,
+                        mc1::g_ptt_mic_store.sample_rate);
+                    ptt_mic_has_data = true;
+                }
+            }
+
+            /* Throttled PTT diagnostic — logs every ~200 callbacks (~2s at 100fps) */
+            if (++ptt_diag_counter_ >= 200) {
+                ptt_diag_counter_ = 0;
+                bool ptt_on = dsp_chain_->ptt_duck().is_ptt_active();
+                if (ptt_on || ptt_mic_has_data) {
+                    char dbuf[128];
+                    snprintf(dbuf, sizeof(dbuf),
+                             "PTT diag slot %d: ptt_active=%s  mic_data=%s  duck_enabled=%s",
+                             cfg_.slot_id,
+                             ptt_on ? "YES" : "no",
+                             ptt_mic_has_data ? "YES" : "no",
+                             dsp_chain_->ptt_duck().is_enabled() ? "yes" : "no");
+                    MC1_INFO(std::string(dbuf));
+                }
+            }
+
+            dsp_chain_->process(buf.data(), frames);
+        }
         pcm = buf.data();
+    }
+
+    // Pre-encode PCM tap (Preview Audio Studio eavesdrop)
+    {
+        std::lock_guard<std::mutex> lk(pcm_tap_mtx_);
+        if (pcm_tap_) pcm_tap_(pcm, frames, cfg_.channels, cfg_.sample_rate);
     }
 
     // Archive PCM
@@ -1204,8 +1309,7 @@ bool EncoderSlot::open_next_track()
                 std::thread([this]() { advance_playlist(); }).detach();
             });
 
-            fprintf(stderr, "[EncoderSlot %d] Playing: %s\n",
-                    cfg_.slot_id, path.c_str());
+            MC1_INFO("Now playing: " + path);
             return true;
         }
 
@@ -1222,8 +1326,7 @@ bool EncoderSlot::open_next_track()
             else if (playlist_pos_ >= static_cast<int>(playlist_.size()))
                 return false;
         }
-        fprintf(stderr, "[EncoderSlot %d] Skipping missing file: %s\n",
-                cfg_.slot_id, path.c_str());
+            MC1_WARN("Skipping missing/unreadable file: " + path);
     }
     return false;
 }
@@ -1289,5 +1392,5 @@ void EncoderSlot::set_error(const std::string& msg)
     std::lock_guard<std::mutex> lk(mtx_);
     last_error_ = msg;
     state_.store(State::ERROR);
-    fprintf(stderr, "[EncoderSlot %d] Error: %s\n", cfg_.slot_id, msg.c_str());
+    mc1::log_error("[Encoder " + std::to_string(cfg_.slot_id) + "]", "ERROR: " + msg);
 }

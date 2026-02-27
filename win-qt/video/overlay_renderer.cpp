@@ -626,6 +626,9 @@ std::vector<SrtEntry> OverlayRenderer::parse_srt(const std::string& path)
                 return -1;
             }
         }
+        // SEC-019: Validate timestamp ranges
+        if (hh < 0 || hh > 99 || mm < 0 || mm > 59 || ss < 0 || ss > 59 || ms < 0 || ms > 999)
+            return -1;
         return static_cast<int64_t>(hh) * 3600000 +
                static_cast<int64_t>(mm) * 60000 +
                static_cast<int64_t>(ss) * 1000 +

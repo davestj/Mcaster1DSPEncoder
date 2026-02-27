@@ -117,6 +117,14 @@ static void set_common_opts(CURL* curl, HttpClient::Headers& resp_headers,
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
+    // SEC-014: Restrict redirect destinations to HTTP/HTTPS only
+    // Prevents redirects to file://, ftp://, gopher://, etc.
+#if LIBCURL_VERSION_NUM >= 0x075500  /* 7.85.0+ */
+    curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+#else
+    curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS,
+                     CURLPROTO_HTTP | CURLPROTO_HTTPS);
+#endif
 
     // Apply request headers
     *header_list = nullptr;

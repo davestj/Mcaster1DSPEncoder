@@ -44,6 +44,8 @@
 #include "dsp_effects_rack.h"
 #include "encoder_slot.h"
 #include "global_config_manager.h"
+#include "preview_audio_studio.h"
+#include "help_browser.h"
 
 #include <QAction>
 #include <QApplication>
@@ -73,9 +75,19 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include <QClipboard>
+#include <QDateTime>
+#include <QFile>
+#include <QFont>
+#include <QListWidget>
+#include <QMap>
+#include <QListWidgetItem>
+#include <QScrollBar>
 #include <QResizeEvent>
 #include <algorithm>
 #include <QScreen>
+#include <QDesktopServices>
+#include <QUrl>
 
 #include <cmath>
 
@@ -104,6 +116,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(demo_timer_, &QTimer::timeout, this, &MainWindow::onDemoTick);
     demo_timer_->start(50); /* 20 fps */
 
+    /* Populate SR/Ch combos based on initial device selection */
+    updateGlobalDeviceFormats();
+
     /* Start audio level monitor for VU metering from selected input device */
     startLevelMonitor();
 
@@ -120,6 +135,18 @@ MainWindow::MainWindow(QWidget *parent)
     /* Phase M5: Restore saved window state */
     restoreSettings();
 
+    /* Start metadata file poller if configured */
+    startMetadataPoller();
+
+    /* Start PTT mic source for any device already selected in the combo */
+    if (g_pipeline && cmb_ptt_device_) {
+        QVariant ptt_data = cmb_ptt_device_->currentData();
+        int ptt_idx = ptt_data.isValid() ? ptt_data.toInt() : -1;
+        int ptt_sr  = cmb_ptt_sample_rate_ ? cmb_ptt_sample_rate_->currentData().toInt() : 0;
+        int ptt_ch  = cmb_ptt_channels_    ? cmb_ptt_channels_->currentData().toInt()    : 0;
+        g_pipeline->set_ptt_mic_device(ptt_idx, ptt_sr, ptt_ch);
+    }
+
     /* Phase M10: Request macOS notification permission */
     platform::request_notification_permission();
 
@@ -129,16 +156,76 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->showMessage(
         QStringLiteral("Mcaster1 DSP Encoder v") + App::versionString() +
         QStringLiteral(" — ") + App::buildPhase());
+
+    /* Register the global C++ event log handler so encoder_slot / stream_client
+     * log entries are routed to the Event Log tab via a queued connection. */
+    mc1::set_event_log_handler([this](mc1::LogLevel level, const char* tag, const char* msg) {
+        // Called from any thread — marshal to main thread via queued connection
+        int lv   = static_cast<int>(level);
+        QString t = QString::fromUtf8(tag);
+        QString m = QString::fromUtf8(msg);
+        QMetaObject::invokeMethod(this, "onAppendEventLog",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(int, lv),
+                                  Q_ARG(QString, t),
+                                  Q_ARG(QString, m));
+    });
+
+    mc1::log_info("[System]", "Mcaster1 DSP Encoder started — Event Log active");
 }
 
 MainWindow::~MainWindow()
 {
+    // Clear event log handler before destroying — prevents dangling pointer from
+    // background encoder/stream threads calling back into this window after destruction.
+    mc1::set_event_log_handler(nullptr);
+
     stopCameraPreview();
     level_monitor_.stop();
     if (sys_audio_monitor_) {
         sys_audio_monitor_->stop();
         sys_audio_monitor_.reset();
     }
+}
+
+// ---------------------------------------------------------------------------
+// onAppendEventLog — receives log entries from the C++ engine (Qt main thread)
+// ---------------------------------------------------------------------------
+void MainWindow::onAppendEventLog(int level, const QString &tag, const QString &message)
+{
+    if (!event_log_list_) return;
+
+    // Timestamp prefix
+    QString ts = QDateTime::currentDateTime().toString(QStringLiteral("[HH:mm:ss]"));
+
+    // Level label + color
+    QString lbl;
+    QColor  col;
+    switch (static_cast<mc1::LogLevel>(level)) {
+        case mc1::LogLevel::DEBUG:    lbl = QStringLiteral("DBG ");  col = QColor(0x66, 0x88, 0xaa); break;
+        case mc1::LogLevel::INFO:     lbl = QStringLiteral("INFO ");  col = QColor(0xc0, 0xd8, 0xf0); break;
+        case mc1::LogLevel::WARN:     lbl = QStringLiteral("WARN ");  col = QColor(0xff, 0xcc, 0x44); break;
+        case mc1::LogLevel::LOG_ERROR:    lbl = QStringLiteral("ERROR"); col = QColor(0xff, 0x44, 0x44); break;
+        case mc1::LogLevel::CONNECT:  lbl = QStringLiteral("CONN ");  col = QColor(0x44, 0xdd, 0x88); break;
+        case mc1::LogLevel::AUTH:     lbl = QStringLiteral("AUTH ");  col = QColor(0x88, 0xcc, 0xff); break;
+        case mc1::LogLevel::ICY_META: lbl = QStringLiteral("ICY  ");  col = QColor(0xff, 0xaa, 0xff); break;
+        default:                      lbl = QStringLiteral("?    ");  col = QColor(0xaa, 0xaa, 0xaa); break;
+    }
+
+    QString text = ts + QStringLiteral(" [") + lbl + QStringLiteral("] ") + tag + QStringLiteral("  ") + message;
+
+    auto *item = new QListWidgetItem(text);
+    item->setForeground(col);
+    event_log_list_->addItem(item);
+
+    // Auto-scroll to bottom, but only if already near bottom (don't disrupt manual scroll)
+    QScrollBar *sb = event_log_list_->verticalScrollBar();
+    if (sb && (sb->value() >= sb->maximum() - 4))
+        event_log_list_->scrollToBottom();
+
+    // Trim to last 2000 entries to prevent unbounded memory growth
+    while (event_log_list_->count() > 2000)
+        delete event_log_list_->takeItem(0);
 }
 
 /* ───── UI Construction ───── */
@@ -172,6 +259,9 @@ void MainWindow::setupUi()
     lbl_metadata_->setMinimumHeight(36);
     lbl_metadata_->setAlignment(Qt::AlignCenter);
     lbl_metadata_->setWordWrap(true);
+    lbl_metadata_->setStyleSheet(QStringLiteral(
+        "QLabel { background-color: #0f172a; color: #e2e8f0; "
+        "border: 1px solid #1e3a5f; border-radius: 3px; padding: 4px 8px; }"));
     QFont mf = lbl_metadata_->font();
     mf.setPointSize(12);
     lbl_metadata_->setFont(mf);
@@ -189,26 +279,58 @@ void MainWindow::setupUi()
 
     /* ── Live Recording / Audio Device ── */
     auto *rec_group = new QGroupBox(QStringLiteral("Audio Input"));
-    auto *rec_lay   = new QHBoxLayout(rec_group);
+    auto *rec_vlay  = new QVBoxLayout(rec_group);
+    rec_vlay->setSpacing(4);
+    rec_vlay->setContentsMargins(6, 4, 6, 4);
+
+    /* ── Row 1: Input device + Rate/Ch + Output volume ── */
+    auto *rec_lay = new QHBoxLayout;
+    rec_lay->setSpacing(6);
 
     rec_lay->addWidget(new QLabel(QStringLiteral("Input Device:")));
     cmb_device_ = new QComboBox;
     populateDeviceCombo();
-    cmb_device_->setMinimumWidth(240);
+    cmb_device_->setMinimumWidth(200);
+    cmb_device_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     rec_lay->addWidget(cmb_device_);
+
+    /* Global sample rate and channels — auto-update when device changes */
+    rec_lay->addWidget(new QLabel(QStringLiteral("Rate:")));
+    cmb_global_sample_rate_ = new QComboBox;
+    cmb_global_sample_rate_->addItem(QStringLiteral("22050 Hz"),  22050);
+    cmb_global_sample_rate_->addItem(QStringLiteral("44100 Hz"),  44100);
+    cmb_global_sample_rate_->addItem(QStringLiteral("48000 Hz"),  48000);
+    cmb_global_sample_rate_->addItem(QStringLiteral("88200 Hz"),  88200);
+    cmb_global_sample_rate_->addItem(QStringLiteral("96000 Hz"),  96000);
+    cmb_global_sample_rate_->setCurrentIndex(1); /* 44100 Hz default */
+    cmb_global_sample_rate_->setFixedWidth(90);
+    rec_lay->addWidget(cmb_global_sample_rate_);
+
+    rec_lay->addWidget(new QLabel(QStringLiteral("Ch:")));
+    cmb_global_channels_ = new QComboBox;
+    cmb_global_channels_->addItem(QStringLiteral("Mono"),   1);
+    cmb_global_channels_->addItem(QStringLiteral("Stereo"), 2);
+    cmb_global_channels_->setCurrentIndex(1); /* Stereo default */
+    cmb_global_channels_->setFixedWidth(72);
+    rec_lay->addWidget(cmb_global_channels_);
+
     connect(cmb_device_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateGlobalDeviceFormats(); startLevelMonitor(); });
+    connect(cmb_global_sample_rate_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) { startLevelMonitor(); });
+    connect(cmb_global_channels_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) { startLevelMonitor(); });
 
-    rec_lay->addSpacing(12);
-    rec_lay->addWidget(new QLabel(QStringLiteral("Output:")));
+    rec_lay->addSpacing(8);
+    rec_lay->addWidget(new QLabel(QStringLiteral("Vol:")));
     sld_volume_ = new QSlider(Qt::Horizontal);
     sld_volume_->setRange(0, 200);
     sld_volume_->setValue(100);
-    sld_volume_->setFixedWidth(100);
+    sld_volume_->setFixedWidth(90);
     rec_lay->addWidget(sld_volume_);
 
     lbl_volume_ = new QLabel(QStringLiteral("100%"));
-    lbl_volume_->setFixedWidth(40);
+    lbl_volume_->setFixedWidth(38);
     rec_lay->addWidget(lbl_volume_);
     connect(sld_volume_, &QSlider::valueChanged, this, [this](int v) {
         lbl_volume_->setText(QString::number(v) + QStringLiteral("%"));
@@ -217,24 +339,87 @@ void MainWindow::setupUi()
             g_pipeline->set_master_volume(v / 100.0f);
     });
 
-    /* Phase M8.5: Push-to-Talk inline with Audio Input */
-    rec_lay->addSpacing(16);
-    rec_lay->addWidget(new QLabel(QStringLiteral("PTT Mic:")));
-    cmb_ptt_device_ = new QComboBox;
-    cmb_ptt_device_->addItem(QStringLiteral("(None)"), QStringLiteral(""));
-    /* Use CoreAudio enumeration (same as main device combo) for reliable mic listing */
-    auto ptt_devs = enumerate_coreaudio_devices();
-    for (auto &d : ptt_devs) {
-        if (d.input_channels < 1) continue;  /* only show input-capable devices */
-        QString label = QString::fromStdString(d.name);
-        if (d.is_default_input)
-            label += QStringLiteral(" (Default)");
-        cmb_ptt_device_->addItem(label, QString::fromStdString(d.uid));
-    }
-    cmb_ptt_device_->setMinimumWidth(160);
-    rec_lay->addWidget(cmb_ptt_device_);
+    rec_vlay->addLayout(rec_lay);
 
-    rec_lay->addSpacing(8);
+    /* ── Row 2: PTT Mic + button + Preview Audio ── */
+    auto *ptt_lay = new QHBoxLayout;
+    ptt_lay->setSpacing(6);
+
+    ptt_lay->addWidget(new QLabel(QStringLiteral("PTT Mic:")));
+    cmb_ptt_device_ = new QComboBox;
+    cmb_ptt_device_->addItem(QStringLiteral("(None)"), QVariant(-1));
+    /* Enumerate input devices for PTT mic selection.
+     * Windows: store integer PortAudio device index as item data.
+     * macOS: store CoreAudio UID string as item data. */
+#ifdef _WIN32
+    {
+        auto ptt_devs = PortAudioSource::enumerate_devices();
+        for (const auto &d : ptt_devs) {
+            QString label = QString::fromStdString(d.name);
+            if (d.is_default_input) label += QStringLiteral(" (Default)");
+            cmb_ptt_device_->addItem(label, QVariant(d.index));
+        }
+    }
+#else
+    {
+        auto ptt_devs = enumerate_coreaudio_devices();
+        for (const auto &d : ptt_devs) {
+            if (d.input_channels < 1) continue;
+            QString label = QString::fromStdString(d.name);
+            if (d.is_default_input) label += QStringLiteral(" (Default)");
+            cmb_ptt_device_->addItem(label, QString::fromStdString(d.uid));
+        }
+    }
+#endif
+    cmb_ptt_device_->setMinimumWidth(160);
+    cmb_ptt_device_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    ptt_lay->addWidget(cmb_ptt_device_);
+
+    /* PTT mic sample rate selector */
+    ptt_lay->addWidget(new QLabel(QStringLiteral("Rate:")));
+    cmb_ptt_sample_rate_ = new QComboBox;
+    cmb_ptt_sample_rate_->addItem(QStringLiteral("22050 Hz"),  22050);
+    cmb_ptt_sample_rate_->addItem(QStringLiteral("44100 Hz"),  44100);
+    cmb_ptt_sample_rate_->addItem(QStringLiteral("48000 Hz"),  48000);
+    cmb_ptt_sample_rate_->addItem(QStringLiteral("88200 Hz"),  88200);
+    cmb_ptt_sample_rate_->addItem(QStringLiteral("96000 Hz"),  96000);
+    cmb_ptt_sample_rate_->setCurrentIndex(2); /* 48000 Hz default — most USB mics */
+    cmb_ptt_sample_rate_->setFixedWidth(88);
+    cmb_ptt_sample_rate_->setToolTip(QStringLiteral("PTT mic capture sample rate\n(must match the mic device's native rate to avoid garbled audio)"));
+    ptt_lay->addWidget(cmb_ptt_sample_rate_);
+
+    /* PTT mic channel selector */
+    ptt_lay->addWidget(new QLabel(QStringLiteral("Ch:")));
+    cmb_ptt_channels_ = new QComboBox;
+    cmb_ptt_channels_->addItem(QStringLiteral("Mono"),   1);
+    cmb_ptt_channels_->addItem(QStringLiteral("Stereo"), 2);
+    cmb_ptt_channels_->setCurrentIndex(0); /* Mono default — most PTT mics */
+    cmb_ptt_channels_->setFixedWidth(70);
+    cmb_ptt_channels_->setToolTip(QStringLiteral("PTT mic channel count"));
+    ptt_lay->addWidget(cmb_ptt_channels_);
+
+    /* Helper lambda — reopens PTT mic stream with current device/SR/Ch selection */
+    auto reopenPttMic = [this]() {
+        if (!g_pipeline) return;
+        QVariant data  = cmb_ptt_device_->currentData();
+        int pa_idx     = data.isValid() ? data.toInt() : -1;
+        int sr         = cmb_ptt_sample_rate_ ? cmb_ptt_sample_rate_->currentData().toInt() : 0;
+        int ch         = cmb_ptt_channels_    ? cmb_ptt_channels_->currentData().toInt()    : 0;
+        QString label  = cmb_ptt_device_->currentText();
+        mc1::log_info("[PTT]", "PTT mic device selected: " + label.toStdString() +
+                      " (PA index=" + std::to_string(pa_idx) +
+                      " sr=" + std::to_string(sr) +
+                      " ch=" + std::to_string(ch) + ")");
+        g_pipeline->set_ptt_mic_device(pa_idx, sr, ch);
+    };
+
+    connect(cmb_ptt_device_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [reopenPttMic](int) { reopenPttMic(); });
+    connect(cmb_ptt_sample_rate_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [reopenPttMic](int) { reopenPttMic(); });
+    connect(cmb_ptt_channels_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [reopenPttMic](int) { reopenPttMic(); });
+
     btn_ptt_ = new QPushButton(QStringLiteral("Push to Talk"));
     btn_ptt_->setCheckable(false);
     btn_ptt_->setStyleSheet(QStringLiteral(
@@ -242,12 +427,28 @@ void MainWindow::setupUi()
         "border: 1px solid #3a4a6c; border-radius: 6px; font-weight: bold; font-size: 11px; }"
         "QPushButton:hover { background: #3a4a6c; border-color: #5a7aac; }"
         "QPushButton:pressed { background: #cc2233; color: white; border-color: #ff3344; }"));
-    btn_ptt_->setToolTip(QStringLiteral("Hold to talk \u2014 ducks main audio and mixes PTT mic (Cmd+T)"));
+    btn_ptt_->setToolTip(QStringLiteral("Hold to talk \u2014 ducks main audio and mixes PTT mic (Ctrl+T)"));
     connect(btn_ptt_, &QPushButton::pressed, this, &MainWindow::onPttPressed);
     connect(btn_ptt_, &QPushButton::released, this, &MainWindow::onPttReleased);
-    rec_lay->addWidget(btn_ptt_);
+    ptt_lay->addWidget(btn_ptt_);
 
-    rec_lay->addStretch();
+    ptt_lay->addSpacing(8);
+    btn_preview_audio_ = new QPushButton(
+        QIcon(QStringLiteral(":/icons/monitor.svg")), QStringLiteral("Preview Audio"));
+    btn_preview_audio_->setIconSize(QSize(16, 16));
+    btn_preview_audio_->setToolTip(QStringLiteral(
+        "Open Preview Audio Studio \u2014 route audio to any output device,\n"
+        "tap encoder slot PCM, detect feedback loops, and scan USB audio interfaces"));
+    btn_preview_audio_->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #1a3a5c; color: #d0e8f8; padding: 6px 14px; "
+        "border: 1px solid #2a5a8c; border-radius: 6px; font-weight: bold; font-size: 11px; }"
+        "QPushButton:hover { background: #2a5a8c; border-color: #4a8acc; }"
+        "QPushButton:checked { background: #1a6a4c; border-color: #2a9a6c; }"));
+    connect(btn_preview_audio_, &QPushButton::clicked, this, &MainWindow::onPreviewAudio);
+    ptt_lay->addWidget(btn_preview_audio_);
+
+    ptt_lay->addStretch();
+    rec_vlay->addLayout(ptt_lay);
     root->addWidget(rec_group);
 
     /* ── Video / Camera Input ── */
@@ -261,11 +462,15 @@ void MainWindow::setupUi()
     vid_lay->addWidget(cmb_camera_);
 
     vid_lay->addSpacing(8);
-    btn_video_preview_ = new QPushButton;
-    btn_video_preview_->setIcon(QIcon(QStringLiteral(":/icons/video-camera.svg")));
-    btn_video_preview_->setIconSize(QSize(20, 20));
+    btn_video_preview_ = new QPushButton(
+        QIcon(QStringLiteral(":/icons/video-camera.svg")),
+        QStringLiteral("Preview Device"));
+    btn_video_preview_->setIconSize(QSize(18, 18));
     btn_video_preview_->setToolTip(QStringLiteral("Open Video Preview"));
-    btn_video_preview_->setFixedSize(32, 32);
+    btn_video_preview_->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #1a3a5c; color: #d0e8f8; padding: 5px 12px; "
+        "border: 1px solid #2a5a8c; border-radius: 4px; }"
+        "QPushButton:hover { background: #2a5a8c; border-color: #4a8acc; }"));
     vid_lay->addWidget(btn_video_preview_);
 
     /* Create frameless popout preview/editor window */
@@ -301,13 +506,17 @@ void MainWindow::setupUi()
             startCameraPreview();
     });
 
-    /* Broadcast Monitor button */
+    /* Live TV Broadcast Studio button */
     vid_lay->addSpacing(4);
-    btn_broadcast_ = new QPushButton;
-    btn_broadcast_->setIcon(QIcon(QStringLiteral(":/icons/monitor.svg")));
-    btn_broadcast_->setIconSize(QSize(20, 20));
-    btn_broadcast_->setToolTip(QStringLiteral("Open Broadcast Monitor (Cmd+Shift+B)"));
-    btn_broadcast_->setFixedSize(32, 32);
+    btn_broadcast_ = new QPushButton(
+        QIcon(QStringLiteral(":/icons/monitor.svg")),
+        QStringLiteral("Live TV Broadcast Studio"));
+    btn_broadcast_->setIconSize(QSize(18, 18));
+    btn_broadcast_->setToolTip(QStringLiteral("Open Live TV Broadcast Studio (Ctrl+Shift+B)"));
+    btn_broadcast_->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #1a3a5c; color: #d0e8f8; padding: 5px 12px; "
+        "border: 1px solid #2a5a8c; border-radius: 4px; }"
+        "QPushButton:hover { background: #2a5a8c; border-color: #4a8acc; }"));
     connect(btn_broadcast_, &QPushButton::clicked, this, &MainWindow::onBroadcastMonitor);
     vid_lay->addWidget(btn_broadcast_);
 
@@ -379,6 +588,12 @@ void MainWindow::setupUi()
                          << "eq_en=" << cfg_copy.dsp_eq_enabled
                          << "eq_mode=" << cfg_copy.dsp_eq_mode;
                 applyDspToSlot(cfg_copy.slot_id, cfg_copy);
+                /* Auto-wake from SLEEP after config change so the slot can be restarted */
+                if (g_pipeline) {
+                    auto st = g_pipeline->slot_stats(cfg_copy.slot_id);
+                    if (st.state == EncoderSlot::State::SLEEP)
+                        g_pipeline->wake_slot(cfg_copy.slot_id);
+                }
                 ProfileManager::save_profile(cfg_copy);
                 model->updateSlot(row, cfg_copy);
                 statusBar()->showMessage(
@@ -421,6 +636,119 @@ void MainWindow::setupUi()
     dsp_rack_ = new DspEffectsRack;
     tab_encoders_->addTab(dsp_rack_,
         QIcon(QStringLiteral(":/icons/dsp.svg")), QStringLiteral("DSP Effects Rack"));
+
+    /* Event Log — 5th tab */
+    {
+        auto *log_wrap = new QWidget;
+        auto *log_lay  = new QVBoxLayout(log_wrap);
+        log_lay->setContentsMargins(4, 4, 4, 4);
+        log_lay->setSpacing(4);
+
+        /* Toolbar row: Clear, Copy All, Select All */
+        auto *log_ctrl = new QHBoxLayout;
+
+        auto *btn_log_clear = new QPushButton(QStringLiteral("Clear"));
+        btn_log_clear->setFixedWidth(55);
+        btn_log_clear->setToolTip(QStringLiteral("Clear the event log"));
+        log_ctrl->addWidget(btn_log_clear);
+
+        auto *btn_log_copy_all = new QPushButton(QStringLiteral("Copy All"));
+        btn_log_copy_all->setFixedWidth(70);
+        btn_log_copy_all->setToolTip(QStringLiteral("Copy all log entries to clipboard"));
+        connect(btn_log_copy_all, &QPushButton::clicked, this, [this]() {
+            QStringList lines;
+            for (int i = 0; i < event_log_list_->count(); ++i)
+                lines << event_log_list_->item(i)->text();
+            QApplication::clipboard()->setText(lines.join(QStringLiteral("\n")));
+            statusBar()->showMessage(
+                QStringLiteral("Copied %1 log entries to clipboard").arg(lines.size()), 2000);
+        });
+        log_ctrl->addWidget(btn_log_copy_all);
+
+        auto *btn_log_sel_all = new QPushButton(QStringLiteral("Select All"));
+        btn_log_sel_all->setFixedWidth(70);
+        btn_log_sel_all->setToolTip(QStringLiteral("Select all log entries"));
+        connect(btn_log_sel_all, &QPushButton::clicked, event_log_list_, &QListWidget::selectAll);
+        log_ctrl->addWidget(btn_log_sel_all);
+
+        log_ctrl->addStretch();
+        auto *lbl_log_hint = new QLabel(QStringLiteral("Right-click for more options · Ctrl+C copies selection"));
+        lbl_log_hint->setStyleSheet(QStringLiteral("color: #556677; font-size: 10px;"));
+        log_ctrl->addWidget(lbl_log_hint);
+
+        log_lay->addLayout(log_ctrl);
+
+        event_log_list_ = new QListWidget;
+        event_log_list_->setWordWrap(true);
+        event_log_list_->setTextElideMode(Qt::ElideNone);
+        event_log_list_->setUniformItemSizes(false);
+        event_log_list_->setFont(QFont(QStringLiteral("Courier New"), 8));
+        event_log_list_->setSelectionMode(QAbstractItemView::ExtendedSelection);
+        event_log_list_->setStyleSheet(QStringLiteral(
+            "QListWidget { background: #0a0f18; color: #c8d8e8; border: 1px solid #1e2e44; }"
+            "QListWidget::item { padding: 1px 4px; border-bottom: 1px solid #111b28; }"
+            "QListWidget::item:selected { background: #1a3050; color: #ffffff; }"));
+        log_lay->addWidget(event_log_list_);
+
+        // Right-click context menu: Copy / Copy All / Select All
+        event_log_list_->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(event_log_list_, &QListWidget::customContextMenuRequested,
+                this, [this](const QPoint &pos) {
+            QMenu ctx_menu(event_log_list_);
+
+            auto *act_copy = ctx_menu.addAction(QStringLiteral("Copy Selected"));
+            act_copy->setShortcut(QKeySequence::Copy);
+            act_copy->setEnabled(!event_log_list_->selectedItems().isEmpty());
+            connect(act_copy, &QAction::triggered, this, [this]() {
+                QStringList lines;
+                for (auto *item : event_log_list_->selectedItems())
+                    lines << item->text();
+                QApplication::clipboard()->setText(lines.join(QStringLiteral("\n")));
+            });
+
+            auto *act_copy_all = ctx_menu.addAction(QStringLiteral("Copy All"));
+            connect(act_copy_all, &QAction::triggered, this, [this]() {
+                QStringList lines;
+                for (int i = 0; i < event_log_list_->count(); ++i)
+                    lines << event_log_list_->item(i)->text();
+                QApplication::clipboard()->setText(lines.join(QStringLiteral("\n")));
+            });
+
+            ctx_menu.addSeparator();
+
+            auto *act_sel_all = ctx_menu.addAction(QStringLiteral("Select All"));
+            act_sel_all->setShortcut(QKeySequence::SelectAll);
+            connect(act_sel_all, &QAction::triggered, event_log_list_,
+                    &QListWidget::selectAll);
+
+            ctx_menu.addSeparator();
+
+            auto *act_clear = ctx_menu.addAction(QStringLiteral("Clear Log"));
+            connect(act_clear, &QAction::triggered, event_log_list_, &QListWidget::clear);
+
+            ctx_menu.exec(event_log_list_->viewport()->mapToGlobal(pos));
+        });
+
+        // Ctrl+A = select all, Ctrl+C = copy selected (keyboard shortcuts)
+        auto *act_kb_copy = new QAction(event_log_list_);
+        act_kb_copy->setShortcut(QKeySequence::Copy);
+        act_kb_copy->setShortcutContext(Qt::WidgetShortcut);
+        connect(act_kb_copy, &QAction::triggered, this, [this]() {
+            QStringList lines;
+            for (auto *item : event_log_list_->selectedItems())
+                lines << item->text();
+            if (!lines.isEmpty())
+                QApplication::clipboard()->setText(lines.join(QStringLiteral("\n")));
+        });
+        event_log_list_->addAction(act_kb_copy);
+
+        connect(btn_log_clear, &QPushButton::clicked, this, [this]() {
+            event_log_list_->clear();
+        });
+
+        tab_encoders_->addTab(log_wrap,
+            QIcon(QStringLiteral(":/icons/log.svg")), QStringLiteral("Event Log"));
+    }
     connect(dsp_rack_, &DspEffectsRack::openEq10,    this, &MainWindow::onEqVisualizer);
     connect(dsp_rack_, &DspEffectsRack::openEq31,     this, &MainWindow::onEqGraphic);
     connect(dsp_rack_, &DspEffectsRack::openSonic,    this, &MainWindow::onSonicEnhancer);
@@ -429,7 +757,7 @@ void MainWindow::setupUi()
     connect(dsp_rack_, &DspEffectsRack::openPttDuck,  this, [this]() {
         QMessageBox::information(this, QStringLiteral("Push-to-Talk Duck"),
             QStringLiteral("PTT Duck settings are configured via the main window PTT button.\n\n"
-                           "Use the Push-to-Talk button (Cmd+T) to activate ducking.\n"
+                           "Use the Push-to-Talk button (Ctrl+T) to activate ducking.\n"
                            "When PTT is active, main audio is ducked to allow talkover."));
     });
     connect(dsp_rack_, &DspEffectsRack::dspToggleChanged, this, &MainWindow::saveAllEncoderProfiles);
@@ -449,6 +777,8 @@ void MainWindow::setupUi()
             case 0: encoder_model_ = model_radio_;   tbl_encoders_ = tbl_radio_;   break;
             case 1: encoder_model_ = model_podcast_; tbl_encoders_ = tbl_podcast_; break;
             case 2: encoder_model_ = model_video_;   tbl_encoders_ = tbl_video_;   break;
+            // tabs 3 (DSP Rack) and 4 (Event Log) don't change encoder_model_
+            default: break;
         }
     });
 
@@ -484,6 +814,13 @@ void MainWindow::createActions()
     act_quit_->setShortcut(QKeySequence::Quit);
     connect(act_quit_, &QAction::triggered, qApp, &QApplication::quit);
 
+    /* Save all settings and profiles on any quit path (tray menu, Cmd+Q, etc.)
+     * closeEvent handles the window-close path; aboutToQuit covers the rest. */
+    connect(qApp, &QApplication::aboutToQuit, this, [this]() {
+        saveSettings();
+        saveAllEncoderProfiles();
+    });
+
     act_connect_ = new QAction(QIcon(QStringLiteral(":/icons/connect.svg")),
                                QStringLiteral("&Connect"), this);
     act_connect_->setShortcut(QKeySequence(QStringLiteral("Ctrl+Return")));
@@ -497,6 +834,30 @@ void MainWindow::createActions()
     act_about_ = new QAction(QIcon(QStringLiteral(":/icons/about.svg")),
                              QStringLiteral("About Mcaster1"), this);
     connect(act_about_, &QAction::triggered, this, &MainWindow::showAbout);
+
+    /* Help menu — external links */
+    act_website_ = new QAction(QStringLiteral("Encoder Product Page"), this);
+    connect(act_website_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/encoder.php")));
+    });
+
+    act_dnas_ = new QAction(QStringLiteral("Mcaster1 DNAS Server"), this);
+    connect(act_dnas_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/mcaster1_dnas.php")));
+    });
+
+    act_amp_ = new QAction(QStringLiteral("Mcaster1AMP Player"), this);
+    connect(act_amp_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/mcaster1amp.php")));
+    });
+
+    act_docs_ = new QAction(QStringLiteral("Documentation"), this);
+    act_docs_->setShortcut(QKeySequence::HelpContents);
+    connect(act_docs_, &QAction::triggered, this, [this]() {
+        auto *hb = new HelpBrowser(this);
+        hb->setAttribute(Qt::WA_DeleteOnClose);
+        hb->show();
+    });
 
     act_theme_ = new QAction(QIcon(QStringLiteral(":/icons/theme.svg")),
                              QStringLiteral("Toggle Branded Theme"), this);
@@ -601,6 +962,12 @@ void MainWindow::createMenus()
     view_menu->addAction(act_theme_);
 
     auto *help_menu = menuBar()->addMenu(QStringLiteral("&Help"));
+    help_menu->addAction(act_docs_);
+    help_menu->addSeparator();
+    help_menu->addAction(act_website_);
+    help_menu->addAction(act_dnas_);
+    help_menu->addAction(act_amp_);
+    help_menu->addSeparator();
     help_menu->addAction(act_about_);
 }
 
@@ -624,6 +991,31 @@ void MainWindow::createTrayIcon()
 
 /* ───── Slots ───── */
 
+int MainWindow::selectedGlobalDeviceIndex() const
+{
+    if (!cmb_device_ || cmb_device_->currentIndex() < 0)
+        return -1;
+    QVariant d = cmb_device_->currentData();
+    return d.isValid() ? d.toInt() : -1;
+}
+
+// Inject the correct audio device index into a config before starting.
+// Priority: per-encoder device override > global device selection > PortAudio default (-1).
+static void injectGlobalDevice(EncoderConfig &cfg, int global_dev)
+{
+    // Win-Qt: force DEVICE input type — this is never a playlist encoder
+    cfg.input_type = mc1::EncoderConfig::InputType::DEVICE;
+
+    // Per-encoder device override takes highest priority
+    if (cfg.per_encoder_device_index >= 0) {
+        cfg.device_index = cfg.per_encoder_device_index;
+        return;
+    }
+    // Only override device_index if the slot is still at default (-1 = unset)
+    if (cfg.device_index == -1 && global_dev != -1)
+        cfg.device_index = global_dev;
+}
+
 void MainWindow::onConnect()
 {
     if (!g_pipeline) return;
@@ -635,12 +1027,19 @@ void MainWindow::onConnect()
     int row = idx.row();
     EncoderConfig cfg = encoder_model_->configAt(row);
 
-    /* Check if slot exists in pipeline */
+    // Inject global device before adding/starting the slot
+    injectGlobalDevice(cfg, selectedGlobalDeviceIndex());
+
+    /* Check if slot exists in pipeline — add or update config */
     EncoderConfig existing;
     if (!g_pipeline->get_slot_config(cfg.slot_id, existing)) {
-        /* Add it to the pipeline first */
         g_pipeline->add_slot(cfg);
+    } else {
+        g_pipeline->update_slot_config(cfg.slot_id, cfg);
     }
+
+    // Sync the updated config back into the model so the UI stays consistent
+    encoder_model_->updateSlot(row, cfg);
 
     /* Toggle: if running, stop; if sleeping, wake; otherwise start */
     auto stats = g_pipeline->slot_stats(cfg.slot_id);
@@ -656,6 +1055,11 @@ void MainWindow::onConnect()
         statusBar()->showMessage(
             QString("Waking slot %1").arg(cfg.slot_id), 3000);
     } else {
+        mc1::log_info("[System]",
+            "Starting encoder slot " + std::to_string(cfg.slot_id) +
+            " — device=" + std::to_string(cfg.device_index) +
+            " → " + cfg.stream_target.host + ":" + std::to_string(cfg.stream_target.port) +
+            cfg.stream_target.mount);
         g_pipeline->start_slot(cfg.slot_id);
         statusBar()->showMessage(
             QString("Starting slot %1 — connecting to %2:%3")
@@ -720,10 +1124,22 @@ void MainWindow::onEditMetadata()
 {
     auto *dlg = new EditMetadataDialog(metadata_cfg_, this);
     connect(dlg, &QDialog::accepted, this, [this]() {
-        /* Update the metadata display in the main window */
-        if (!metadata_cfg_.manual_text.empty()) {
-            lbl_metadata_->setText(QString::fromStdString(metadata_cfg_.manual_text));
+        if (metadata_cfg_.source == MetadataConfig::Source::DISABLED ||
+            metadata_cfg_.source == MetadataConfig::Source::MANUAL)
+        {
+            /* Manual text: push to all live slots immediately */
+            if (!metadata_cfg_.manual_text.empty()) {
+                lbl_metadata_->setText(QString::fromStdString(metadata_cfg_.manual_text));
+                if (g_pipeline) {
+                    for (const auto &st : g_pipeline->all_stats())
+                        g_pipeline->push_metadata(st.slot_id,
+                                                   metadata_cfg_.manual_text, "");
+                }
+            }
         }
+
+        /* Restart file/URL poller based on new config */
+        startMetadataPoller();
         statusBar()->showMessage(QStringLiteral("Metadata updated"), 3000);
     });
     dlg->setAttribute(Qt::WA_DeleteOnClose);
@@ -999,10 +1415,16 @@ void MainWindow::onDbxVoice()
 void MainWindow::onPttPressed()
 {
     if (!g_pipeline) return;
-    g_pipeline->for_each_slot([](int /*id*/, EncoderSlot &slot) {
-        if (!slot.has_dsp_chain()) return;
+    int slots_with_dsp = 0;
+    g_pipeline->for_each_slot([&slots_with_dsp](int id, EncoderSlot &slot) {
+        if (!slot.has_dsp_chain()) {
+            mc1::log_warn("[PTT]", "Slot " + std::to_string(id) + " has no DSP chain (not streaming) — PTT skipped for this slot");
+            return;
+        }
         slot.dsp_chain().ptt_duck().set_ptt_active(true);
+        ++slots_with_dsp;
     });
+    mc1::log_info("[PTT]", "PTT PRESSED — activated on " + std::to_string(slots_with_dsp) + " streaming slot(s)");
 
     /* Visual duck: drop volume slider to 30% to show ducking is active */
     {
@@ -1022,10 +1444,11 @@ void MainWindow::onPttPressed()
 void MainWindow::onPttReleased()
 {
     if (!g_pipeline) return;
-    g_pipeline->for_each_slot([](int /*id*/, EncoderSlot &slot) {
+    g_pipeline->for_each_slot([](int id, EncoderSlot &slot) {
         if (!slot.has_dsp_chain()) return;
         slot.dsp_chain().ptt_duck().set_ptt_active(false);
     });
+    mc1::log_info("[PTT]", "PTT RELEASED");
 
     /* Restore volume to 100% */
     {
@@ -1042,6 +1465,39 @@ void MainWindow::onPttReleased()
         "QPushButton:hover { background: #3a4a6c; border-color: #5a7aac; }"
         "QPushButton:pressed { background: #cc2233; color: white; border-color: #ff3344; }"));
     statusBar()->clearMessage();
+}
+
+void MainWindow::onPreviewAudio()
+{
+    if (!preview_studio_) {
+        preview_studio_ = new PreviewAudioStudio(this);
+        /* Populate slot list for eavesdrop + stream monitor */
+        if (g_pipeline) {
+            std::vector<PreviewAudioStudio::SlotInfo> slot_entries;
+            auto all_st = g_pipeline->all_stats();
+            for (auto &st : all_st) {
+                EncoderConfig cfg;
+                if (!g_pipeline->get_slot_config(st.slot_id, cfg)) continue;
+                const auto &tgt = cfg.stream_target;
+                PreviewAudioStudio::SlotInfo si;
+                si.slot_id      = st.slot_id;
+                si.name         = QString::fromStdString(cfg.name);
+                si.listen_url   = QString("http://%1:%2%3")
+                                      .arg(QString::fromStdString(tgt.host))
+                                      .arg(tgt.port)
+                                      .arg(QString::fromStdString(tgt.mount));
+                si.stats_url    = QString("http://%1:%2/status-json.xsl")
+                                      .arg(QString::fromStdString(tgt.host))
+                                      .arg(tgt.port);
+                si.bitrate_kbps = tgt.bitrate;
+                slot_entries.push_back(si);
+            }
+            preview_studio_->setSlotList(slot_entries);
+        }
+    }
+    preview_studio_->show();
+    preview_studio_->raise();
+    preview_studio_->activateWindow();
 }
 
 void MainWindow::onEncoderContextMenu(const QPoint &pos)
@@ -1081,6 +1537,12 @@ void MainWindow::onEncoderContextMenu(const QPoint &pos)
                          << "eq_en=" << cfg_copy.dsp_eq_enabled;
                 /* Apply DSP settings to the specific slot's pipeline */
                 applyDspToSlot(cfg_copy.slot_id, cfg_copy);
+                /* Auto-wake from SLEEP after config change so the slot can be restarted */
+                if (g_pipeline) {
+                    auto st = g_pipeline->slot_stats(cfg_copy.slot_id);
+                    if (st.state == EncoderSlot::State::SLEEP)
+                        g_pipeline->wake_slot(cfg_copy.slot_id);
+                }
                 ProfileManager::save_profile(cfg_copy);
                 ctx_model->updateSlot(row, cfg_copy);
                 statusBar()->showMessage(
@@ -1150,8 +1612,17 @@ void MainWindow::onEncoderContextMenu(const QPoint &pos)
             auto stats = g_pipeline->slot_stats(slot_id);
             if (stats.state == EncoderSlot::State::IDLE ||
                 stats.state == EncoderSlot::State::ERROR) {
-                ctx.addAction(QStringLiteral("Start"), this, [slot_id]() {
-                    if (g_pipeline) g_pipeline->start_slot(slot_id);
+                ctx.addAction(QStringLiteral("Start"), this, [this, ctx_model, row, slot_id]() {
+                    if (!g_pipeline) return;
+                    EncoderConfig c = ctx_model->configAt(row);
+                    injectGlobalDevice(c, selectedGlobalDeviceIndex());
+                    EncoderConfig existing;
+                    if (!g_pipeline->get_slot_config(slot_id, existing))
+                        g_pipeline->add_slot(c);
+                    else
+                        g_pipeline->update_slot_config(slot_id, c);
+                    ctx_model->updateSlot(row, c);
+                    g_pipeline->start_slot(slot_id);
                 });
             }
             if (stats.state == EncoderSlot::State::LIVE ||
@@ -1371,6 +1842,21 @@ void MainWindow::populateDeviceCombo()
 {
     cmb_device_->clear();
 
+    /* Log all available audio devices for diagnostics */
+    {
+        auto pa_devs = PortAudioSource::enumerate_devices();
+        mc1::log_info("[Audio]", "Enumerating audio devices (" +
+                      std::to_string(pa_devs.size()) + " PortAudio input devices found):");
+        for (const auto &d : pa_devs) {
+            char buf[256];
+            snprintf(buf, sizeof(buf), "  PA[%d] %s  %.0f Hz  %dch input%s",
+                     d.index, d.name.c_str(), d.default_sample_rate,
+                     d.max_input_channels,
+                     d.max_input_channels > 0 ? "" : " (output only)");
+            mc1::log_info("[Audio]", buf);
+        }
+    }
+
     /* Restore previously selected device UID from QSettings */
     QSettings s;
     QString saved_uid = s.value(QStringLiteral("audio/device_uid")).toString();
@@ -1386,7 +1872,11 @@ void MainWindow::populateDeviceCombo()
             item->setSelectable(false);
         }
         cmb_device_->addItem(
+#ifdef _WIN32
+            QStringLiteral("  System Audio (WASAPI Loopback)"),
+#else
             QStringLiteral("  System Audio (ScreenCaptureKit)"),
+#endif
             QVariant(-2));
         if (saved_uid == QStringLiteral("__system_audio__"))
             select_index = cmb_device_->count() - 1;
@@ -1411,11 +1901,15 @@ void MainWindow::populateDeviceCombo()
         for (const auto &d : ca_devices) {
             if (d.input_channels <= 0) continue;
             QString label = QStringLiteral("  ") + QString::fromStdString(d.name);
-            label += QStringLiteral(" [%1ch, %2Hz]")
-                .arg(d.input_channels)
-                .arg(static_cast<int>(d.sample_rate));
             if (d.is_default_input) label += QStringLiteral(" (Default)");
+#ifdef _WIN32
+            // On Windows, store the integer PortAudio device index so
+            // selectedGlobalDeviceIndex() and startLevelMonitor() can use it directly.
+            // d.device_id is the PA device index in the Windows enumerate_coreaudio_devices() wrapper.
+            cmb_device_->addItem(label, QVariant(static_cast<int>(d.device_id)));
+#else
             cmb_device_->addItem(label, QString::fromStdString(d.uid));
+#endif
             if (saved_uid == QString::fromStdString(d.uid))
                 select_index = cmb_device_->count() - 1;
         }
@@ -1437,11 +1931,12 @@ void MainWindow::populateDeviceCombo()
         for (const auto &d : ca_devices) {
             if (d.output_channels <= 0 || d.input_channels > 0) continue;
             QString label = QStringLiteral("  ") + QString::fromStdString(d.name);
-            label += QStringLiteral(" [%1ch, %2Hz]")
-                .arg(d.output_channels)
-                .arg(static_cast<int>(d.sample_rate));
             if (d.is_default_output) label += QStringLiteral(" (Default)");
+#ifdef _WIN32
+            cmb_device_->addItem(label, QVariant(static_cast<int>(d.device_id)));
+#else
             cmb_device_->addItem(label, QString::fromStdString(d.uid));
+#endif
             if (saved_uid == QString::fromStdString(d.uid))
                 select_index = cmb_device_->count() - 1;
         }
@@ -1463,6 +1958,64 @@ void MainWindow::populateDeviceCombo()
                 break;
             }
         }
+    }
+}
+
+void MainWindow::updateGlobalDeviceFormats()
+{
+    if (!cmb_global_sample_rate_ || !cmb_global_channels_ || !cmb_device_) return;
+    QVariant data = cmb_device_->currentData();
+    if (!data.isValid()) return;
+
+    int pa_idx = data.toInt();
+    if (pa_idx < 0) return; /* System Audio or header row — keep defaults */
+
+    /* Find device info for the selected PA index */
+    auto pa_devs = PortAudioSource::enumerate_devices();
+    int  max_ch  = 2;
+    double def_sr = 44100.0;
+    for (const auto &d : pa_devs) {
+        if (d.index == pa_idx) {
+            max_ch = std::max(d.max_input_channels, 1);
+            def_sr = d.default_sample_rate;
+            break;
+        }
+    }
+
+    /* Update sample rate combo: keep items, just move selection to device default */
+    {
+        QSignalBlocker blk(cmb_global_sample_rate_);
+        int target = static_cast<int>(def_sr);
+        int best   = -1;
+        /* Exact match first */
+        for (int i = 0; i < cmb_global_sample_rate_->count(); ++i) {
+            if (cmb_global_sample_rate_->itemData(i).toInt() == target) { best = i; break; }
+        }
+        /* Nearest match if exact not found */
+        if (best < 0) {
+            int nearest_diff = INT_MAX;
+            for (int i = 0; i < cmb_global_sample_rate_->count(); ++i) {
+                int diff = std::abs(cmb_global_sample_rate_->itemData(i).toInt() - target);
+                if (diff < nearest_diff) { nearest_diff = diff; best = i; }
+            }
+        }
+        if (best >= 0) cmb_global_sample_rate_->setCurrentIndex(best);
+    }
+
+    /* Update channels combo based on device capability */
+    {
+        QSignalBlocker blk(cmb_global_channels_);
+        int prev_ch = cmb_global_channels_->currentData().toInt();
+        cmb_global_channels_->clear();
+        cmb_global_channels_->addItem(QStringLiteral("Mono"), 1);
+        if (max_ch >= 2)
+            cmb_global_channels_->addItem(QStringLiteral("Stereo"), 2);
+        /* Restore previous channel count if still available */
+        int restore = -1;
+        for (int i = 0; i < cmb_global_channels_->count(); ++i) {
+            if (cmb_global_channels_->itemData(i).toInt() == prev_ch) { restore = i; break; }
+        }
+        cmb_global_channels_->setCurrentIndex(restore >= 0 ? restore : cmb_global_channels_->count() - 1);
     }
 }
 
@@ -1542,7 +2095,50 @@ void MainWindow::startLevelMonitor()
         return;
     }
 
-    /* ── CoreAudio device selected by UID ── */
+    /* ── Direct PA device index (Windows) ── */
+#ifdef _WIN32
+    {
+        int pa_idx = data.toInt();  // already integer on Windows
+        /* Use user-selected rate/channels from combos; fall back to device defaults */
+        int sr = cmb_global_sample_rate_ ? cmb_global_sample_rate_->currentData().toInt() : 44100;
+        int ch = cmb_global_channels_    ? cmb_global_channels_->currentData().toInt()    : 2;
+        QString dev_name;
+        auto pa_devs = PortAudioSource::enumerate_devices();
+        for (const auto &d : pa_devs) {
+            if (d.index == pa_idx) {
+                dev_name = QString::fromStdString(d.name);
+                /* Clamp channels to device capability */
+                ch = std::min(ch, std::max(d.max_input_channels, 1));
+                break;
+            }
+        }
+        if (dev_name.isEmpty()) {
+            /* Output-only or not found — check via CoreAudio wrapper */
+            auto ca_devs = enumerate_coreaudio_devices();
+            for (const auto &d : ca_devs) {
+                if (static_cast<int>(d.device_id) == pa_idx) {
+                    dev_name = QString::fromStdString(d.name);
+                    if (d.input_channels <= 0) {
+                        statusBar()->showMessage(
+                            QString("Output device \"%1\" selected — no input channels to meter").arg(dev_name), 4000);
+                        return;
+                    }
+                    ch = std::min(ch, std::max(d.input_channels, 1));
+                    break;
+                }
+            }
+        }
+        fprintf(stderr, "[LevelMon] PA device %d: \"%s\" (%dch, %dHz)\n",
+                pa_idx, dev_name.toStdString().c_str(), ch, sr);
+        level_monitor_.start(pa_idx, sr, ch);
+        meter_source_ = MeterSource::INPUT_DEVICE;
+        statusBar()->showMessage(
+            QString("Metering: %1 (%2ch, %3Hz)").arg(dev_name).arg(ch).arg(sr), 3000);
+        return;
+    }
+#endif
+
+    /* ── CoreAudio device selected by UID (macOS) ── */
     QString uid = data.toString();
     QString ca_name;
     int ca_input_channels = 0;
@@ -1567,31 +2163,18 @@ void MainWindow::startLevelMonitor()
         return;
     }
 
-    /* Find matching PortAudio device by name (both APIs enumerate CoreAudio) */
+    /* Find matching PortAudio device by name */
     int pa_index = -1;
     auto pa_devices = PortAudioSource::enumerate_devices();
 
-    /* Log available PA devices for debugging */
-    fprintf(stderr, "[LevelMon] Looking for CoreAudio device: \"%s\" (uid=%s)\n",
-            ca_name.toStdString().c_str(), uid.toStdString().c_str());
-    for (const auto &d : pa_devices) {
-        fprintf(stderr, "[LevelMon]   PA device %d: \"%s\" (%dch)%s\n",
-                d.index, d.name.c_str(), d.max_input_channels,
-                d.is_default_input ? " [DEFAULT]" : "");
-    }
-
-    /* Exact name match first */
     for (const auto &d : pa_devices) {
         if (!ca_name.isEmpty() &&
             QString::fromStdString(d.name) == ca_name) {
             pa_index = d.index;
             ca_channels = std::min(ca_channels, d.max_input_channels);
-            fprintf(stderr, "[LevelMon] Exact match → PA device %d\n", pa_index);
             break;
         }
     }
-
-    /* Substring match fallback */
     if (pa_index < 0 && !ca_name.isEmpty()) {
         for (const auto &d : pa_devices) {
             QString pa_name = QString::fromStdString(d.name);
@@ -1599,14 +2182,9 @@ void MainWindow::startLevelMonitor()
                 ca_name.contains(pa_name, Qt::CaseInsensitive)) {
                 pa_index = d.index;
                 ca_channels = std::min(ca_channels, d.max_input_channels);
-                fprintf(stderr, "[LevelMon] Substring match → PA device %d\n", pa_index);
                 break;
             }
         }
-    }
-
-    if (pa_index < 0) {
-        fprintf(stderr, "[LevelMon] No PA match found, using default input\n");
     }
 
     level_monitor_.start(pa_index, ca_sample_rate, ca_channels);
@@ -1622,19 +2200,114 @@ void MainWindow::startLevelMonitor()
 
 void MainWindow::onBroadcastMonitor()
 {
-    if (!broadcast_win_) return;
-    if (broadcast_win_->isVisible()) {
-        broadcast_win_->raise();
-        broadcast_win_->activateWindow();
-    } else {
-        /* Position to the right of the main window */
-        QPoint pos = geometry().topRight() + QPoint(12, 0);
-        broadcast_win_->move(pos);
-        broadcast_win_->show();
-        broadcast_win_->raise();
-        /* Start camera if not already running */
-        if (!camera_source_) startCameraPreview();
+    /* Open the Live Video Studio dialog instead of the old broadcast monitor */
+    if (live_studio_) {
+        live_studio_->raise();
+        live_studio_->activateWindow();
+        return;
     }
+
+    /* Build a default EncoderConfig for the studio (use first TV/Video slot if any) */
+    EncoderConfig studio_cfg;
+    studio_cfg.encoder_type = EncoderConfig::EncoderType::TV_VIDEO;
+    studio_cfg.video.enabled = true;
+
+    /* Collect all TV/Video encoder configs to pre-populate stream targets */
+    std::vector<EncoderConfig> tv_encoders;
+    if (model_video_) {
+        for (int i = 0; i < model_video_->configCount(); ++i) {
+            if (model_video_->hasConfig(i))
+                tv_encoders.push_back(model_video_->configAt(i));
+        }
+    }
+
+    live_studio_ = new LiveVideoStudioDialog(studio_cfg, tv_encoders, this);
+    live_studio_->setAttribute(Qt::WA_DeleteOnClose);
+    connect(live_studio_, &QObject::destroyed, this, [this]() {
+        live_studio_ = nullptr;
+    });
+
+    /* Wire up go-live signal to video pipeline */
+    connect(live_studio_, &LiveVideoStudioDialog::goLiveRequested,
+            this, [this](const mc1::VideoConfig &vcfg,
+                         const mc1::StreamTargetEntry &tgt) {
+        if (!video_pipeline_)
+            video_pipeline_ = std::make_unique<mc1::VideoStreamPipeline>();
+
+        /* Get the program video source from the studio (not MainWindow's camera) */
+        mc1::VideoSource *src = live_studio_ ? live_studio_->programSource() : nullptr;
+        if (!src) {
+            statusBar()->showMessage(
+                QStringLiteral("Live Video Studio: No program source selected"), 3000);
+            return;
+        }
+        if (video_pipeline_->is_running()) {
+            statusBar()->showMessage(
+                QStringLiteral("Live Video Studio: Pipeline already running"), 3000);
+            return;
+        }
+
+        mc1::VideoStreamConfig sc;
+        sc.video = vcfg;
+        sc.stream_key = tgt.stream_key;
+        sc.hls_output_dir = tgt.output_dir;
+        sc.hls_segment_duration = tgt.hls_segment_duration;
+        sc.hls_max_segments = tgt.hls_max_segments;
+        if (tgt.server_type == "HLS (Local)") {
+            sc.transport = mc1::VideoStreamConfig::Transport::HLS;
+        } else if (tgt.server_type == "YouTube Live" ||
+                   tgt.server_type == "Twitch" ||
+                   tgt.server_type == "RTMP") {
+            sc.transport = mc1::VideoStreamConfig::Transport::RTMP;
+            sc.target.host = tgt.host;
+            sc.target.port = tgt.port;
+            sc.target.mount = tgt.mount;
+        } else {
+            sc.target.host = tgt.host;
+            sc.target.port = tgt.port;
+            sc.target.mount = tgt.mount;
+            sc.target.password = tgt.password;
+            if (vcfg.video_codec == mc1::VideoConfig::VideoCodec::VP8 ||
+                vcfg.video_codec == mc1::VideoConfig::VideoCodec::VP9)
+                sc.transport = mc1::VideoStreamConfig::Transport::WEBM_ICECAST;
+            else
+                sc.transport = mc1::VideoStreamConfig::Transport::FLV_ICECAST;
+        }
+        bool ok = video_pipeline_->start(sc, src,
+                                          &effects_chain_, &overlay_renderer_,
+                                          live_studio_->transitionEngine());
+        if (ok) {
+            /* Give the studio a pointer to the pipeline so it forwards camera frames */
+            if (live_studio_) {
+                live_studio_->setVideoPipeline(video_pipeline_.get());
+                live_studio_->confirmLive();
+            }
+
+            statusBar()->showMessage(QStringLiteral("Live Video Studio: LIVE ON-AIR"), 5000);
+
+            /* System tray notification */
+            if (tray_icon_)
+                tray_icon_->showMessage(
+                    QStringLiteral("\xF0\x9F\x94\xB4 LIVE ON-AIR"),
+                    QStringLiteral("Video stream is now broadcasting live!"),
+                    QSystemTrayIcon::Critical, 8000);
+        } else {
+            statusBar()->showMessage(
+                QStringLiteral("Live Video Studio: Failed to start pipeline"), 5000);
+            /* Re-enable the GO LIVE button */
+            if (live_studio_) live_studio_->confirmStopped();
+        }
+    });
+
+    connect(live_studio_, &LiveVideoStudioDialog::stopRequested,
+            this, [this]() {
+        if (video_pipeline_) video_pipeline_->stop();
+        if (live_studio_) live_studio_->confirmStopped();
+        statusBar()->showMessage(QStringLiteral("Live Video Studio: STOPPED"), 3000);
+    });
+
+    live_studio_->show();
+    live_studio_->raise();
 }
 
 void MainWindow::onEffectsPanel()
@@ -1928,13 +2601,25 @@ void MainWindow::saveSettings()
     s.setValue(QStringLiteral("prefs/theme"),
               app->theme() == App::Theme::Native ? 0 : 1);
 
-    /* Save selected audio device UID */
+    /* Save selected audio device — persist as device name/UID so it survives restarts */
     if (cmb_device_ && cmb_device_->currentIndex() >= 0) {
         QVariant data = cmb_device_->currentData();
         if (data.typeId() == QMetaType::Int && data.toInt() == -2) {
             s.setValue(QStringLiteral("audio/device_uid"),
                        QStringLiteral("__system_audio__"));
             global_cfg_.audio_device_uid = "__system_audio__";
+        } else if (data.typeId() == QMetaType::Int) {
+            /* Windows: data is integer PA device index — look up device name for persistence */
+            int pa_idx = data.toInt();
+            auto ca_devs = enumerate_coreaudio_devices();
+            for (const auto &d : ca_devs) {
+                if (static_cast<int>(d.device_id) == pa_idx) {
+                    QString uid = QString::fromStdString(d.uid);
+                    s.setValue(QStringLiteral("audio/device_uid"), uid);
+                    global_cfg_.audio_device_uid = d.uid;
+                    break;
+                }
+            }
         } else if (data.typeId() == QMetaType::QString) {
             s.setValue(QStringLiteral("audio/device_uid"), data.toString());
             global_cfg_.audio_device_uid = data.toString().toStdString();
@@ -1950,6 +2635,30 @@ void MainWindow::saveSettings()
     global_cfg_.window_maximized = isMaximized();
     global_cfg_.theme = (app->theme() == App::Theme::Native) ? 0 : 1;
 
+    /* Persist global metadata settings */
+    global_cfg_.global_metadata = metadata_cfg_;
+
+    /* Persist PTT mic combo selections */
+    if (cmb_ptt_device_) {
+        QVariant ptt_data = cmb_ptt_device_->currentData();
+        int ptt_pa = ptt_data.isValid() ? ptt_data.toInt() : -1;
+        if (ptt_pa >= 0) {
+            auto devs = PortAudioSource::enumerate_devices();
+            for (const auto &d : devs) {
+                if (d.index == ptt_pa) {
+                    global_cfg_.ptt_mic_device_name = d.name;
+                    break;
+                }
+            }
+        } else {
+            global_cfg_.ptt_mic_device_name = "";
+        }
+    }
+    if (cmb_ptt_sample_rate_)
+        global_cfg_.ptt_mic_sample_rate = cmb_ptt_sample_rate_->currentData().toInt();
+    if (cmb_ptt_channels_)
+        global_cfg_.ptt_mic_channels = cmb_ptt_channels_->currentData().toInt();
+
     GlobalConfigManager::save_global(global_cfg_);
     GlobalConfigManager::save_dsp_defaults(dsp_defaults_);
 }
@@ -1959,6 +2668,42 @@ void MainWindow::restoreSettings()
     /* Phase M11: Load global config + DSP rack defaults from YAML */
     global_cfg_   = GlobalConfigManager::load_global();
     dsp_defaults_ = GlobalConfigManager::load_dsp_defaults();
+
+    /* Restore global metadata config */
+    metadata_cfg_ = global_cfg_.global_metadata;
+
+    /* Restore PTT mic combo selections */
+    if (cmb_ptt_sample_rate_ && global_cfg_.ptt_mic_sample_rate > 0) {
+        for (int i = 0; i < cmb_ptt_sample_rate_->count(); ++i) {
+            if (cmb_ptt_sample_rate_->itemData(i).toInt() == global_cfg_.ptt_mic_sample_rate) {
+                cmb_ptt_sample_rate_->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    if (cmb_ptt_channels_ && global_cfg_.ptt_mic_channels > 0) {
+        for (int i = 0; i < cmb_ptt_channels_->count(); ++i) {
+            if (cmb_ptt_channels_->itemData(i).toInt() == global_cfg_.ptt_mic_channels) {
+                cmb_ptt_channels_->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    if (cmb_ptt_device_ && !global_cfg_.ptt_mic_device_name.empty()) {
+        auto devs = PortAudioSource::enumerate_devices();
+        for (const auto &d : devs) {
+            if (d.name == global_cfg_.ptt_mic_device_name) {
+                for (int i = 0; i < cmb_ptt_device_->count(); ++i) {
+                    if (cmb_ptt_device_->itemData(i).toInt() == d.index) {
+                        QSignalBlocker blk(cmb_ptt_device_);
+                        cmb_ptt_device_->setCurrentIndex(i);
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
 
     fprintf(stderr, "[M11.5] restoreSettings: loaded global config + DSP defaults from YAML\n");
     fprintf(stderr, "[M11.5]   AGC: enabled=%d threshold=%.1f ratio=%.1f\n",
@@ -2156,6 +2901,78 @@ void MainWindow::loadSavedProfiles()
         statusBar()->showMessage(
             QString("Loaded %1 encoder profile%2")
                 .arg(loaded).arg(loaded == 1 ? "" : "s"), 5000);
+}
+
+// ---------------------------------------------------------------------------
+// Metadata file poller — reads nowplaying.txt and pushes changes to slots
+// ---------------------------------------------------------------------------
+void MainWindow::startMetadataPoller()
+{
+    if (!meta_poller_timer_) {
+        meta_poller_timer_ = new QTimer(this);
+        connect(meta_poller_timer_, &QTimer::timeout,
+                this, &MainWindow::onMetadataPollTick);
+    }
+    meta_poller_timer_->stop();
+
+    /* Start if global source is FILE, or always run so per-encoder slots
+     * with their own file configs are also polled. Use 2 s minimum interval. */
+    int interval_ms = std::max(metadata_cfg_.update_interval_sec, 2) * 1000;
+    meta_poller_timer_->start(interval_ms);
+}
+
+void MainWindow::stopMetadataPoller()
+{
+    if (meta_poller_timer_) meta_poller_timer_->stop();
+}
+
+void MainWindow::onMetadataPollTick()
+{
+    /* --- Global file polling: push to ALL slots ---- */
+    if (metadata_cfg_.source == MetadataConfig::Source::FILE &&
+        !metadata_cfg_.meta_file.empty())
+    {
+        QFile f(QString::fromStdString(metadata_cfg_.meta_file));
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = QString::fromUtf8(f.readAll()).trimmed();
+            f.close();
+            if (!content.isEmpty() && content != last_global_meta_) {
+                last_global_meta_ = content;
+                lbl_metadata_->setText(content);
+                if (g_pipeline) {
+                    for (const auto &st : g_pipeline->all_stats())
+                        g_pipeline->push_metadata(st.slot_id,
+                                                   content.toStdString(), "");
+                }
+                statusBar()->showMessage(
+                    QStringLiteral("Now Playing updated from file"), 2000);
+            }
+        }
+    }
+
+    /* --- Per-encoder file polling: push only to that slot --- */
+    if (!g_pipeline) return;
+    for (const auto &st : g_pipeline->all_stats()) {
+        mc1::EncoderConfig ecfg;
+        if (!g_pipeline->get_slot_config(st.slot_id, ecfg)) continue;
+        if (ecfg.use_global_metadata) continue;
+        if (ecfg.per_encoder_metadata.source != MetadataConfig::Source::FILE) continue;
+        if (ecfg.per_encoder_metadata.meta_file.empty()) continue;
+
+        QFile f(QString::fromStdString(ecfg.per_encoder_metadata.meta_file));
+        if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QString content = QString::fromUtf8(f.readAll()).trimmed();
+            f.close();
+            if (!content.isEmpty()) {
+                auto it = last_slot_meta_.find(st.slot_id);
+                if (it == last_slot_meta_.end() || it.value() != content) {
+                    last_slot_meta_[st.slot_id] = content;
+                    g_pipeline->push_metadata(st.slot_id,
+                                              content.toStdString(), "");
+                }
+            }
+        }
+    }
 }
 
 } // namespace mc1

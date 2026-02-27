@@ -70,6 +70,11 @@ public:
     void  set_master_volume(float v);
     float master_volume() const { return master_volume_; }
 
+    /* PTT mic capture — starts/stops an independent PortAudio stream for the
+     * selected PTT mic device.  pa_device_index == -1 stops any running mic.
+     * sr_override / ch_override: 0 = auto-detect from device native settings. */
+    void set_ptt_mic_device(int pa_device_index, int sr_override = 0, int ch_override = 0);
+
     /* Phase M5: per-slot DNAS stats polling */
     void start_dnas_poller(int interval_sec = 15);
     void stop_dnas_poller();
@@ -90,6 +95,9 @@ private:
     float master_volume_ = 1.0f;
 
     std::unique_ptr<DnasSlotPoller> dnas_poller_;
+
+    /* PTT mic capture source (independent of encoder slots) */
+    std::unique_ptr<PortAudioSource> ptt_mic_src_;
 
     EncoderSlot *find_slot(int slot_id) const;
 };

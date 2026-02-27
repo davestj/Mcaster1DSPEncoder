@@ -172,12 +172,21 @@ bool VideoStreamPipeline::start(const VideoStreamConfig& cfg,
             break;
     }
 
-    /* 3. Start video source — feeds frames to on_video_frame() */
+    /* 3. Start video source — feeds frames to on_video_frame().
+     *    If the source is already running (e.g. camera preview in the studio),
+     *    skip re-starting it.  The studio will forward frames via push_video_frame(). */
+    source_started_ = false;
     if (source_) {
-        ok = source_->start([this](const VideoFrame& frame) {
-            on_video_frame(frame);
-        });
-        if (!ok) return false;
+        if (source_->is_running()) {
+            /* Source already running — caller must forward frames via push_video_frame() */
+            fprintf(stderr, "[VideoStreamPipeline] Source already running — using external frame tap\n");
+        } else {
+            ok = source_->start([this](const VideoFrame& frame) {
+                on_video_frame(frame);
+            });
+            if (!ok) return false;
+            source_started_ = true;
+        }
     }
 
     running_ = true;
@@ -190,9 +199,10 @@ void VideoStreamPipeline::stop()
 
     std::lock_guard<std::mutex> lk(mtx_);
 
-    /* Stop video source (if we started it) */
-    if (source_ && source_->is_running()) {
+    /* Stop video source only if WE started it (don't kill the studio preview) */
+    if (source_started_ && source_ && source_->is_running()) {
         source_->stop();
+        source_started_ = false;
     }
 
     /* Flush encoder */
@@ -313,6 +323,13 @@ PipelineStats VideoStreamPipeline::stats() const
             s.avg_fps = static_cast<double>(s.frames_encoded) / s.uptime_sec;
     }
     return s;
+}
+
+// ── Public frame tap ────────────────────────────────────────────────────
+
+void VideoStreamPipeline::push_video_frame(const VideoFrame& frame)
+{
+    on_video_frame(frame);
 }
 
 // ── Internal callbacks ──────────────────────────────────────────────────
