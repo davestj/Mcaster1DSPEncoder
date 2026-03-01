@@ -9,7 +9,7 @@ dnl   --disable-encoder          Skip codec libs (HTTP-only test build)
 dnl   --disable-medialib         Skip TagLib/avformat metadata libs
 
 AC_PREREQ([2.69])
-AC_INIT([mcaster1-encoder], [1.4.0], [support@mcaster1.com])
+AC_INIT([mcaster1-dsp-encoder], [1.5.0], [support@mcaster1.com])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 AC_CONFIG_SRCDIR([src/linux/main_cli.cpp])
 AC_CONFIG_HEADERS([config.h])
@@ -82,6 +82,14 @@ AS_IF([test "x$enable_portaudio" = "xyes"], [
         [AC_MSG_WARN([PortAudio not found — audio device capture disabled. Install: sudo apt install portaudio19-dev])])
 ])
 AM_CONDITIONAL([HAVE_PORTAUDIO], [test "x$have_portaudio" = "xyes"])
+
+dnl ── JACK Audio Connection Kit (optional) ─────────────────────────────────────
+PKG_CHECK_MODULES([JACK], [jack >= 1.9.0],
+    [have_jack=yes
+     AC_DEFINE([HAVE_JACK], [1], [JACK Audio Connection Kit available])],
+    [have_jack=no
+     AC_MSG_WARN([JACK not found — JACK audio routing disabled])])
+AM_CONDITIONAL([HAVE_JACK], [test "x$have_jack" = "xyes"])
 
 dnl ── Codec libraries (optional — disable for HTTP-only test) ──────────────────
 AC_ARG_ENABLE([encoder],
@@ -232,5 +240,5 @@ echo "     mpg123    : ${have_mpg123}"
 echo "     FFmpeg    : ${have_avformat}"
 echo ""
 echo "   Run: make -j\$(nproc)"
-echo "   Binary: src/linux/mcaster1-encoder  (or \$(prefix)/bin after make install)"
+echo "   Binary: src/linux/mcaster1-dsp-encoder  (or \$(prefix)/bin after make install)"
 echo ""

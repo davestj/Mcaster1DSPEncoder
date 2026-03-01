@@ -14,14 +14,15 @@
 
 
 
-# src/linux/Makefile.am — mcaster1-encoder binary (Phase 4 / v1.4.0)
+# src/linux/Makefile.am — Mcaster1DSPEncoder dual-binary build (v1.5.0)
 #
-# HTTP-only test build:  ./configure --disable-encoder --disable-portaudio
-# Full encoder build:    ./configure
+# Two binaries:
+#   mcaster1-dsp-encoder-admin  — Web UI, API, auth, supervisor (always-up)
+#   mcaster1-dsp-encoder        — Audio pipeline, DSP, codecs, streaming (restartable)
 #
 # Build from project root:
 #   ./autogen.sh
-#   ./configure [--prefix=/usr/local] [--with-webroot=/usr/share/mcaster1/web_ui]
+#   ./configure
 #   make -j$(nproc)
 
 
@@ -80,10 +81,10 @@ am__make_running_with_option = \
   test $$has_opt = yes
 am__make_dryrun = (target_option=n; $(am__make_running_with_option))
 am__make_keepgoing = (target_option=k; $(am__make_running_with_option))
-pkgdatadir = $(datadir)/mcaster1-encoder
-pkgincludedir = $(includedir)/mcaster1-encoder
-pkglibdir = $(libdir)/mcaster1-encoder
-pkglibexecdir = $(libexecdir)/mcaster1-encoder
+pkgdatadir = $(datadir)/mcaster1-dsp-encoder
+pkgincludedir = $(includedir)/mcaster1-dsp-encoder
+pkglibdir = $(libdir)/mcaster1-dsp-encoder
+pkglibexecdir = $(libexecdir)/mcaster1-dsp-encoder
 am__cd = CDPATH="$${ZSH_VERSION+.}$(PATH_SEPARATOR)" && cd
 install_sh_DATA = $(install_sh) -c -m 644
 install_sh_PROGRAM = $(install_sh) -c
@@ -96,34 +97,50 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-bin_PROGRAMS = mcaster1-encoder$(EXEEXT)
+bin_PROGRAMS = mcaster1-dsp-encoder-admin$(EXEEXT) \
+	mcaster1-dsp-encoder$(EXEEXT)
 
-# ── PortAudio (optional) ──────────────────────────────────────────────────────
-# Source files use #ifdef HAVE_PORTAUDIO (not config.h), so we pass -D explicitly.
-am__append_1 = $(PORTAUDIO_CFLAGS) -DHAVE_PORTAUDIO
-am__append_2 = $(PORTAUDIO_LIBS)
-
-# ── Per-codec (optional) ──────────────────────────────────────────────────────
-# Source files test #ifdef HAVE_LAME / HAVE_VORBIS etc. directly.
-# config.h has these defines but sources don't include config.h, so pass -D flags.
-am__append_3 = $(LAME_CFLAGS) -DHAVE_LAME
+# Admin links all codec/audio libs too (shares source files with encoder for symbols).
+# Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
+# the ProcessSupervisor running the encoder as a separate child process.
+am__append_1 = jack_manager.cpp
+am__append_2 = $(JACK_LIBS)
+am__append_3 = $(PORTAUDIO_LIBS)
 am__append_4 = $(LAME_LIBS)
-am__append_5 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
-am__append_6 = $(VORBIS_LIBS)
-am__append_7 = $(FLAC_CFLAGS) -DHAVE_FLAC
-am__append_8 = $(FLAC_LIBS)
-am__append_9 = $(OPUS_CFLAGS) -DHAVE_OPUS
-am__append_10 = $(OPUS_LIBS)
-am__append_11 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
-am__append_12 = $(FDKAAC_LIBS)
+am__append_5 = $(VORBIS_LIBS)
+am__append_6 = $(FLAC_LIBS)
+am__append_7 = $(OPUS_LIBS)
+am__append_8 = $(FDKAAC_LIBS)
+am__append_9 = $(MPG123_LIBS)
+am__append_10 = $(AVFORMAT_LIBS)
+am__append_11 = $(TAGLIB_LIBS)
 
-# ── Media / metadata libs (optional) ──────────────────────────────────────────
-am__append_13 = $(MPG123_CFLAGS) -DHAVE_MPG123
-am__append_14 = $(MPG123_LIBS)
-am__append_15 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
-am__append_16 = $(AVFORMAT_LIBS)
-am__append_17 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
-am__append_18 = $(TAGLIB_LIBS)
+# ── PortAudio (optional — encoder only) ──────────────────────────────────────
+am__append_12 = $(PORTAUDIO_LIBS)
+
+# ── JACK (encoder also needs it — audio_pipeline.h includes jack_manager.h) ──
+am__append_13 = jack_manager.cpp
+am__append_14 = $(JACK_LIBS)
+
+# ── Per-codec (optional — encoder only) ──────────────────────────────────────
+am__append_15 = $(LAME_CFLAGS) -DHAVE_LAME
+am__append_16 = $(LAME_LIBS)
+am__append_17 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
+am__append_18 = $(VORBIS_LIBS)
+am__append_19 = $(FLAC_CFLAGS) -DHAVE_FLAC
+am__append_20 = $(FLAC_LIBS)
+am__append_21 = $(OPUS_CFLAGS) -DHAVE_OPUS
+am__append_22 = $(OPUS_LIBS)
+am__append_23 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
+am__append_24 = $(FDKAAC_LIBS)
+
+# ── Media / metadata libs (optional — encoder only) ──────────────────────────
+am__append_25 = $(MPG123_CFLAGS) -DHAVE_MPG123
+am__append_26 = $(MPG123_LIBS)
+am__append_27 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
+am__append_28 = $(AVFORMAT_LIBS)
+am__append_29 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
+am__append_30 = $(TAGLIB_LIBS)
 subdir = src/linux
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -136,17 +153,30 @@ CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
+am__mcaster1_dsp_encoder_SOURCES_DIST = main_encoder.cpp \
+	encoder_ipc_api.cpp audio_pipeline.cpp encoder_slot.cpp \
+	audio_source.cpp file_source.cpp playlist_parser.cpp \
+	stream_client.cpp archive_writer.cpp config_loader.cpp \
+	mc1_db.cpp system_health.cpp server_monitors.cpp dsp/eq.cpp \
+	dsp/agc.cpp dsp/crossfader.cpp dsp/dj_crossfader.cpp \
+	dsp/dsp_chain.cpp dsp/effects_rack.cpp \
+	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
+	clockwheel_scheduler.cpp jack_manager.cpp
 am__dirstamp = $(am__leading_dot)dirstamp
-am_mcaster1_encoder_OBJECTS = main_cli.$(OBJEXT) http_api.$(OBJEXT) \
-	fastcgi_client.$(OBJEXT) audio_pipeline.$(OBJEXT) \
+am__objects_1 = jack_manager.$(OBJEXT)
+am_mcaster1_dsp_encoder_OBJECTS = main_encoder.$(OBJEXT) \
+	encoder_ipc_api.$(OBJEXT) audio_pipeline.$(OBJEXT) \
 	encoder_slot.$(OBJEXT) audio_source.$(OBJEXT) \
 	file_source.$(OBJEXT) playlist_parser.$(OBJEXT) \
 	stream_client.$(OBJEXT) archive_writer.$(OBJEXT) \
 	config_loader.$(OBJEXT) mc1_db.$(OBJEXT) \
 	system_health.$(OBJEXT) server_monitors.$(OBJEXT) \
 	dsp/eq.$(OBJEXT) dsp/agc.$(OBJEXT) dsp/crossfader.$(OBJEXT) \
-	dsp/dsp_chain.$(OBJEXT)
-mcaster1_encoder_OBJECTS = $(am_mcaster1_encoder_OBJECTS)
+	dsp/dj_crossfader.$(OBJEXT) dsp/dsp_chain.$(OBJEXT) \
+	dsp/effects_rack.$(OBJEXT) dsp/sidechain_ducker.$(OBJEXT) \
+	dsp/dead_air_detector.$(OBJEXT) clockwheel_scheduler.$(OBJEXT) \
+	$(am__objects_1)
+mcaster1_dsp_encoder_OBJECTS = $(am_mcaster1_dsp_encoder_OBJECTS)
 am__DEPENDENCIES_1 =
 am__DEPENDENCIES_2 = $(am__DEPENDENCIES_1)
 am__DEPENDENCIES_3 = $(am__DEPENDENCIES_1)
@@ -157,13 +187,61 @@ am__DEPENDENCIES_7 = $(am__DEPENDENCIES_1)
 am__DEPENDENCIES_8 = $(am__DEPENDENCIES_1)
 am__DEPENDENCIES_9 = $(am__DEPENDENCIES_1)
 am__DEPENDENCIES_10 = $(am__DEPENDENCIES_1)
-mcaster1_encoder_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+am__DEPENDENCIES_11 = $(am__DEPENDENCIES_1)
+mcaster1_dsp_encoder_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_3) \
 	$(am__DEPENDENCIES_4) $(am__DEPENDENCIES_5) \
 	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
 	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
-	$(am__DEPENDENCIES_10)
+	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
+am__mcaster1_dsp_encoder_admin_SOURCES_DIST = main_cli.cpp \
+	http_api.cpp fastcgi_client.cpp audio_pipeline.cpp \
+	encoder_slot.cpp audio_source.cpp file_source.cpp \
+	playlist_parser.cpp stream_client.cpp archive_writer.cpp \
+	config_loader.cpp mc1_db.cpp system_health.cpp \
+	server_monitors.cpp process_supervisor.cpp ipc_proxy.cpp \
+	clockwheel_scheduler.cpp dsp/eq.cpp dsp/agc.cpp \
+	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
+	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
+	dsp/dead_air_detector.cpp jack_manager.cpp
+am__objects_2 = mcaster1_dsp_encoder_admin-jack_manager.$(OBJEXT)
+am_mcaster1_dsp_encoder_admin_OBJECTS =  \
+	mcaster1_dsp_encoder_admin-main_cli.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-http_api.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-fastcgi_client.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-audio_pipeline.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-encoder_slot.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-audio_source.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-file_source.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-playlist_parser.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-stream_client.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-archive_writer.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-config_loader.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-mc1_db.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-system_health.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-server_monitors.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-process_supervisor.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-ipc_proxy.$(OBJEXT) \
+	mcaster1_dsp_encoder_admin-clockwheel_scheduler.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-eq.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-agc.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-crossfader.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-dj_crossfader.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-dsp_chain.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-effects_rack.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-dead_air_detector.$(OBJEXT) \
+	$(am__objects_2)
+mcaster1_dsp_encoder_admin_OBJECTS =  \
+	$(am_mcaster1_dsp_encoder_admin_OBJECTS)
+mcaster1_dsp_encoder_admin_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_3) $(am__DEPENDENCIES_2) \
+	$(am__DEPENDENCIES_4) $(am__DEPENDENCIES_5) \
+	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
+	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
+	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
 am__v_P_0 = false
@@ -181,15 +259,49 @@ depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
 am__depfiles_remade = ./$(DEPDIR)/archive_writer.Po \
 	./$(DEPDIR)/audio_pipeline.Po ./$(DEPDIR)/audio_source.Po \
-	./$(DEPDIR)/config_loader.Po ./$(DEPDIR)/encoder_slot.Po \
-	./$(DEPDIR)/fastcgi_client.Po ./$(DEPDIR)/file_source.Po \
-	./$(DEPDIR)/http_api.Po ./$(DEPDIR)/main_cli.Po \
-	./$(DEPDIR)/mc1_db.Po ./$(DEPDIR)/playlist_parser.Po \
-	./$(DEPDIR)/server_monitors.Po ./$(DEPDIR)/stream_client.Po \
-	./$(DEPDIR)/system_health.Po dsp/$(DEPDIR)/agc.Po \
-	dsp/$(DEPDIR)/crossfader.Po dsp/$(DEPDIR)/dsp_chain.Po \
-	dsp/$(DEPDIR)/eq.Po
+	./$(DEPDIR)/clockwheel_scheduler.Po \
+	./$(DEPDIR)/config_loader.Po ./$(DEPDIR)/encoder_ipc_api.Po \
+	./$(DEPDIR)/encoder_slot.Po ./$(DEPDIR)/file_source.Po \
+	./$(DEPDIR)/jack_manager.Po ./$(DEPDIR)/main_encoder.Po \
+	./$(DEPDIR)/mc1_db.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po \
+	./$(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po \
+	./$(DEPDIR)/playlist_parser.Po ./$(DEPDIR)/server_monitors.Po \
+	./$(DEPDIR)/stream_client.Po ./$(DEPDIR)/system_health.Po \
+	dsp/$(DEPDIR)/agc.Po dsp/$(DEPDIR)/crossfader.Po \
+	dsp/$(DEPDIR)/dead_air_detector.Po \
+	dsp/$(DEPDIR)/dj_crossfader.Po dsp/$(DEPDIR)/dsp_chain.Po \
+	dsp/$(DEPDIR)/effects_rack.Po dsp/$(DEPDIR)/eq.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po \
+	dsp/$(DEPDIR)/sidechain_ducker.Po
 am__mv = mv -f
+AM_V_lt = $(am__v_lt_$(V))
+am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
+am__v_lt_0 = --silent
+am__v_lt_1 = 
 CXXCOMPILE = $(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) \
 	$(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 AM_V_CXX = $(am__v_CXX_$(V))
@@ -203,8 +315,10 @@ AM_V_CXXLD = $(am__v_CXXLD_$(V))
 am__v_CXXLD_ = $(am__v_CXXLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CXXLD_0 = @echo "  CXXLD   " $@;
 am__v_CXXLD_1 = 
-SOURCES = $(mcaster1_encoder_SOURCES)
-DIST_SOURCES = $(mcaster1_encoder_SOURCES)
+SOURCES = $(mcaster1_dsp_encoder_SOURCES) \
+	$(mcaster1_dsp_encoder_admin_SOURCES)
+DIST_SOURCES = $(am__mcaster1_dsp_encoder_SOURCES_DIST) \
+	$(am__mcaster1_dsp_encoder_admin_SOURCES_DIST)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -265,6 +379,8 @@ INSTALL_DATA = ${INSTALL} -m 644
 INSTALL_PROGRAM = ${INSTALL}
 INSTALL_SCRIPT = ${INSTALL}
 INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
+JACK_CFLAGS = 
+JACK_LIBS = -ljack 
 LAME_CFLAGS = -I/usr/include/lame 
 LAME_LIBS = -lmp3lame 
 LDFLAGS = 
@@ -284,13 +400,13 @@ OPENSSL_CFLAGS =
 OPENSSL_LIBS = -lssl -lcrypto 
 OPUS_CFLAGS = -I/usr/include/opus 
 OPUS_LIBS = -lopusenc 
-PACKAGE = mcaster1-encoder
+PACKAGE = mcaster1-dsp-encoder
 PACKAGE_BUGREPORT = support@mcaster1.com
-PACKAGE_NAME = mcaster1-encoder
-PACKAGE_STRING = mcaster1-encoder 1.4.0
-PACKAGE_TARNAME = mcaster1-encoder
+PACKAGE_NAME = mcaster1-dsp-encoder
+PACKAGE_STRING = mcaster1-dsp-encoder 1.5.0
+PACKAGE_TARNAME = mcaster1-dsp-encoder
 PACKAGE_URL = 
-PACKAGE_VERSION = 1.4.0
+PACKAGE_VERSION = 1.5.0
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
 PKG_CONFIG_LIBDIR = 
@@ -302,10 +418,10 @@ SHELL = /bin/bash
 STRIP = 
 TAGLIB_CFLAGS = -I/usr/include/taglib 
 TAGLIB_LIBS = -ltag -lz 
-VERSION = 1.4.0
+VERSION = 1.5.0
 VORBIS_CFLAGS = 
 VORBIS_LIBS = -lvorbisenc -logg -lvorbis 
-WEBROOT = /var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/web_ui
+WEBROOT = ${datadir}/mcaster1/web_ui
 abs_builddir = /var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux
 abs_srcdir = /var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux
 abs_top_builddir = /var/www/mcaster1.com/Mcaster1DSPEncoder
@@ -352,56 +468,59 @@ top_builddir = ../..
 top_srcdir = ../..
 
 # ── Include paths ──────────────────────────────────────────────────────────────
-# src/linux/external/include — Linux-only cross-platform vendor headers:
-#   httplib.h        (cpp-httplib v0.18, header-only HTTP server)
-#   nlohmann/json.hpp (nlohmann/json v3.11, header-only JSON)
-# These are the only two headers not available as system packages.
-# Windows-specific vendor headers live in external/ at the project root — not used here.
 AM_CPPFLAGS = -I$(srcdir)/external/include -I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/linux \
 	-I$(top_srcdir)/src/libmcaster1dspencoder \
 	-DCPPHTTPLIB_OPENSSL_SUPPORT $(OPENSSL_CFLAGS) \
-	$(LIBYAML_CFLAGS) $(MARIADB_CFLAGS) $(am__append_1) \
-	$(am__append_3) $(am__append_5) $(am__append_7) \
-	$(am__append_9) $(am__append_11) $(am__append_13) \
-	$(am__append_15) $(am__append_17)
+	$(LIBYAML_CFLAGS) $(MARIADB_CFLAGS) $(am__append_15) \
+	$(am__append_17) $(am__append_19) $(am__append_21) \
+	$(am__append_23) $(am__append_25) $(am__append_27) \
+	$(am__append_29)
 AM_CXXFLAGS = -std=c++17 -Wall -Wno-unused-parameter -O2
 AM_LDFLAGS = -rdynamic
 
-# ── Core sources (always compiled) ────────────────────────────────────────────
-mcaster1_encoder_SOURCES = \
-    main_cli.cpp \
-    http_api.cpp \
-    fastcgi_client.cpp \
-    audio_pipeline.cpp \
-    encoder_slot.cpp \
-    audio_source.cpp \
-    file_source.cpp \
-    playlist_parser.cpp \
-    stream_client.cpp \
-    archive_writer.cpp \
-    config_loader.cpp \
-    mc1_db.cpp \
-    system_health.cpp \
-    server_monitors.cpp \
-    dsp/eq.cpp \
-    dsp/agc.cpp \
-    dsp/crossfader.cpp \
-    dsp/dsp_chain.cpp
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN BINARY — Web UI, FastCGI, auth, supervisor, system health
+# ══════════════════════════════════════════════════════════════════════════════
+mcaster1_dsp_encoder_admin_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_ADMIN_BUILD
+mcaster1_dsp_encoder_admin_SOURCES = main_cli.cpp http_api.cpp \
+	fastcgi_client.cpp audio_pipeline.cpp encoder_slot.cpp \
+	audio_source.cpp file_source.cpp playlist_parser.cpp \
+	stream_client.cpp archive_writer.cpp config_loader.cpp \
+	mc1_db.cpp system_health.cpp server_monitors.cpp \
+	process_supervisor.cpp ipc_proxy.cpp clockwheel_scheduler.cpp \
+	dsp/eq.cpp dsp/agc.cpp dsp/crossfader.cpp \
+	dsp/dj_crossfader.cpp dsp/dsp_chain.cpp dsp/effects_rack.cpp \
+	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
+	$(am__append_1)
 
-
-# ── Required libraries ────────────────────────────────────────────────────────
-mcaster1_encoder_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
+# Admin needs these shared DSP headers for static curve data / effects type listing
+# but does NOT need the audio processing source files.
+mcaster1_dsp_encoder_admin_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
 	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_2) \
-	$(am__append_4) $(am__append_6) $(am__append_8) \
-	$(am__append_10) $(am__append_12) $(am__append_14) \
-	$(am__append_16) $(am__append_18)
+	$(am__append_3) $(am__append_4) $(am__append_5) \
+	$(am__append_6) $(am__append_7) $(am__append_8) \
+	$(am__append_9) $(am__append_10) $(am__append_11)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ENCODER BINARY — Audio pipeline, DSP, codecs, streaming (restartable worker)
+# ══════════════════════════════════════════════════════════════════════════════
+mcaster1_dsp_encoder_SOURCES = main_encoder.cpp encoder_ipc_api.cpp \
+	audio_pipeline.cpp encoder_slot.cpp audio_source.cpp \
+	file_source.cpp playlist_parser.cpp stream_client.cpp \
+	archive_writer.cpp config_loader.cpp mc1_db.cpp \
+	system_health.cpp server_monitors.cpp dsp/eq.cpp dsp/agc.cpp \
+	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
+	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
+	dsp/dead_air_detector.cpp clockwheel_scheduler.cpp \
+	$(am__append_13)
+mcaster1_dsp_encoder_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
+	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_12) \
+	$(am__append_14) $(am__append_16) $(am__append_18) \
+	$(am__append_20) $(am__append_22) $(am__append_24) \
+	$(am__append_26) $(am__append_28) $(am__append_30)
 
 # ── Web UI install ─────────────────────────────────────────────────────────────
-# $(WEBROOT) is the top-level web UI directory (default: ${datadir}/mcaster1/web_ui)
-# Files at web_ui/*.{html,css,js,php} → $(WEBROOT)/
-# Files at web_ui/app/api/*.php       → $(WEBROOT)/app/api/
-# Files at web_ui/app/inc/*.php       → $(WEBROOT)/app/inc/
 webuidir = $(WEBROOT)
 dist_webuiDATA = \
     web_ui/login.html \
@@ -413,7 +532,11 @@ dist_webuiDATA = \
     web_ui/media.php \
     web_ui/metrics.php \
     web_ui/playlists.php \
-    web_ui/settings.php
+    web_ui/settings.php \
+    web_ui/crossfader.php \
+    web_ui/effects-rack.php \
+    web_ui/jack.php \
+    web_ui/dualdeck-player.php
 
 appapi_webuidir = $(WEBROOT)/app/api
 dist_appapi_webuiDATA = \
@@ -435,7 +558,7 @@ dist_appinc_webuiDATA = \
     web_ui/app/inc/traits.db.class.php
 
 
-# ── Extra dist (build scripts + legacy) ───────────────────────────────────────
+# ── Extra dist ─────────────────────────────────────────────────────────────────
 EXTRA_DIST = \
     make_phase4.sh \
     make_phase3.sh \
@@ -527,12 +650,40 @@ dsp/eq.$(OBJEXT): dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/agc.$(OBJEXT): dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/crossfader.$(OBJEXT): dsp/$(am__dirstamp) \
 	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/dj_crossfader.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/dsp_chain.$(OBJEXT): dsp/$(am__dirstamp) \
 	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/effects_rack.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/sidechain_ducker.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/dead_air_detector.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
 
-mcaster1-encoder$(EXEEXT): $(mcaster1_encoder_OBJECTS) $(mcaster1_encoder_DEPENDENCIES) $(EXTRA_mcaster1_encoder_DEPENDENCIES) 
-	@rm -f mcaster1-encoder$(EXEEXT)
-	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_encoder_OBJECTS) $(mcaster1_encoder_LDADD) $(LIBS)
+mcaster1-dsp-encoder$(EXEEXT): $(mcaster1_dsp_encoder_OBJECTS) $(mcaster1_dsp_encoder_DEPENDENCIES) $(EXTRA_mcaster1_dsp_encoder_DEPENDENCIES) 
+	@rm -f mcaster1-dsp-encoder$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_dsp_encoder_OBJECTS) $(mcaster1_dsp_encoder_LDADD) $(LIBS)
+dsp/mcaster1_dsp_encoder_admin-eq.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-agc.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-crossfader.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-dj_crossfader.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-dsp_chain.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-effects_rack.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-dead_air_detector.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+
+mcaster1-dsp-encoder-admin$(EXEEXT): $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_DEPENDENCIES) $(EXTRA_mcaster1_dsp_encoder_admin_DEPENDENCIES) 
+	@rm -f mcaster1-dsp-encoder-admin$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -544,21 +695,52 @@ distclean-compile:
 include ./$(DEPDIR)/archive_writer.Po # am--include-marker
 include ./$(DEPDIR)/audio_pipeline.Po # am--include-marker
 include ./$(DEPDIR)/audio_source.Po # am--include-marker
+include ./$(DEPDIR)/clockwheel_scheduler.Po # am--include-marker
 include ./$(DEPDIR)/config_loader.Po # am--include-marker
+include ./$(DEPDIR)/encoder_ipc_api.Po # am--include-marker
 include ./$(DEPDIR)/encoder_slot.Po # am--include-marker
-include ./$(DEPDIR)/fastcgi_client.Po # am--include-marker
 include ./$(DEPDIR)/file_source.Po # am--include-marker
-include ./$(DEPDIR)/http_api.Po # am--include-marker
-include ./$(DEPDIR)/main_cli.Po # am--include-marker
+include ./$(DEPDIR)/jack_manager.Po # am--include-marker
+include ./$(DEPDIR)/main_encoder.Po # am--include-marker
 include ./$(DEPDIR)/mc1_db.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po # am--include-marker
+include ./$(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po # am--include-marker
 include ./$(DEPDIR)/playlist_parser.Po # am--include-marker
 include ./$(DEPDIR)/server_monitors.Po # am--include-marker
 include ./$(DEPDIR)/stream_client.Po # am--include-marker
 include ./$(DEPDIR)/system_health.Po # am--include-marker
 include dsp/$(DEPDIR)/agc.Po # am--include-marker
 include dsp/$(DEPDIR)/crossfader.Po # am--include-marker
+include dsp/$(DEPDIR)/dead_air_detector.Po # am--include-marker
+include dsp/$(DEPDIR)/dj_crossfader.Po # am--include-marker
 include dsp/$(DEPDIR)/dsp_chain.Po # am--include-marker
+include dsp/$(DEPDIR)/effects_rack.Po # am--include-marker
 include dsp/$(DEPDIR)/eq.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po # am--include-marker
+include dsp/$(DEPDIR)/sidechain_ducker.Po # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -581,6 +763,370 @@ am--depfiles: $(am__depfiles_remade)
 #	$(AM_V_CXX)source='$<' object='$@' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
 #	$(AM_V_CXX_no)$(CXXCOMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+mcaster1_dsp_encoder_admin-main_cli.o: main_cli.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-main_cli.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Tpo -c -o mcaster1_dsp_encoder_admin-main_cli.o `test -f 'main_cli.cpp' || echo '$(srcdir)/'`main_cli.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po
+#	$(AM_V_CXX)source='main_cli.cpp' object='mcaster1_dsp_encoder_admin-main_cli.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-main_cli.o `test -f 'main_cli.cpp' || echo '$(srcdir)/'`main_cli.cpp
+
+mcaster1_dsp_encoder_admin-main_cli.obj: main_cli.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-main_cli.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Tpo -c -o mcaster1_dsp_encoder_admin-main_cli.obj `if test -f 'main_cli.cpp'; then $(CYGPATH_W) 'main_cli.cpp'; else $(CYGPATH_W) '$(srcdir)/main_cli.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po
+#	$(AM_V_CXX)source='main_cli.cpp' object='mcaster1_dsp_encoder_admin-main_cli.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-main_cli.obj `if test -f 'main_cli.cpp'; then $(CYGPATH_W) 'main_cli.cpp'; else $(CYGPATH_W) '$(srcdir)/main_cli.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-http_api.o: http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-http_api.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Tpo -c -o mcaster1_dsp_encoder_admin-http_api.o `test -f 'http_api.cpp' || echo '$(srcdir)/'`http_api.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po
+#	$(AM_V_CXX)source='http_api.cpp' object='mcaster1_dsp_encoder_admin-http_api.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-http_api.o `test -f 'http_api.cpp' || echo '$(srcdir)/'`http_api.cpp
+
+mcaster1_dsp_encoder_admin-http_api.obj: http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-http_api.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Tpo -c -o mcaster1_dsp_encoder_admin-http_api.obj `if test -f 'http_api.cpp'; then $(CYGPATH_W) 'http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/http_api.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po
+#	$(AM_V_CXX)source='http_api.cpp' object='mcaster1_dsp_encoder_admin-http_api.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-http_api.obj `if test -f 'http_api.cpp'; then $(CYGPATH_W) 'http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/http_api.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-fastcgi_client.o: fastcgi_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-fastcgi_client.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Tpo -c -o mcaster1_dsp_encoder_admin-fastcgi_client.o `test -f 'fastcgi_client.cpp' || echo '$(srcdir)/'`fastcgi_client.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po
+#	$(AM_V_CXX)source='fastcgi_client.cpp' object='mcaster1_dsp_encoder_admin-fastcgi_client.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-fastcgi_client.o `test -f 'fastcgi_client.cpp' || echo '$(srcdir)/'`fastcgi_client.cpp
+
+mcaster1_dsp_encoder_admin-fastcgi_client.obj: fastcgi_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-fastcgi_client.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Tpo -c -o mcaster1_dsp_encoder_admin-fastcgi_client.obj `if test -f 'fastcgi_client.cpp'; then $(CYGPATH_W) 'fastcgi_client.cpp'; else $(CYGPATH_W) '$(srcdir)/fastcgi_client.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po
+#	$(AM_V_CXX)source='fastcgi_client.cpp' object='mcaster1_dsp_encoder_admin-fastcgi_client.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-fastcgi_client.obj `if test -f 'fastcgi_client.cpp'; then $(CYGPATH_W) 'fastcgi_client.cpp'; else $(CYGPATH_W) '$(srcdir)/fastcgi_client.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-audio_pipeline.o: audio_pipeline.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-audio_pipeline.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Tpo -c -o mcaster1_dsp_encoder_admin-audio_pipeline.o `test -f 'audio_pipeline.cpp' || echo '$(srcdir)/'`audio_pipeline.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po
+#	$(AM_V_CXX)source='audio_pipeline.cpp' object='mcaster1_dsp_encoder_admin-audio_pipeline.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-audio_pipeline.o `test -f 'audio_pipeline.cpp' || echo '$(srcdir)/'`audio_pipeline.cpp
+
+mcaster1_dsp_encoder_admin-audio_pipeline.obj: audio_pipeline.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-audio_pipeline.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Tpo -c -o mcaster1_dsp_encoder_admin-audio_pipeline.obj `if test -f 'audio_pipeline.cpp'; then $(CYGPATH_W) 'audio_pipeline.cpp'; else $(CYGPATH_W) '$(srcdir)/audio_pipeline.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po
+#	$(AM_V_CXX)source='audio_pipeline.cpp' object='mcaster1_dsp_encoder_admin-audio_pipeline.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-audio_pipeline.obj `if test -f 'audio_pipeline.cpp'; then $(CYGPATH_W) 'audio_pipeline.cpp'; else $(CYGPATH_W) '$(srcdir)/audio_pipeline.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-encoder_slot.o: encoder_slot.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-encoder_slot.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Tpo -c -o mcaster1_dsp_encoder_admin-encoder_slot.o `test -f 'encoder_slot.cpp' || echo '$(srcdir)/'`encoder_slot.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po
+#	$(AM_V_CXX)source='encoder_slot.cpp' object='mcaster1_dsp_encoder_admin-encoder_slot.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-encoder_slot.o `test -f 'encoder_slot.cpp' || echo '$(srcdir)/'`encoder_slot.cpp
+
+mcaster1_dsp_encoder_admin-encoder_slot.obj: encoder_slot.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-encoder_slot.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Tpo -c -o mcaster1_dsp_encoder_admin-encoder_slot.obj `if test -f 'encoder_slot.cpp'; then $(CYGPATH_W) 'encoder_slot.cpp'; else $(CYGPATH_W) '$(srcdir)/encoder_slot.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po
+#	$(AM_V_CXX)source='encoder_slot.cpp' object='mcaster1_dsp_encoder_admin-encoder_slot.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-encoder_slot.obj `if test -f 'encoder_slot.cpp'; then $(CYGPATH_W) 'encoder_slot.cpp'; else $(CYGPATH_W) '$(srcdir)/encoder_slot.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-audio_source.o: audio_source.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-audio_source.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Tpo -c -o mcaster1_dsp_encoder_admin-audio_source.o `test -f 'audio_source.cpp' || echo '$(srcdir)/'`audio_source.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po
+#	$(AM_V_CXX)source='audio_source.cpp' object='mcaster1_dsp_encoder_admin-audio_source.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-audio_source.o `test -f 'audio_source.cpp' || echo '$(srcdir)/'`audio_source.cpp
+
+mcaster1_dsp_encoder_admin-audio_source.obj: audio_source.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-audio_source.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Tpo -c -o mcaster1_dsp_encoder_admin-audio_source.obj `if test -f 'audio_source.cpp'; then $(CYGPATH_W) 'audio_source.cpp'; else $(CYGPATH_W) '$(srcdir)/audio_source.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po
+#	$(AM_V_CXX)source='audio_source.cpp' object='mcaster1_dsp_encoder_admin-audio_source.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-audio_source.obj `if test -f 'audio_source.cpp'; then $(CYGPATH_W) 'audio_source.cpp'; else $(CYGPATH_W) '$(srcdir)/audio_source.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-file_source.o: file_source.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-file_source.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Tpo -c -o mcaster1_dsp_encoder_admin-file_source.o `test -f 'file_source.cpp' || echo '$(srcdir)/'`file_source.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po
+#	$(AM_V_CXX)source='file_source.cpp' object='mcaster1_dsp_encoder_admin-file_source.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-file_source.o `test -f 'file_source.cpp' || echo '$(srcdir)/'`file_source.cpp
+
+mcaster1_dsp_encoder_admin-file_source.obj: file_source.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-file_source.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Tpo -c -o mcaster1_dsp_encoder_admin-file_source.obj `if test -f 'file_source.cpp'; then $(CYGPATH_W) 'file_source.cpp'; else $(CYGPATH_W) '$(srcdir)/file_source.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po
+#	$(AM_V_CXX)source='file_source.cpp' object='mcaster1_dsp_encoder_admin-file_source.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-file_source.obj `if test -f 'file_source.cpp'; then $(CYGPATH_W) 'file_source.cpp'; else $(CYGPATH_W) '$(srcdir)/file_source.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-playlist_parser.o: playlist_parser.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-playlist_parser.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Tpo -c -o mcaster1_dsp_encoder_admin-playlist_parser.o `test -f 'playlist_parser.cpp' || echo '$(srcdir)/'`playlist_parser.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po
+#	$(AM_V_CXX)source='playlist_parser.cpp' object='mcaster1_dsp_encoder_admin-playlist_parser.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-playlist_parser.o `test -f 'playlist_parser.cpp' || echo '$(srcdir)/'`playlist_parser.cpp
+
+mcaster1_dsp_encoder_admin-playlist_parser.obj: playlist_parser.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-playlist_parser.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Tpo -c -o mcaster1_dsp_encoder_admin-playlist_parser.obj `if test -f 'playlist_parser.cpp'; then $(CYGPATH_W) 'playlist_parser.cpp'; else $(CYGPATH_W) '$(srcdir)/playlist_parser.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po
+#	$(AM_V_CXX)source='playlist_parser.cpp' object='mcaster1_dsp_encoder_admin-playlist_parser.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-playlist_parser.obj `if test -f 'playlist_parser.cpp'; then $(CYGPATH_W) 'playlist_parser.cpp'; else $(CYGPATH_W) '$(srcdir)/playlist_parser.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-stream_client.o: stream_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-stream_client.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Tpo -c -o mcaster1_dsp_encoder_admin-stream_client.o `test -f 'stream_client.cpp' || echo '$(srcdir)/'`stream_client.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po
+#	$(AM_V_CXX)source='stream_client.cpp' object='mcaster1_dsp_encoder_admin-stream_client.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-stream_client.o `test -f 'stream_client.cpp' || echo '$(srcdir)/'`stream_client.cpp
+
+mcaster1_dsp_encoder_admin-stream_client.obj: stream_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-stream_client.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Tpo -c -o mcaster1_dsp_encoder_admin-stream_client.obj `if test -f 'stream_client.cpp'; then $(CYGPATH_W) 'stream_client.cpp'; else $(CYGPATH_W) '$(srcdir)/stream_client.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po
+#	$(AM_V_CXX)source='stream_client.cpp' object='mcaster1_dsp_encoder_admin-stream_client.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-stream_client.obj `if test -f 'stream_client.cpp'; then $(CYGPATH_W) 'stream_client.cpp'; else $(CYGPATH_W) '$(srcdir)/stream_client.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-archive_writer.o: archive_writer.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-archive_writer.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Tpo -c -o mcaster1_dsp_encoder_admin-archive_writer.o `test -f 'archive_writer.cpp' || echo '$(srcdir)/'`archive_writer.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po
+#	$(AM_V_CXX)source='archive_writer.cpp' object='mcaster1_dsp_encoder_admin-archive_writer.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-archive_writer.o `test -f 'archive_writer.cpp' || echo '$(srcdir)/'`archive_writer.cpp
+
+mcaster1_dsp_encoder_admin-archive_writer.obj: archive_writer.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-archive_writer.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Tpo -c -o mcaster1_dsp_encoder_admin-archive_writer.obj `if test -f 'archive_writer.cpp'; then $(CYGPATH_W) 'archive_writer.cpp'; else $(CYGPATH_W) '$(srcdir)/archive_writer.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po
+#	$(AM_V_CXX)source='archive_writer.cpp' object='mcaster1_dsp_encoder_admin-archive_writer.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-archive_writer.obj `if test -f 'archive_writer.cpp'; then $(CYGPATH_W) 'archive_writer.cpp'; else $(CYGPATH_W) '$(srcdir)/archive_writer.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-config_loader.o: config_loader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-config_loader.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Tpo -c -o mcaster1_dsp_encoder_admin-config_loader.o `test -f 'config_loader.cpp' || echo '$(srcdir)/'`config_loader.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po
+#	$(AM_V_CXX)source='config_loader.cpp' object='mcaster1_dsp_encoder_admin-config_loader.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-config_loader.o `test -f 'config_loader.cpp' || echo '$(srcdir)/'`config_loader.cpp
+
+mcaster1_dsp_encoder_admin-config_loader.obj: config_loader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-config_loader.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Tpo -c -o mcaster1_dsp_encoder_admin-config_loader.obj `if test -f 'config_loader.cpp'; then $(CYGPATH_W) 'config_loader.cpp'; else $(CYGPATH_W) '$(srcdir)/config_loader.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po
+#	$(AM_V_CXX)source='config_loader.cpp' object='mcaster1_dsp_encoder_admin-config_loader.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-config_loader.obj `if test -f 'config_loader.cpp'; then $(CYGPATH_W) 'config_loader.cpp'; else $(CYGPATH_W) '$(srcdir)/config_loader.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-mc1_db.o: mc1_db.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-mc1_db.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Tpo -c -o mcaster1_dsp_encoder_admin-mc1_db.o `test -f 'mc1_db.cpp' || echo '$(srcdir)/'`mc1_db.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po
+#	$(AM_V_CXX)source='mc1_db.cpp' object='mcaster1_dsp_encoder_admin-mc1_db.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-mc1_db.o `test -f 'mc1_db.cpp' || echo '$(srcdir)/'`mc1_db.cpp
+
+mcaster1_dsp_encoder_admin-mc1_db.obj: mc1_db.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-mc1_db.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Tpo -c -o mcaster1_dsp_encoder_admin-mc1_db.obj `if test -f 'mc1_db.cpp'; then $(CYGPATH_W) 'mc1_db.cpp'; else $(CYGPATH_W) '$(srcdir)/mc1_db.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po
+#	$(AM_V_CXX)source='mc1_db.cpp' object='mcaster1_dsp_encoder_admin-mc1_db.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-mc1_db.obj `if test -f 'mc1_db.cpp'; then $(CYGPATH_W) 'mc1_db.cpp'; else $(CYGPATH_W) '$(srcdir)/mc1_db.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-system_health.o: system_health.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-system_health.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Tpo -c -o mcaster1_dsp_encoder_admin-system_health.o `test -f 'system_health.cpp' || echo '$(srcdir)/'`system_health.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po
+#	$(AM_V_CXX)source='system_health.cpp' object='mcaster1_dsp_encoder_admin-system_health.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-system_health.o `test -f 'system_health.cpp' || echo '$(srcdir)/'`system_health.cpp
+
+mcaster1_dsp_encoder_admin-system_health.obj: system_health.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-system_health.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Tpo -c -o mcaster1_dsp_encoder_admin-system_health.obj `if test -f 'system_health.cpp'; then $(CYGPATH_W) 'system_health.cpp'; else $(CYGPATH_W) '$(srcdir)/system_health.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po
+#	$(AM_V_CXX)source='system_health.cpp' object='mcaster1_dsp_encoder_admin-system_health.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-system_health.obj `if test -f 'system_health.cpp'; then $(CYGPATH_W) 'system_health.cpp'; else $(CYGPATH_W) '$(srcdir)/system_health.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-server_monitors.o: server_monitors.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-server_monitors.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Tpo -c -o mcaster1_dsp_encoder_admin-server_monitors.o `test -f 'server_monitors.cpp' || echo '$(srcdir)/'`server_monitors.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po
+#	$(AM_V_CXX)source='server_monitors.cpp' object='mcaster1_dsp_encoder_admin-server_monitors.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-server_monitors.o `test -f 'server_monitors.cpp' || echo '$(srcdir)/'`server_monitors.cpp
+
+mcaster1_dsp_encoder_admin-server_monitors.obj: server_monitors.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-server_monitors.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Tpo -c -o mcaster1_dsp_encoder_admin-server_monitors.obj `if test -f 'server_monitors.cpp'; then $(CYGPATH_W) 'server_monitors.cpp'; else $(CYGPATH_W) '$(srcdir)/server_monitors.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po
+#	$(AM_V_CXX)source='server_monitors.cpp' object='mcaster1_dsp_encoder_admin-server_monitors.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-server_monitors.obj `if test -f 'server_monitors.cpp'; then $(CYGPATH_W) 'server_monitors.cpp'; else $(CYGPATH_W) '$(srcdir)/server_monitors.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-process_supervisor.o: process_supervisor.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-process_supervisor.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Tpo -c -o mcaster1_dsp_encoder_admin-process_supervisor.o `test -f 'process_supervisor.cpp' || echo '$(srcdir)/'`process_supervisor.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po
+#	$(AM_V_CXX)source='process_supervisor.cpp' object='mcaster1_dsp_encoder_admin-process_supervisor.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-process_supervisor.o `test -f 'process_supervisor.cpp' || echo '$(srcdir)/'`process_supervisor.cpp
+
+mcaster1_dsp_encoder_admin-process_supervisor.obj: process_supervisor.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-process_supervisor.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Tpo -c -o mcaster1_dsp_encoder_admin-process_supervisor.obj `if test -f 'process_supervisor.cpp'; then $(CYGPATH_W) 'process_supervisor.cpp'; else $(CYGPATH_W) '$(srcdir)/process_supervisor.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po
+#	$(AM_V_CXX)source='process_supervisor.cpp' object='mcaster1_dsp_encoder_admin-process_supervisor.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-process_supervisor.obj `if test -f 'process_supervisor.cpp'; then $(CYGPATH_W) 'process_supervisor.cpp'; else $(CYGPATH_W) '$(srcdir)/process_supervisor.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-ipc_proxy.o: ipc_proxy.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-ipc_proxy.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Tpo -c -o mcaster1_dsp_encoder_admin-ipc_proxy.o `test -f 'ipc_proxy.cpp' || echo '$(srcdir)/'`ipc_proxy.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po
+#	$(AM_V_CXX)source='ipc_proxy.cpp' object='mcaster1_dsp_encoder_admin-ipc_proxy.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-ipc_proxy.o `test -f 'ipc_proxy.cpp' || echo '$(srcdir)/'`ipc_proxy.cpp
+
+mcaster1_dsp_encoder_admin-ipc_proxy.obj: ipc_proxy.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-ipc_proxy.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Tpo -c -o mcaster1_dsp_encoder_admin-ipc_proxy.obj `if test -f 'ipc_proxy.cpp'; then $(CYGPATH_W) 'ipc_proxy.cpp'; else $(CYGPATH_W) '$(srcdir)/ipc_proxy.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po
+#	$(AM_V_CXX)source='ipc_proxy.cpp' object='mcaster1_dsp_encoder_admin-ipc_proxy.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-ipc_proxy.obj `if test -f 'ipc_proxy.cpp'; then $(CYGPATH_W) 'ipc_proxy.cpp'; else $(CYGPATH_W) '$(srcdir)/ipc_proxy.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-clockwheel_scheduler.o: clockwheel_scheduler.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-clockwheel_scheduler.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Tpo -c -o mcaster1_dsp_encoder_admin-clockwheel_scheduler.o `test -f 'clockwheel_scheduler.cpp' || echo '$(srcdir)/'`clockwheel_scheduler.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po
+#	$(AM_V_CXX)source='clockwheel_scheduler.cpp' object='mcaster1_dsp_encoder_admin-clockwheel_scheduler.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-clockwheel_scheduler.o `test -f 'clockwheel_scheduler.cpp' || echo '$(srcdir)/'`clockwheel_scheduler.cpp
+
+mcaster1_dsp_encoder_admin-clockwheel_scheduler.obj: clockwheel_scheduler.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-clockwheel_scheduler.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Tpo -c -o mcaster1_dsp_encoder_admin-clockwheel_scheduler.obj `if test -f 'clockwheel_scheduler.cpp'; then $(CYGPATH_W) 'clockwheel_scheduler.cpp'; else $(CYGPATH_W) '$(srcdir)/clockwheel_scheduler.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po
+#	$(AM_V_CXX)source='clockwheel_scheduler.cpp' object='mcaster1_dsp_encoder_admin-clockwheel_scheduler.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-clockwheel_scheduler.obj `if test -f 'clockwheel_scheduler.cpp'; then $(CYGPATH_W) 'clockwheel_scheduler.cpp'; else $(CYGPATH_W) '$(srcdir)/clockwheel_scheduler.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-eq.o: dsp/eq.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-eq.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-eq.o `test -f 'dsp/eq.cpp' || echo '$(srcdir)/'`dsp/eq.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+#	$(AM_V_CXX)source='dsp/eq.cpp' object='dsp/mcaster1_dsp_encoder_admin-eq.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-eq.o `test -f 'dsp/eq.cpp' || echo '$(srcdir)/'`dsp/eq.cpp
+
+dsp/mcaster1_dsp_encoder_admin-eq.obj: dsp/eq.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-eq.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-eq.obj `if test -f 'dsp/eq.cpp'; then $(CYGPATH_W) 'dsp/eq.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/eq.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+#	$(AM_V_CXX)source='dsp/eq.cpp' object='dsp/mcaster1_dsp_encoder_admin-eq.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-eq.obj `if test -f 'dsp/eq.cpp'; then $(CYGPATH_W) 'dsp/eq.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/eq.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-agc.o: dsp/agc.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-agc.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-agc.o `test -f 'dsp/agc.cpp' || echo '$(srcdir)/'`dsp/agc.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po
+#	$(AM_V_CXX)source='dsp/agc.cpp' object='dsp/mcaster1_dsp_encoder_admin-agc.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-agc.o `test -f 'dsp/agc.cpp' || echo '$(srcdir)/'`dsp/agc.cpp
+
+dsp/mcaster1_dsp_encoder_admin-agc.obj: dsp/agc.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-agc.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-agc.obj `if test -f 'dsp/agc.cpp'; then $(CYGPATH_W) 'dsp/agc.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/agc.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po
+#	$(AM_V_CXX)source='dsp/agc.cpp' object='dsp/mcaster1_dsp_encoder_admin-agc.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-agc.obj `if test -f 'dsp/agc.cpp'; then $(CYGPATH_W) 'dsp/agc.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/agc.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-crossfader.o: dsp/crossfader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-crossfader.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-crossfader.o `test -f 'dsp/crossfader.cpp' || echo '$(srcdir)/'`dsp/crossfader.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po
+#	$(AM_V_CXX)source='dsp/crossfader.cpp' object='dsp/mcaster1_dsp_encoder_admin-crossfader.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-crossfader.o `test -f 'dsp/crossfader.cpp' || echo '$(srcdir)/'`dsp/crossfader.cpp
+
+dsp/mcaster1_dsp_encoder_admin-crossfader.obj: dsp/crossfader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-crossfader.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-crossfader.obj `if test -f 'dsp/crossfader.cpp'; then $(CYGPATH_W) 'dsp/crossfader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/crossfader.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po
+#	$(AM_V_CXX)source='dsp/crossfader.cpp' object='dsp/mcaster1_dsp_encoder_admin-crossfader.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-crossfader.obj `if test -f 'dsp/crossfader.cpp'; then $(CYGPATH_W) 'dsp/crossfader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/crossfader.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-dj_crossfader.o: dsp/dj_crossfader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dj_crossfader.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dj_crossfader.o `test -f 'dsp/dj_crossfader.cpp' || echo '$(srcdir)/'`dsp/dj_crossfader.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po
+#	$(AM_V_CXX)source='dsp/dj_crossfader.cpp' object='dsp/mcaster1_dsp_encoder_admin-dj_crossfader.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dj_crossfader.o `test -f 'dsp/dj_crossfader.cpp' || echo '$(srcdir)/'`dsp/dj_crossfader.cpp
+
+dsp/mcaster1_dsp_encoder_admin-dj_crossfader.obj: dsp/dj_crossfader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dj_crossfader.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dj_crossfader.obj `if test -f 'dsp/dj_crossfader.cpp'; then $(CYGPATH_W) 'dsp/dj_crossfader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dj_crossfader.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po
+#	$(AM_V_CXX)source='dsp/dj_crossfader.cpp' object='dsp/mcaster1_dsp_encoder_admin-dj_crossfader.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dj_crossfader.obj `if test -f 'dsp/dj_crossfader.cpp'; then $(CYGPATH_W) 'dsp/dj_crossfader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dj_crossfader.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-dsp_chain.o: dsp/dsp_chain.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dsp_chain.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dsp_chain.o `test -f 'dsp/dsp_chain.cpp' || echo '$(srcdir)/'`dsp/dsp_chain.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
+#	$(AM_V_CXX)source='dsp/dsp_chain.cpp' object='dsp/mcaster1_dsp_encoder_admin-dsp_chain.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dsp_chain.o `test -f 'dsp/dsp_chain.cpp' || echo '$(srcdir)/'`dsp/dsp_chain.cpp
+
+dsp/mcaster1_dsp_encoder_admin-dsp_chain.obj: dsp/dsp_chain.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dsp_chain.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dsp_chain.obj `if test -f 'dsp/dsp_chain.cpp'; then $(CYGPATH_W) 'dsp/dsp_chain.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dsp_chain.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
+#	$(AM_V_CXX)source='dsp/dsp_chain.cpp' object='dsp/mcaster1_dsp_encoder_admin-dsp_chain.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dsp_chain.obj `if test -f 'dsp/dsp_chain.cpp'; then $(CYGPATH_W) 'dsp/dsp_chain.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dsp_chain.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-effects_rack.o: dsp/effects_rack.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-effects_rack.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-effects_rack.o `test -f 'dsp/effects_rack.cpp' || echo '$(srcdir)/'`dsp/effects_rack.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
+#	$(AM_V_CXX)source='dsp/effects_rack.cpp' object='dsp/mcaster1_dsp_encoder_admin-effects_rack.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-effects_rack.o `test -f 'dsp/effects_rack.cpp' || echo '$(srcdir)/'`dsp/effects_rack.cpp
+
+dsp/mcaster1_dsp_encoder_admin-effects_rack.obj: dsp/effects_rack.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-effects_rack.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-effects_rack.obj `if test -f 'dsp/effects_rack.cpp'; then $(CYGPATH_W) 'dsp/effects_rack.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/effects_rack.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
+#	$(AM_V_CXX)source='dsp/effects_rack.cpp' object='dsp/mcaster1_dsp_encoder_admin-effects_rack.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-effects_rack.obj `if test -f 'dsp/effects_rack.cpp'; then $(CYGPATH_W) 'dsp/effects_rack.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/effects_rack.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o: dsp/sidechain_ducker.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o `test -f 'dsp/sidechain_ducker.cpp' || echo '$(srcdir)/'`dsp/sidechain_ducker.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+#	$(AM_V_CXX)source='dsp/sidechain_ducker.cpp' object='dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o `test -f 'dsp/sidechain_ducker.cpp' || echo '$(srcdir)/'`dsp/sidechain_ducker.cpp
+
+dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.obj: dsp/sidechain_ducker.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.obj `if test -f 'dsp/sidechain_ducker.cpp'; then $(CYGPATH_W) 'dsp/sidechain_ducker.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/sidechain_ducker.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+#	$(AM_V_CXX)source='dsp/sidechain_ducker.cpp' object='dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.obj `if test -f 'dsp/sidechain_ducker.cpp'; then $(CYGPATH_W) 'dsp/sidechain_ducker.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/sidechain_ducker.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-dead_air_detector.o: dsp/dead_air_detector.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dead_air_detector.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dead_air_detector.o `test -f 'dsp/dead_air_detector.cpp' || echo '$(srcdir)/'`dsp/dead_air_detector.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po
+#	$(AM_V_CXX)source='dsp/dead_air_detector.cpp' object='dsp/mcaster1_dsp_encoder_admin-dead_air_detector.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dead_air_detector.o `test -f 'dsp/dead_air_detector.cpp' || echo '$(srcdir)/'`dsp/dead_air_detector.cpp
+
+dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj: dsp/dead_air_detector.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj `if test -f 'dsp/dead_air_detector.cpp'; then $(CYGPATH_W) 'dsp/dead_air_detector.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dead_air_detector.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po
+#	$(AM_V_CXX)source='dsp/dead_air_detector.cpp' object='dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj `if test -f 'dsp/dead_air_detector.cpp'; then $(CYGPATH_W) 'dsp/dead_air_detector.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dead_air_detector.cpp'; fi`
+
+mcaster1_dsp_encoder_admin-jack_manager.o: jack_manager.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-jack_manager.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo -c -o mcaster1_dsp_encoder_admin-jack_manager.o `test -f 'jack_manager.cpp' || echo '$(srcdir)/'`jack_manager.cpp
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po
+#	$(AM_V_CXX)source='jack_manager.cpp' object='mcaster1_dsp_encoder_admin-jack_manager.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-jack_manager.o `test -f 'jack_manager.cpp' || echo '$(srcdir)/'`jack_manager.cpp
+
+mcaster1_dsp_encoder_admin-jack_manager.obj: jack_manager.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-jack_manager.obj -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo -c -o mcaster1_dsp_encoder_admin-jack_manager.obj `if test -f 'jack_manager.cpp'; then $(CYGPATH_W) 'jack_manager.cpp'; else $(CYGPATH_W) '$(srcdir)/jack_manager.cpp'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po
+#	$(AM_V_CXX)source='jack_manager.cpp' object='mcaster1_dsp_encoder_admin-jack_manager.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-jack_manager.obj `if test -f 'jack_manager.cpp'; then $(CYGPATH_W) 'jack_manager.cpp'; else $(CYGPATH_W) '$(srcdir)/jack_manager.cpp'; fi`
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique
@@ -713,21 +1259,52 @@ distclean: distclean-am
 		-rm -f ./$(DEPDIR)/archive_writer.Po
 	-rm -f ./$(DEPDIR)/audio_pipeline.Po
 	-rm -f ./$(DEPDIR)/audio_source.Po
+	-rm -f ./$(DEPDIR)/clockwheel_scheduler.Po
 	-rm -f ./$(DEPDIR)/config_loader.Po
+	-rm -f ./$(DEPDIR)/encoder_ipc_api.Po
 	-rm -f ./$(DEPDIR)/encoder_slot.Po
-	-rm -f ./$(DEPDIR)/fastcgi_client.Po
 	-rm -f ./$(DEPDIR)/file_source.Po
-	-rm -f ./$(DEPDIR)/http_api.Po
-	-rm -f ./$(DEPDIR)/main_cli.Po
+	-rm -f ./$(DEPDIR)/jack_manager.Po
+	-rm -f ./$(DEPDIR)/main_encoder.Po
 	-rm -f ./$(DEPDIR)/mc1_db.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po
 	-rm -f ./$(DEPDIR)/playlist_parser.Po
 	-rm -f ./$(DEPDIR)/server_monitors.Po
 	-rm -f ./$(DEPDIR)/stream_client.Po
 	-rm -f ./$(DEPDIR)/system_health.Po
 	-rm -f dsp/$(DEPDIR)/agc.Po
 	-rm -f dsp/$(DEPDIR)/crossfader.Po
+	-rm -f dsp/$(DEPDIR)/dead_air_detector.Po
+	-rm -f dsp/$(DEPDIR)/dj_crossfader.Po
 	-rm -f dsp/$(DEPDIR)/dsp_chain.Po
+	-rm -f dsp/$(DEPDIR)/effects_rack.Po
 	-rm -f dsp/$(DEPDIR)/eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -776,21 +1353,52 @@ maintainer-clean: maintainer-clean-am
 		-rm -f ./$(DEPDIR)/archive_writer.Po
 	-rm -f ./$(DEPDIR)/audio_pipeline.Po
 	-rm -f ./$(DEPDIR)/audio_source.Po
+	-rm -f ./$(DEPDIR)/clockwheel_scheduler.Po
 	-rm -f ./$(DEPDIR)/config_loader.Po
+	-rm -f ./$(DEPDIR)/encoder_ipc_api.Po
 	-rm -f ./$(DEPDIR)/encoder_slot.Po
-	-rm -f ./$(DEPDIR)/fastcgi_client.Po
 	-rm -f ./$(DEPDIR)/file_source.Po
-	-rm -f ./$(DEPDIR)/http_api.Po
-	-rm -f ./$(DEPDIR)/main_cli.Po
+	-rm -f ./$(DEPDIR)/jack_manager.Po
+	-rm -f ./$(DEPDIR)/main_encoder.Po
 	-rm -f ./$(DEPDIR)/mc1_db.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-archive_writer.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_pipeline.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-audio_source.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-clockwheel_scheduler.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-config_loader.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-encoder_slot.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-fastcgi_client.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-file_source.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-http_api.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-ipc_proxy.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-main_cli.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-mc1_db.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-playlist_parser.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-process_supervisor.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-server_monitors.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-stream_client.Po
+	-rm -f ./$(DEPDIR)/mcaster1_dsp_encoder_admin-system_health.Po
 	-rm -f ./$(DEPDIR)/playlist_parser.Po
 	-rm -f ./$(DEPDIR)/server_monitors.Po
 	-rm -f ./$(DEPDIR)/stream_client.Po
 	-rm -f ./$(DEPDIR)/system_health.Po
 	-rm -f dsp/$(DEPDIR)/agc.Po
 	-rm -f dsp/$(DEPDIR)/crossfader.Po
+	-rm -f dsp/$(DEPDIR)/dead_air_detector.Po
+	-rm -f dsp/$(DEPDIR)/dj_crossfader.Po
 	-rm -f dsp/$(DEPDIR)/dsp_chain.Po
+	-rm -f dsp/$(DEPDIR)/effects_rack.Po
 	-rm -f dsp/$(DEPDIR)/eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-agc.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-crossfader.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dead_air_detector.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
