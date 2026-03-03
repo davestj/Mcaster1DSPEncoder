@@ -18,6 +18,8 @@
 #include "config_loader.h"
 #ifndef MC1_HTTP_TEST_BUILD
 #include "audio_pipeline.h"
+#include "process_supervisor.h"
+#include "ipc_proxy.h"
 #endif
 
 #include <stdio.h>
@@ -255,6 +257,12 @@ int main(int argc, char* argv[])
     /* Step 3: Initialise audio pipeline */
 #ifndef MC1_HTTP_TEST_BUILD
     g_pipeline = new AudioPipeline();
+
+    /* We also start the encoder child process for fault-isolated mode.
+     * The admin keeps a local pipeline for direct API access (legacy compatible).
+     * The child encoder is an additional worker that can be restarted independently. */
+    static ProcessSupervisor g_supervisor;
+    static IpcProxy          g_ipc_proxy;
 #endif
 
     /* Step 4: Load YAML startup config — fills gAdminConfig (HTTP, DB, DNAS, log).
@@ -287,8 +295,48 @@ int main(int argc, char* argv[])
             // Connect Mc1Db + start SystemHealth + ServerMonitor background threads.
             g_pipeline->start_background_services();
             // We start any slots that have auto_start=true in their DB config.
-            // Each slot fires in its own detached thread after its configured delay.
             g_pipeline->start_auto_slots();
+        }
+    }
+
+    /* Step 4c: Start the fault-isolated encoder child process.
+     * This runs a separate copy of the audio pipeline on localhost:8331.
+     * If a codec crashes, only the child dies — admin stays up. */
+    {
+        std::string admin_path = argv[0];
+        std::string encoder_path;
+        auto slash = admin_path.rfind('/');
+        if (slash != std::string::npos)
+            encoder_path = admin_path.substr(0, slash + 1) + "mcaster1-dsp-encoder";
+        else
+            encoder_path = "./mcaster1-dsp-encoder";
+
+        ProcessSupervisor::Config sup_cfg;
+        sup_cfg.binary_path  = encoder_path;
+        sup_cfg.args.push_back("--config");
+        sup_cfg.args.push_back(config_file ? config_file : "");
+        sup_cfg.args.push_back("--ipc-port");
+        sup_cfg.args.push_back("8331");
+        if (cli_loglevel_set && cli_loglevel >= 5) sup_cfg.args.push_back("-v");
+        sup_cfg.restart_delay_sec = 5;
+        sup_cfg.max_restarts      = 0;
+        sup_cfg.crash_log_path    = "/var/log/mcaster1/encoder_crash.log";
+        g_supervisor.configure(sup_cfg);
+
+        g_supervisor.set_crash_callback([](const ProcessSupervisor::Status& st) {
+            fprintf(stderr, "[admin] ENCODER CHILD CRASHED: %s (restart #%d)\n",
+                    st.last_crash_reason.c_str(), st.restart_count);
+        });
+
+        g_ipc_proxy.set_encoder_addr("127.0.0.1", 8331);
+
+        fprintf(stdout, "[admin] Starting fault-isolated encoder child: %s\n", encoder_path.c_str());
+        if (g_supervisor.start()) {
+            fprintf(stdout, "[admin] Encoder child PID: %d\n", (int)g_supervisor.child_pid());
+            g_ipc_proxy.set_encoder_alive(true);
+        } else {
+            fprintf(stderr, "[admin] WARNING: Encoder child failed to start — "
+                            "using embedded pipeline only\n");
         }
     }
 #endif
@@ -395,8 +443,12 @@ int main(int argc, char* argv[])
     }
 
 #ifndef MC1_HTTP_TEST_BUILD
+    /* We stop the encoder child process and clean up */
+    fprintf(stdout, "[admin] Stopping encoder child...\n");
+    g_supervisor.stop();
     delete g_pipeline;
     g_pipeline = nullptr;
 #endif
+    fprintf(stdout, "[admin] Clean shutdown complete.\n");
     return 0;
 }
