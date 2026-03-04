@@ -15,6 +15,11 @@
 
 set -euo pipefail
 
+# macOS/Homebrew: ensure aclocal can find autoconf-archive m4 macros
+if [ -d /opt/homebrew/share/aclocal ]; then
+    export ACLOCAL_PATH="/opt/homebrew/share/aclocal${ACLOCAL_PATH:+:${ACLOCAL_PATH}}"
+fi
+
 echo "── Mcaster1 DSP Encoder — autotools bootstrap ──"
 
 # ── Tool availability check ────────────────────────────────────────────────────
@@ -35,12 +40,20 @@ check_tool automake   "automake"
 check_tool m4         "m4"
 
 # Check for autoconf-archive (provides AX_CXX_COMPILE_STDCXX etc.)
-if ! aclocal --print-ac-dir 2>/dev/null | xargs -I{} find {} -name "ax_cxx_compile_stdcxx.m4" 2>/dev/null | grep -q .; then
-    if ! find /usr/share/aclocal /usr/local/share/aclocal 2>/dev/null \
-              -name "ax_cxx_compile_stdcxx.m4" 2>/dev/null | grep -q .; then
-        echo "  MISSING: ax_cxx_compile_stdcxx.m4 (package: autoconf-archive)"
-        missing_tools+=("autoconf-archive")
+# Note: pipefail causes find to fail if any search path doesn't exist,
+# so we check each directory individually.
+found_ax_m4=no
+for _d in "$(aclocal --print-ac-dir 2>/dev/null)" \
+          /usr/share/aclocal /usr/local/share/aclocal \
+          /opt/homebrew/share/aclocal; do
+    if [ -d "$_d" ] && [ -f "$_d/ax_cxx_compile_stdcxx.m4" ]; then
+        found_ax_m4=yes
+        break
     fi
+done
+if [ "$found_ax_m4" = "no" ]; then
+    echo "  MISSING: ax_cxx_compile_stdcxx.m4 (package: autoconf-archive)"
+    missing_tools+=("autoconf-archive")
 fi
 
 if [[ ${#missing_tools[@]} -gt 0 ]]; then

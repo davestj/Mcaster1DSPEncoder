@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g filter="url(#glow)">
+    <!-- Radio tower base -->
+    <line x1="32" y1="56" x2="32" y2="22" stroke="#22ffcc" stroke-width="3" stroke-linecap="round"/>
+    <!-- Left support leg -->
+    <line x1="32" y1="56" x2="20" y2="56" stroke="#22ffcc" stroke-width="3" stroke-linecap="round"/>
+    <!-- Right support leg -->
+    <line x1="32" y1="56" x2="44" y2="56" stroke="#22ffcc" stroke-width="3" stroke-linecap="round"/>
+    <!-- Left diagonal brace -->
+    <line x1="32" y1="40" x2="22" y2="56" stroke="#22ffcc" stroke-width="2" stroke-linecap="round"/>
+    <!-- Right diagonal brace -->
+    <line x1="32" y1="40" x2="42" y2="56" stroke="#22ffcc" stroke-width="2" stroke-linecap="round"/>
+    <!-- Antenna tip -->
+    <circle cx="32" cy="18" r="3.5" fill="#22ffcc"/>
+    <!-- Broadcast waves left -->
+    <path d="M22 14 A14 14 0 0 0 22 30" stroke="#22ffcc" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M16 10 A20 20 0 0 0 16 34" stroke="#22ffcc" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+    <path d="M10 6 A26 26 0 0 0 10 38" stroke="#22ffcc" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.4"/>
+    <!-- Broadcast waves right -->
+    <path d="M42 14 A14 14 0 0 1 42 30" stroke="#22ffcc" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+    <path d="M48 10 A20 20 0 0 1 48 34" stroke="#22ffcc" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+    <path d="M54 6 A26 26 0 0 1 54 38" stroke="#22ffcc" stroke-width="1.5" stroke-linecap="round" fill="none" opacity="0.4"/>
+  </g>
+</svg>

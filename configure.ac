@@ -17,6 +17,7 @@ AC_CONFIG_HEADERS([config.h])
 dnl ── Language / C++17 ────────────────────────────────────────────────────────
 AC_PROG_CXX
 AC_PROG_CC
+AC_PROG_OBJCXX
 AC_LANG([C++])
 dnl AX_CXX_COMPILE_STDCXX is from autoconf-archive (ax_cxx_compile_stdcxx.m4)
 AX_CXX_COMPILE_STDCXX([17], [noext], [mandatory])
@@ -194,6 +195,73 @@ AM_CONDITIONAL([HAVE_TAGLIB],   [test "x$have_taglib"   = "xyes"])
 AM_CONDITIONAL([HAVE_MPG123],   [test "x$have_mpg123"   = "xyes"])
 AM_CONDITIONAL([HAVE_AVFORMAT], [test "x$have_avformat" = "xyes"])
 
+dnl ── macOS Qt 6 GUI (optional) ───────────────────────────────────────────
+AC_ARG_ENABLE([macos-gui],
+    [AS_HELP_STRING([--enable-macos-gui], [Build macOS Qt 6 GUI application])],
+    [enable_macos_gui=$enableval], [enable_macos_gui=no])
+
+have_qt6=no
+AS_IF([test "x$enable_macos_gui" = "xyes"], [
+    PKG_CHECK_MODULES([QT6WIDGETS], [Qt6Widgets >= 6.5],
+        [have_qt6=yes],
+        [AC_MSG_ERROR([Qt 6 Widgets >= 6.5 not found. Install: brew install qt])])
+    PKG_CHECK_MODULES([QT6CORE], [Qt6Core >= 6.5])
+    PKG_CHECK_MODULES([QT6GUI],  [Qt6Gui  >= 6.5])
+
+    dnl Locate moc and rcc from Qt installation
+    dnl Try host_bins first (standard), then libexecdir (Homebrew), then prefix fallback
+    QT6_HOST_BINS=`$PKG_CONFIG --variable=host_bins Qt6Core 2>/dev/null`
+    if test -z "$QT6_HOST_BINS" || test ! -x "$QT6_HOST_BINS/moc"; then
+        QT6_HOST_BINS=`$PKG_CONFIG --variable=libexecdir Qt6Core 2>/dev/null`
+    fi
+    if test -z "$QT6_HOST_BINS" || test ! -x "$QT6_HOST_BINS/moc"; then
+        QT6_HOST_BINS=`$PKG_CONFIG --variable=prefix Qt6Core`/share/qt/libexec
+    fi
+    QT6_MOC="${QT6_HOST_BINS}/moc"
+    QT6_RCC="${QT6_HOST_BINS}/rcc"
+    if test ! -x "$QT6_MOC"; then
+        AC_MSG_ERROR([Qt6 moc not found at $QT6_MOC. Check your Qt installation.])
+    fi
+    AC_SUBST([QT6_MOC])
+    AC_SUBST([QT6_RCC])
+    AC_SUBST([QT6WIDGETS_CFLAGS])
+    AC_SUBST([QT6WIDGETS_LIBS])
+    AC_SUBST([QT6CORE_CFLAGS])
+    AC_SUBST([QT6CORE_LIBS])
+    AC_SUBST([QT6GUI_CFLAGS])
+    AC_SUBST([QT6GUI_LIBS])
+
+    dnl macOS system frameworks for audio/video capture
+    MACOS_FRAMEWORKS="-framework CoreAudio -framework AudioToolbox -framework AVFoundation -framework CoreMedia -framework CoreVideo -framework VideoToolbox -framework ScreenCaptureKit -framework Security -framework Cocoa -framework UserNotifications"
+    AC_SUBST([MACOS_FRAMEWORKS])
+    AC_DEFINE([MC1_MACOS_GUI], [1], [Building macOS Qt 6 GUI])
+])
+AM_CONDITIONAL([ENABLE_MACOS_GUI], [test "x$enable_macos_gui" = "xyes"])
+
+dnl ── libvpx (optional — VP8/VP9 video encoding) ────────────────────────────
+have_vpx=no
+PKG_CHECK_MODULES([VPX], [vpx],
+    [have_vpx=yes
+     AC_DEFINE([HAVE_VPX], [1], [libvpx available for VP8/VP9 encoding])],
+    [AC_MSG_NOTICE([libvpx not found — VP8/VP9 video encoding will be disabled])])
+AM_CONDITIONAL([HAVE_VPX], [test "x$have_vpx" = "xyes"])
+
+dnl ── libssh2 (optional — SFTP podcast upload) ──────────────────────────────
+have_libssh2=no
+PKG_CHECK_MODULES([LIBSSH2], [libssh2],
+    [have_libssh2=yes
+     AC_DEFINE([HAVE_LIBSSH2], [1], [libssh2 available for SFTP])],
+    [AC_MSG_NOTICE([libssh2 not found — SFTP podcast upload will be disabled])])
+AM_CONDITIONAL([HAVE_LIBSSH2], [test "x$have_libssh2" = "xyes"])
+
+dnl ── libcurl (optional — HTTP REST API for podcast publishing) ─────────────
+have_libcurl=no
+PKG_CHECK_MODULES([LIBCURL], [libcurl],
+    [have_libcurl=yes
+     AC_DEFINE([HAVE_LIBCURL], [1], [libcurl available for HTTP REST APIs])],
+    [AC_MSG_NOTICE([libcurl not found — REST API podcast publishing will be disabled])])
+AM_CONDITIONAL([HAVE_LIBCURL], [test "x$have_libcurl" = "xyes"])
+
 dnl ── Web UI install directory ─────────────────────────────────────────────────
 AC_ARG_WITH([webroot],
     [AS_HELP_STRING([--with-webroot=DIR],
@@ -211,6 +279,9 @@ AC_CONFIG_FILES([
     Makefile
     src/linux/Makefile
 ])
+if test "x$enable_macos_gui" = "xyes"; then
+    AC_CONFIG_FILES([src/macos/Makefile])
+fi
 AC_OUTPUT
 
 echo ""
@@ -231,6 +302,19 @@ echo "     TagLib    : ${have_taglib}"
 echo "     mpg123    : ${have_mpg123}"
 echo "     FFmpeg    : ${have_avformat}"
 echo ""
+echo "   macOS GUI  : ${enable_macos_gui}"
+if test "x$enable_macos_gui" = "xyes"; then
+echo "     Qt 6     : ${have_qt6}"
+echo "     MOC      : ${QT6_MOC}"
+echo "     RCC      : ${QT6_RCC}"
+fi
+echo "   libvpx     : ${have_vpx} (VP8/VP9 video encoding)"
+echo "   libssh2    : ${have_libssh2} (SFTP podcast upload)"
+echo "   libcurl    : ${have_libcurl} (REST API podcast publishing)"
+echo ""
 echo "   Run: make -j\$(nproc)"
 echo "   Binary: src/linux/mcaster1-encoder  (or \$(prefix)/bin after make install)"
+if test "x$enable_macos_gui" = "xyes"; then
+echo "   macOS GUI: src/macos/mcaster1-encoder-gui"
+fi
 echo ""

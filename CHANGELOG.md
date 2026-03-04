@@ -6,6 +6,98 @@ Versioning follows `vMAJOR.MINOR.PATCH` conventions.
 
 ---
 
+## [v1.1.5 — macos-dev] — 2026-03-04 — Phase M11.5 COMPLETE
+
+### Fixed (Critical DSP Persistence Bug Fixes)
+- `EncoderListModel::addPlaceholderSlots()` now populates both `entries_` and `configs_` vectors (was dropping all config data)
+- `EncoderListModel::updateSlot()` grows `configs_` vector instead of silently discarding saves when size mismatch
+- `makeTable` lambda captures model pointer directly instead of `encoder_model_` (which changes on tab switch)
+- Context menu captures `ctx_model` at creation time — safe across Radio/Podcast/TV-Video tab switches
+- `EqVisualizerDialog::setBands()` syncs dialog's `bands_` array + sliders + curve widget (was only setting curve visual)
+- EffectsRackTab toggle checkbox no longer overwrites `cfg_snapshot_` per-encoder params with global defaults
+- Global EQ Apply/Save handlers read from `dlg->bands()` instead of pipeline (preserves user's edits)
+
+### Verified
+- All DSP dialogs (AGC, Sonic Enhancer, DBX Voice, 31-Band EQ) correctly round-trip parameters via setConfig/config
+- ProfileManager YAML save/load comprehensively handles all 6 DSP effect parameter structs
+- `setCurrentPresetName()` in all dialogs uses `blockSignals()` to prevent preset overwrite on load
+
+---
+
+## [v1.1.0 — macos-dev] — 2026-03-03 — Phase M11 COMPLETE
+
+### Added
+- GlobalConfigManager: per-unit YAML files (`dsp_effect_agc.yaml`, `dsp_effect_sonic_enhancer.yaml`, etc.)
+- `DspUnitId` enum and per-unit save/load API with backward-compatible migration from monolithic file
+- Save Settings button on AGC, Sonic Enhancer, DBX Voice, 10-Band EQ, 31-Band EQ dialogs
+- `DspRackEnableState` struct for global rack toggle persistence (`dsp_rack_state.yaml`)
+- Startup: `dsp_defaults_` loaded from per-unit YAML before any DSP dialog opens
+- Enhanced button styling: hover/pressed states on all DSP dialog Save/Apply/Close buttons
+- StatusBar confirmation messages on per-encoder DSP settings save
+
+### Fixed
+- AGC Apply: full params (threshold, ratio, attack, release, knee, makeup, limiter) now reach pipeline (was only passing enable flag)
+- `EffectsRackTab::saveToConfig()` now persists all parameter structs from `cfg_snapshot_`
+- Global rack toggles now persist across app restarts via `dsp_rack_state.yaml`
+
+---
+
+## [v1.0.0 — macos-dev] — 2026-03-02 — Phase M10 COMPLETE
+
+### Added
+- Version 1.0.0 release (app.h versionString, Info.plist CFBundleVersion)
+- VpxEncoder: libvpx VP8/VP9 encoding with inline BGRA→I420 BT.601 conversion
+- HLS transport UI: "HLS (Local)" server type, directory picker, segment/max spinners
+- Video file source: AVAssetReaderTrackOutput background decode, CVPixelBuffer BGRA, FPS pacing
+- Code signing: `make codesign CODE_SIGN_IDENTITY="-"` (ad-hoc default)
+- DMG creation: `make dmg` → `scripts/make-dmg.sh` → hdiutil UDZO with Applications symlink
+- Native macOS notifications: UNUserNotificationCenter via platform_macos.mm, permission request at startup
+- App entitlements: camera, microphone, audio-input, network.client, files.user-selected.read-write
+- StreamTargetEntry expanded: stream_key, output_dir, hls_segment_duration, hls_max_segments
+
+---
+
+## [v0.9.0 — macos-dev] — 2026-03-01 — Phase M9 COMPLETE
+
+### Added
+- RTMP client: full C0/C1/S0/S1/S2/C2 handshake, AMF0 connect/createStream/publish, YouTube/Twitch support
+- HLS segmenter: MPEG-TS segments + M3U8 playlist, configurable segment duration + max segments
+- WebM muxer: EBML header, Matroska/WebM structure, VP8/VP9 codec support for Icecast
+- FLV muxer: tag-based A/V interleave, SPS/PPS sequence header, NAL unit support
+- TransitionEngine: A/B source blending with Cut, Fade, Wipe, Slide, Dissolve transitions
+- Multiple video sources: CameraSource, ScreenCaptureSource, ImageSource, VideoFileSource
+- BroadcastMonitorWindow: bitrate/FPS/duration stats polling, DRY RUN / LIVE status
+- AMF0 serializer: Number, Boolean, String, Object, Null for RTMP command messages
+
+---
+
+## [v0.8.5 — macos-dev] — 2026-03-01 — Phase M8.5 COMPLETE
+
+### Added
+- DspEffectsRack: global rack panel with 6 DSP plugins in signal-chain order
+- EffectsRackTab: per-encoder DSP controls tab in ConfigDialog
+- Rack unit UI: checkbox enable/bypass, Configure button, LED status indicator, unit number label
+- Signal-chain order visualization: 10-Band EQ → 31-Band EQ → Sonic → PTT Duck → AGC → DBX Voice
+- cfg_snapshot_ pattern: preserves per-encoder DSP params across toggle changes
+- Gradient backgrounds, teal accent bars, professional rack unit styling
+
+---
+
+## [v0.8.0 — macos-dev] — 2026-02-28 — Phase M8 COMPLETE
+
+### Added
+- DspPttDuck: atomic PTT flag, time-constant gain smoothing, mic buffer mix, duck_reduction_db metering
+- DspDbxVoice: 5-section voice processor (Gate → Compressor → De-Esser → LF Shelf → HF Shelf)
+- DbxVoiceDialog: 5 QGroupBox sections, preset dropdown, 3 GR meter bars (gate/comp/de-ess)
+- DBX presets: Broadcast Voice, Podcast Intimate, Voice-Over Warm, Raw/Flat
+- HttpClient: libcurl wrapper with base64 auth, multipart upload, progress callbacks
+- Podcast REST APIs: WordPress (2-step), Buzzsprout (multipart POST), Transistor (3-step), Podbean (4-step OAuth)
+- StreamTargetEditor: server type combo (Icecast2/Shoutcast/DNAS/RTMP), TCP test, adaptive fields
+- PTT UI: Push-to-Talk button + mic device selector, Cmd+T shortcut
+- for_each_slot template: thread-safe slot iteration in AudioPipeline
+
+---
+
 ## [Unreleased — linux-dev] — 2026-02-24
 
 ### Added

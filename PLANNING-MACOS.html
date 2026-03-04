@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mcaster1DSPEncoder — macOS Qt 6 Port Roadmap</title>
+<style>
+  :root {
+    --bg: #0f1724;
+    --card-bg: #1a2332;
+    --text: #e0e6f0;
+    --muted: #7a8ba0;
+    --accent: #00c9a7;
+    --accent2: #4fc3f7;
+    --border: #2a3a4e;
+    --complete: #00c853;
+    --progress: #ffab00;
+    --planned: #546e7a;
+    --error: #ff5252;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: 0.95rem; }
+  h2 {
+    font-size: 1.3rem;
+    color: var(--accent2);
+    margin: 2rem 0 1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.4rem;
+  }
+  .phase-grid { display: flex; flex-direction: column; gap: 1rem; }
+  .phase {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    transition: border-color 0.2s;
+  }
+  .phase:hover { border-color: var(--accent); }
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+  .phase-tag {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 0.2rem 0.6rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .tag-complete { background: var(--complete); color: #000; }
+  .tag-progress { background: var(--progress); color: #000; }
+  .tag-planned  { background: var(--planned);  color: #fff; }
+  .phase-title { font-size: 1.1rem; font-weight: 600; }
+  .phase-version { color: var(--muted); font-size: 0.85rem; margin-left: auto; }
+  .phase-desc { color: var(--muted); font-size: 0.9rem; margin-bottom: 0.5rem; }
+  .phase-files {
+    font-size: 0.8rem;
+    color: var(--accent);
+    margin-top: 0.5rem;
+  }
+  ul { padding-left: 1.25rem; }
+  li { margin-bottom: 0.3rem; font-size: 0.9rem; }
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin-top: 0.75rem;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .fill-complete { width: 100%; background: var(--complete); }
+  .fill-progress { background: var(--progress); }
+  .fill-planned  { width: 0%;   background: var(--planned); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+    font-size: 0.85rem;
+  }
+  th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 2px solid var(--border);
+    color: var(--accent2);
+    font-weight: 600;
+  }
+  td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .timestamp {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border);
+  }
+</style>
+</head>
+<body>
+
+<h1>Mcaster1DSPEncoder</h1>
+<p class="subtitle">macOS ARM64 Qt 6 Port — Development Roadmap &amp; Phase Status</p>
+
+<h2>Phase Overview</h2>
+
+<div class="phase-grid">
+
+  <!-- Phase M1 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M1 — Foundation + Main Window Shell</span>
+      <span class="phase-version">v0.1.0</span>
+    </div>
+    <p class="phase-desc">
+      Buildable app with full main window layout, system tray, VU meter, encoder list table,
+      macOS menu bar, About dialog, branded dark theme, Autotools build system with custom MOC/RCC rules.
+    </p>
+    <ul>
+      <li>QMainWindow with QMenuBar, QStatusBar, QSystemTrayIcon</li>
+      <li>Custom VU meter widget (QPainter gradient bars)</li>
+      <li>QTableView + QAbstractTableModel for encoder slots</li>
+      <li>SVG icon set (app, live-on/off, connect, settings, tray)</li>
+      <li>Native macOS style + switchable branded dark navy/teal theme</li>
+    </ul>
+    <p class="phase-files">13 source files &bull; 533 KB binary</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M2 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M2 — Configuration Dialogs + YAML Config</span>
+      <span class="phase-version">v0.2.0</span>
+    </div>
+    <p class="phase-desc">
+      Full encoder configuration UI with 4-tab QTabWidget dialog, YAML config loader,
+      17 built-in encoder presets, Edit Metadata dialog, codec-aware form validation.
+    </p>
+    <ul>
+      <li>ConfigDialog: Basic Settings, YP Settings, Advanced, ICY 2.2 tabs</li>
+      <li>17 encoder presets (MP3, AAC-LC/HE/HEv2/ELD, Opus, Vorbis, FLAC)</li>
+      <li>YAML config loader (libyaml) for EncoderConfig + MetadataConfig</li>
+      <li>Edit Metadata dialog with manual text override</li>
+      <li>Config-backed EncoderListModel with add/update/remove/configAt</li>
+    </ul>
+    <p class="phase-files">+10 source files &bull; 533 KB binary</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M3 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M3 — Audio Engine + Device Capture</span>
+      <span class="phase-version">v0.3.0</span>
+    </div>
+    <p class="phase-desc">
+      Full audio pipeline: PortAudio device capture, ScreenCaptureKit system audio (macOS 13+),
+      all codec encoders (Vorbis/FLAC/Opus/FDK-AAC/MP3), DSP chain, file source, playlist parser,
+      archive writer, codec parameter validator (AAC bug fix).
+    </p>
+    <ul>
+      <li>DSP chain: 10-band parametric EQ, AGC/compressor/limiter, equal-power crossfader</li>
+      <li>PortAudio device enumeration + CoreAudio backend</li>
+      <li>ScreenCaptureKit system audio loopback (Obj-C++ SCStream API)</li>
+      <li>EncoderSlot state machine: IDLE → STARTING → LIVE → RECONNECTING → SLEEP</li>
+      <li>AudioPipeline multi-slot orchestrator with start/stop/restart/wake</li>
+      <li>FileSource: libmpg123 + FFmpeg file decoder with real-time pacing</li>
+      <li>New codec_validator: per-codec parameter validation (HE-AAC v2 stereo-only fix)</li>
+      <li>UI wired: device combo from PortAudio, volume → pipeline, context menu Start/Stop</li>
+    </ul>
+    <p class="phase-files">+12 source files &bull; 695 KB binary &bull; All codecs linked</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M4 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M4 — Streaming Client + Server Integration</span>
+      <span class="phase-version">v0.4.0</span>
+    </div>
+    <p class="phase-desc">
+      Connect to Icecast2, Shoutcast, Mcaster1DNAS, and Live365 servers. Stream encoded audio live.
+      Metadata push, watchdog reconnection with exponential backoff, connection status UI.
+    </p>
+    <ul>
+      <li>StreamClient: TCP streaming with Icecast2 HTTP PUT, Shoutcast v1 SOURCE ICY/1.0</li>
+      <li>Mcaster1DNAS with ICY 2.2 extended headers</li>
+      <li>Live365 support (Icecast2 compatible)</li>
+      <li>Metadata push (/admin/metadata and /admin.cgi) with first-connect guard</li>
+      <li>Watchdog reconnection with exponential backoff</li>
+      <li>Connection status indicators + dynamic Connect/Disconnect button</li>
+      <li>DNAS stats proxy (SecureTransport SSL, XML→struct parsing)</li>
+      <li>Live bandwidth display in status bar</li>
+      <li>macOS SO_NOSIGPIPE adaptation (MSG_NOSIGNAL not available)</li>
+    </ul>
+    <p class="phase-files">+4 source files &bull; 846 KB binary &bull; Security.framework linked</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M5 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M5 — Polish, Presets UI, Full Feature Parity</span>
+      <span class="phase-version">v0.5.0</span>
+    </div>
+    <p class="phase-desc">
+      Production-quality UI: preset browser, preferences dialog, macOS notifications,
+      dock badge, keyboard shortcuts, log viewer, EQ curve visualizer.
+    </p>
+    <ul>
+      <li>Preset browser dialog with 17 built-in + custom user presets</li>
+      <li>Preferences dialog with General, Audio, DSP, Notifications tabs</li>
+      <li>Log viewer dialog with search, filter by level, auto-scroll</li>
+      <li>EQ curve widget visualizer (real-time frequency response)</li>
+      <li>AGC settings dialog with live gain reduction meter</li>
+      <li>DSP presets system with import/export</li>
+    </ul>
+    <p class="phase-files">+6 source files &bull; 1.2 MB binary</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M6 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M6 — .app Bundle, 31-Band EQ, Sonic Enhancer, Video Pipeline</span>
+      <span class="phase-version">v0.6.0</span>
+    </div>
+    <p class="phase-desc">
+      Native .app bundle with make target, 31-band dual-channel graphic EQ (ISO 1/3-octave),
+      BBE Sonic Maximizer clone, full CoreAudio device enumeration, AVFoundation camera capture,
+      VideoToolbox H.264 hardware encoding, FLV muxer, live camera preview widget.
+    </p>
+    <ul>
+      <li>.app bundle: make app-bundle target, Info.plist, .icns icon generation script</li>
+      <li>31-band graphic EQ: ISO 1/3-octave (20Hz–20kHz), per-channel L/R, 8 presets</li>
+      <li>Sonic Enhancer: 3-band crossover, phase alignment, Lo Contour/Process/Output, 6 presets</li>
+      <li>CoreAudio device enumeration: input + output + aggregate + virtual devices</li>
+      <li>AVFoundation camera capture with device enumeration and permission handling</li>
+      <li>VideoToolbox H.264 hardware encoder with SPS/PPS extraction, Annex B output</li>
+      <li>FLV muxer for audio/video interleaving (AAC + MP3 audio, H.264 video)</li>
+      <li>Camera preview widget with thread-safe double buffering and aspect-ratio scaling</li>
+    </ul>
+    <p class="phase-files">+14 source files &bull; 1.4 MB binary &bull; VideoToolbox + CoreVideo frameworks</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M6.5 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M6.5 — Video Effects, Broadcast Pipeline, Overlays</span>
+      <span class="phase-version">v0.6.5</span>
+    </div>
+    <p class="phase-desc">
+      Professional two-window broadcast pipeline: Preview/Editor + Broadcast Monitor.
+      13 real-time BGRA video effects with chain processing, overlay renderer (text, image/logo,
+      lower-third, news ticker, SRT subtitles), DRY RUN / LIVE ON-AIR broadcast controls,
+      EncoderType distinction (Audio vs Video Broadcast).
+    </p>
+    <ul>
+      <li>13 video effects: Brightness/Contrast, Saturation, Color Temperature, Gaussian Blur, Sharpen, Grayscale, Sepia, Invert, Chroma Key, Vignette, Edge Detect, Pixelize, Flip/Mirror</li>
+      <li>VideoEffectsChain with add/remove/reorder/bypass, factory pattern, 6 presets</li>
+      <li>OverlayRenderer: zero-dependency BGRA renderer with 8&times;8 bitmap font (thread-safe)</li>
+      <li>Text overlay, image/logo (PNG alpha blend), lower-third bar, scrolling news ticker</li>
+      <li>SRT subtitle parser with binary search by playback timestamp</li>
+      <li>CameraPreviewWindow refactored: EDITOR badge, FX + OVL buttons</li>
+      <li>BroadcastMonitorWindow: GO LIVE / STOP / DRY RUN, ON-AIR blink, duration timer</li>
+      <li>VideoEffectsPanel: floating 280px tool window, per-effect param sliders, 6 presets</li>
+      <li>OverlaySettingsDialog: 5-tab dialog (Text, Image, Lower Third, Ticker, Subtitles)</li>
+      <li>EncoderType enum: AUDIO vs VIDEO_BROADCAST encoder config distinction</li>
+      <li>Full pipeline: Camera &rarr; Effects &rarr; Overlays &rarr; Preview + Broadcast windows</li>
+      <li>10 new SVG icons: on-air, dry-run, go-live, stop-broadcast, effects, overlay, subtitles, lower-third, editor, monitor</li>
+    </ul>
+    <p class="phase-files">+10 source files &bull; 1.66 MB binary &bull; 10 new SVG icons + test assets</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M7 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M7 — Radio / Podcast / TV-Video Categories</span>
+      <span class="phase-version">v0.7.0</span>
+    </div>
+    <p class="phase-desc">
+      Three-category encoder system (Radio, Podcast, TV/Video) with tabbed UI, type chooser dialog,
+      per-slot YAML profiles, expanded presets (25 total), podcast recording with RSS 2.0 feed generation,
+      SFTP upload (libssh2), multi-destination podcast publisher (WordPress/Buzzsprout/Transistor/Podbean),
+      Live Video Stream Studio dialog, SVG broadcast banner.
+    </p>
+    <ul>
+      <li>EncoderType split: RADIO / PODCAST / TV_VIDEO (was AUDIO / VIDEO_BROADCAST)</li>
+      <li>QTabWidget with 3 filtered encoder lists (Radio | Podcast | TV/Video)</li>
+      <li>EncoderTypeChooser: 3-card modal dialog for selecting encoder category</li>
+      <li>ProfileManager: per-slot YAML configs at ~/Library/Application Support/Mcaster1/profiles/</li>
+      <li>PodcastSettingsTab: RSS metadata, output dirs, SFTP, simulcast, 4 publishing destinations</li>
+      <li>LiveVideoStudioDialog: camera preview + video codec/container + stream targets + GO LIVE</li>
+      <li>Video codecs: H.264/FLV, Theora/OGG, VP8/WebM, VP9/WebM (matching DNAS support)</li>
+      <li>25 encoder presets: 14 Radio + 6 Podcast + 5 TV/Video</li>
+      <li>RSS 2.0 feed generator with iTunes namespace, episode scanner</li>
+      <li>SFTP uploader (libssh2): password + SSH key auth, chunked upload with progress</li>
+      <li>Podcast Publisher: SFTP upload + WordPress/Buzzsprout/Transistor/Podbean API stubs</li>
+      <li>WordPress: PowerPress (Blubrry), Seriously Simple Podcasting, Podlove Publisher support</li>
+      <li>SVG broadcast banner (QPainter gradient, QIcon-based SVG, no QtSvg dep)</li>
+      <li>7 new SVG icons: radio, podcast, tv-video, rss, sftp, studio, banner-broadcast</li>
+      <li>Optional libssh2 in configure.ac (graceful fallback when not installed)</li>
+    </ul>
+    <p class="phase-files">+12 source files &bull; 1.98 MB binary &bull; libssh2 linked &bull; 7 new SVGs</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M8 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M8 — Push-to-Talk, DBX Voice Processor, REST API Publishing</span>
+      <span class="phase-version">v0.8.0</span>
+    </div>
+    <p class="phase-desc">
+      Push-to-talk with audio ducking (secondary mic source, configurable fade level),
+      DBX 286s voice processor clone (5-section: gate, compressor, de-esser, LF/HF enhancers),
+      HTTP client integration (libcurl) for podcast REST API publishing
+      (WordPress, Buzzsprout, Transistor, Podbean), stream target editor for Live Studio.
+    </p>
+    <ul>
+      <li>DspPttDuck: atomic PTT flag, time-constant gain smoothing, duck_reduction_db metering</li>
+      <li>DspDbxVoice: Gate &rarr; Compressor &rarr; De-Esser (bandpass sidechain) &rarr; LF Shelf &rarr; HF Shelf</li>
+      <li>DbxVoiceDialog: 5 QGroupBox sections, preset dropdown, 3 GR meter bars</li>
+      <li>DBX presets: Broadcast Voice, Podcast Intimate, Voice-Over Warm, Raw/Flat</li>
+      <li>HttpClient: libcurl wrapper with base64 auth, multipart upload, progress callbacks</li>
+      <li>WordPress REST API: 2-step media upload + post creation (PowerPress/SSP/Podlove)</li>
+      <li>Buzzsprout API: single multipart POST episode creation</li>
+      <li>Transistor.fm API: 3-step authorize &rarr; S3 PUT &rarr; POST episode</li>
+      <li>Podbean API: 4-step OAuth &rarr; authorize &rarr; S3 PUT &rarr; POST</li>
+      <li>StreamTargetEditor: server type combo, TCP test, field visibility adapts to type</li>
+      <li>PTT UI: Push-to-Talk button + mic device selector, Cmd+T shortcut</li>
+      <li>for_each_slot template: thread-safe slot iteration in AudioPipeline</li>
+      <li>DSP chain order: EQ &rarr; Sonic Enhancer &rarr; PTT Duck &rarr; AGC &rarr; DBX Voice</li>
+    </ul>
+    <p class="phase-files">+8 source files &bull; libcurl linked &bull; 4 DBX presets</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M8.5 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M8.5 — DSP Effects Rack + Per-Encoder DSP Controls</span>
+      <span class="phase-version">v0.8.5</span>
+    </div>
+    <p class="phase-desc">
+      Global DSP Effects Rack panel and per-encoder Effects Rack tab in ConfigDialog.
+      Each DSP plugin shown as a rack unit with enable checkbox, Configure button,
+      LED status indicator. Signal-chain order visualization.
+    </p>
+    <ul>
+      <li>DspEffectsRack: global rack panel with 6 DSP plugins in signal-chain order</li>
+      <li>EffectsRackTab: per-encoder DSP controls in ConfigDialog (5th tab)</li>
+      <li>Rack unit UI: checkbox enable, Configure&hellip; button, LED status dot, unit number</li>
+      <li>Plugins: 10-Band EQ, 31-Band EQ, Sonic Enhancer, PTT Duck, AGC, DBX Voice</li>
+      <li>Configure buttons wire to existing per-encoder DSP dialogs</li>
+      <li>cfg_snapshot_ pattern: preserves per-encoder params across toggle changes</li>
+      <li>Gradient backgrounds, teal accent bars, rack unit styling</li>
+    </ul>
+    <p class="phase-files">+2 source files (dsp_effects_rack, effects_rack_tab)</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M9 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M9 — Video Streaming Pipeline (RTMP/HLS/WebM)</span>
+      <span class="phase-version">v0.9.0</span>
+    </div>
+    <p class="phase-desc">
+      Full video streaming pipeline: RTMP to YouTube/Twitch, HLS local segments,
+      WebM/VP8/VP9 for Icecast, FLV muxing for H.264+AAC. Source transitions,
+      multiple video sources, broadcast monitor with live stats.
+    </p>
+    <ul>
+      <li>RTMP client: full C0/C1/S0/S1/S2/C2 handshake, AMF0 connect/createStream/publish</li>
+      <li>HLS segmenter: MPEG-TS segments + M3U8 playlist, configurable duration + max segments</li>
+      <li>WebM muxer: EBML header, Matroska/WebM structure, VP8/VP9 codec support</li>
+      <li>FLV muxer: tag-based A/V interleave, SPS/PPS sequence header, NAL unit support</li>
+      <li>TransitionEngine: A/B source blending with Cut, Fade, Wipe, Slide, Dissolve</li>
+      <li>Multiple video sources: Camera (AVFoundation), Screen (ScreenCaptureKit), Image, Video File (AVAssetReader)</li>
+      <li>BroadcastMonitorWindow: bitrate/FPS/duration stats, DRY RUN / LIVE status</li>
+      <li>AMF0 serializer: Number, Boolean, String, Object, Null for RTMP commands</li>
+    </ul>
+    <p class="phase-files">+12 source files &bull; Full RTMP/HLS/WebM pipeline</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M10 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M10 — Integration, Distribution, VP8/VP9</span>
+      <span class="phase-version">v1.0.0</span>
+    </div>
+    <p class="phase-desc">
+      Version 1.0.0 release. VP8/VP9 encoding via libvpx, HLS transport UI,
+      video file source decoding, code signing, DMG creation, native macOS
+      notifications (UNUserNotificationCenter), app entitlements.
+    </p>
+    <ul>
+      <li>VpxEncoder: libvpx VP8/VP9, inline BGRA&rarr;I420 BT.601 conversion</li>
+      <li>HLS transport UI: directory picker, segment duration/max spinners</li>
+      <li>Video file source: AVAssetReaderTrackOutput, CVPixelBuffer BGRA extraction, FPS pacing</li>
+      <li>Code signing: <code>make codesign CODE_SIGN_IDENTITY="-"</code></li>
+      <li>DMG creation: <code>make dmg</code> &rarr; hdiutil UDZO with Applications symlink</li>
+      <li>Native notifications: UNUserNotificationCenter via platform_macos.mm</li>
+      <li>Entitlements: camera, microphone, audio-input, network.client, files</li>
+      <li>StreamTargetEntry: stream_key, output_dir, HLS segment params</li>
+    </ul>
+    <p class="phase-files">+2 source files &bull; libvpx linked &bull; UserNotifications.framework</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M11 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M11 — Global DSP Rack Persistence + Per-Unit YAML</span>
+      <span class="phase-version">v1.1.0</span>
+    </div>
+    <p class="phase-desc">
+      DSP effects rack persistence overhaul: per-unit YAML config files, Save Settings buttons
+      on all DSP dialogs, global rack toggle persistence, AGC Apply wiring fix,
+      startup defaults loading, hover/pressed button styling.
+    </p>
+    <ul>
+      <li>Per-unit YAML files: <code>dsp_effect_agc.yaml</code>, <code>dsp_effect_sonic_enhancer.yaml</code>, etc.</li>
+      <li>GlobalConfigManager: <code>DspUnitId</code> enum, per-unit save/load, backward-compat migration</li>
+      <li>Save Settings button on AGC, Sonic Enhancer, DBX Voice, 10-Band EQ, 31-Band EQ dialogs</li>
+      <li>AGC Apply bug fix: full params (threshold, ratio, attack, etc.) now reach pipeline</li>
+      <li>EffectsRackTab: <code>saveToConfig()</code> persists parameter structs from cfg_snapshot_</li>
+      <li>Global rack toggle state saved to <code>dsp_rack_state.yaml</code></li>
+      <li>Startup: <code>dsp_defaults_</code> loaded from YAML before any DSP dialog opens</li>
+      <li>Enhanced button styling: hover/pressed states on all DSP dialog buttons</li>
+    </ul>
+    <p class="phase-files">~22 file changes &bull; per-unit YAML infrastructure</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+  <!-- Phase M11.5 -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-tag tag-complete">Complete</span>
+      <span class="phase-title">M11.5 — DSP Persistence Bug Fixes + Model Sync</span>
+      <span class="phase-version">v1.1.5</span>
+    </div>
+    <p class="phase-desc">
+      Critical bug fixes for DSP persistence: EncoderListModel dual-vector sync,
+      encoder_model_ lambda capture safety, 10-band EQ slider/frequency value round-trip,
+      toggle checkbox no longer overwrites per-encoder params with global defaults.
+    </p>
+    <ul>
+      <li>Fix: <code>addPlaceholderSlots()</code> now populates both <code>entries_</code> and <code>configs_</code> vectors</li>
+      <li>Fix: <code>updateSlot()</code> grows <code>configs_</code> instead of silently dropping saves</li>
+      <li>Fix: <code>makeTable</code> lambda captures model pointer directly (not <code>encoder_model_</code>)</li>
+      <li>Fix: Context menu captures <code>ctx_model</code> at creation time, safe across tab switches</li>
+      <li>Fix: <code>EqVisualizerDialog::setBands()</code> syncs dialog bands + sliders + curve widget</li>
+      <li>Fix: EffectsRackTab toggle no longer overwrites cfg_snapshot_ with global defaults</li>
+      <li>Fix: Global EQ Apply/Save read from <code>dlg-&gt;bands()</code> not pipeline (preserves edits)</li>
+      <li>All DSP dialogs verified: AGC, Sonic, DBX, 31-band EQ correctly round-trip params</li>
+    </ul>
+    <p class="phase-files">6 files changed &bull; 0 errors, 0 warnings</p>
+    <div class="progress-bar"><div class="progress-fill fill-complete"></div></div>
+  </div>
+
+</div>
+
+<h2>Code Reuse Strategy</h2>
+<table>
+  <tr><th>Component</th><th>Source</th><th>Strategy</th></tr>
+  <tr><td>DSP chain (EQ/AGC/crossfader)</td><td>src/linux/dsp/</td><td>Verbatim copy (pure math)</td></tr>
+  <tr><td>Audio pipeline</td><td>src/linux/audio_pipeline.cpp</td><td>Port: removed MySQL, SystemHealth</td></tr>
+  <tr><td>Encoder slot</td><td>src/linux/encoder_slot.cpp</td><td>Port: removed logger, DB, stubbed StreamClient</td></tr>
+  <tr><td>Stream client</td><td>src/linux/stream_client.cpp</td><td>Ported M4: SO_NOSIGPIPE, namespace mc1, Live365</td></tr>
+  <tr><td>File source</td><td>src/linux/file_source.cpp</td><td>Verbatim (mpg123 + FFmpeg)</td></tr>
+  <tr><td>Playlist parser</td><td>src/linux/playlist_parser.cpp</td><td>Verbatim copy</td></tr>
+  <tr><td>Archive writer</td><td>src/linux/archive_writer.cpp</td><td>Minor: default dir changed</td></tr>
+  <tr><td>Config loader</td><td>src/linux/config_loader.cpp</td><td>Port: stripped MySQL, kept YAML</td></tr>
+  <tr><td>Codec validator</td><td>New for macOS</td><td>New: per-codec AAC param validation</td></tr>
+  <tr><td>ScreenCaptureKit</td><td>New for macOS</td><td>New: Obj-C++ system audio capture</td></tr>
+  <tr><td>31-band graphic EQ</td><td>New for macOS</td><td>New: ISO 1/3-octave, dual-channel, 8 presets</td></tr>
+  <tr><td>Sonic Enhancer</td><td>New for macOS</td><td>New: BBE clone, 3-band crossover + phase align</td></tr>
+  <tr><td>CoreAudio enumeration</td><td>New for macOS</td><td>New: AudioObject API, all device types</td></tr>
+  <tr><td>AVFoundation camera</td><td>New for macOS</td><td>New: Obj-C++ AVCaptureSession</td></tr>
+  <tr><td>VideoToolbox H.264</td><td>New for macOS</td><td>New: VTCompressionSession hardware encoder</td></tr>
+  <tr><td>FLV muxer</td><td>New for macOS</td><td>New: A/V interleave, AVC seq header</td></tr>
+  <tr><td>Video effects chain</td><td>New for macOS</td><td>New: 13 BGRA effects, chain processing, factory pattern</td></tr>
+  <tr><td>Overlay renderer</td><td>New for macOS</td><td>New: bitmap font text, PNG alpha, lower-third, ticker, SRT</td></tr>
+  <tr><td>Broadcast monitor</td><td>New for macOS</td><td>New: DRY RUN / ON-AIR window, GO LIVE controls</td></tr>
+  <tr><td>Profile manager</td><td>New for macOS</td><td>New: per-slot YAML config, libyaml read/write</td></tr>
+  <tr><td>RSS generator</td><td>New for macOS</td><td>New: RSS 2.0 + iTunes XML, episode scanner</td></tr>
+  <tr><td>SFTP uploader</td><td>New for macOS</td><td>New: libssh2, password + SSH key auth</td></tr>
+  <tr><td>Podcast publisher</td><td>New for macOS</td><td>New: multi-destination framework (SFTP + REST APIs)</td></tr>
+  <tr><td>Live Video Studio</td><td>New for macOS</td><td>New: camera + codec selector + stream targets</td></tr>
+  <tr><td>PTT Duck DSP</td><td>New for macOS</td><td>New: atomic PTT flag, gain smoothing, mic buffer mix</td></tr>
+  <tr><td>DBX Voice Processor</td><td>New for macOS</td><td>New: 5-section channel strip emulation</td></tr>
+  <tr><td>HTTP Client (libcurl)</td><td>New for macOS</td><td>New: REST API publishing for podcasts</td></tr>
+  <tr><td>Stream Target Editor</td><td>New for macOS</td><td>New: server type selector, TCP test, adaptive fields</td></tr>
+  <tr><td>DSP Effects Rack</td><td>New for macOS</td><td>New: 6-plugin rack with signal-chain order</td></tr>
+  <tr><td>Effects Rack Tab</td><td>New for macOS</td><td>New: per-encoder DSP enable/configure in ConfigDialog</td></tr>
+  <tr><td>RTMP Client</td><td>New for macOS</td><td>New: full handshake, AMF0, YouTube/Twitch support</td></tr>
+  <tr><td>HLS Segmenter</td><td>New for macOS</td><td>New: MPEG-TS + M3U8 playlist generation</td></tr>
+  <tr><td>WebM Muxer</td><td>New for macOS</td><td>New: EBML, VP8/VP9 for Icecast</td></tr>
+  <tr><td>Transition Engine</td><td>New for macOS</td><td>New: A/B blending (cut/fade/wipe/slide/dissolve)</td></tr>
+  <tr><td>VPX Encoder</td><td>New for macOS</td><td>New: libvpx VP8/VP9, BGRA→I420 conversion</td></tr>
+  <tr><td>GlobalConfigManager</td><td>New for macOS</td><td>New: per-unit YAML save/load, DspUnitId enum</td></tr>
+</table>
+
+<h2>Build Dependencies (Homebrew)</h2>
+<table>
+  <tr><th>Package</th><th>Purpose</th><th>Status</th></tr>
+  <tr><td>qt (6.10+)</td><td>Qt 6 Widgets GUI framework</td><td>Installed</td></tr>
+  <tr><td>portaudio</td><td>Audio device capture (CoreAudio)</td><td>Installed</td></tr>
+  <tr><td>fdk-aac</td><td>AAC-LC / HE-AAC v1+v2 / AAC-ELD</td><td>Installed</td></tr>
+  <tr><td>lame</td><td>MP3 encoding</td><td>Not detected (may need install)</td></tr>
+  <tr><td>libvorbis + libogg</td><td>Ogg/Vorbis encoding</td><td>Installed</td></tr>
+  <tr><td>flac</td><td>FLAC lossless encoding</td><td>Installed</td></tr>
+  <tr><td>opus + libopusenc</td><td>Opus encoding</td><td>Installed</td></tr>
+  <tr><td>mpg123</td><td>MP3 file decoding</td><td>Installed</td></tr>
+  <tr><td>ffmpeg</td><td>Multi-format file decoding</td><td>Installed</td></tr>
+  <tr><td>taglib</td><td>Audio metadata tag reading</td><td>Installed</td></tr>
+  <tr><td>yaml-cpp / libyaml</td><td>YAML config parsing</td><td>Installed</td></tr>
+  <tr><td>openssl@3</td><td>SSL/TLS for HTTPS streams</td><td>Installed</td></tr>
+  <tr><td>libssh2</td><td>SFTP podcast upload (optional)</td><td>Installed</td></tr>
+  <tr><td>curl</td><td>REST API podcast publishing (WordPress, Buzzsprout, etc.)</td><td>Installed</td></tr>
+  <tr><td>libvpx</td><td>VP8/VP9 video encoding for WebM/Icecast</td><td>Installed</td></tr>
+</table>
+
+<p class="timestamp">
+  Last updated: 2026-03-04 (M11.5 complete) &bull; Branch: macos-dev &bull; Maintainer: Dave St. John
+</p>
+
+</body>
+</html>

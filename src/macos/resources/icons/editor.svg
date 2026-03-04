@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Screen/frame -->
+  <rect x="2" y="3" width="16" height="12" rx="2"/>
+  <!-- Play icon on screen -->
+  <polygon points="8,7 8,13 13,10" stroke-width="1.5"/>
+  <!-- Pencil overlapping bottom-right -->
+  <path d="M18.5 8.5l3-3a1.41 1.41 0 00-2-2l-3 3"/>
+  <path d="M16.5 10.5L15 16l5.5-1.5"/>
+  <line x1="16.5" y1="10.5" x2="19.5" y2="7.5"/>
+</svg>

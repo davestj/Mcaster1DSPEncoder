@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Compressor/limiter: waveform being compressed -->
+  <polyline points="2,16 5,12 8,4 11,12 14,12 17,8 20,12 22,16" fill="none"/>
+  <line x1="2" y1="8" x2="22" y2="8" stroke="#4fc3f7" stroke-width="1" stroke-dasharray="3,2" opacity="0.6"/>
+  <path d="M2 20h20" stroke-width="1" opacity="0.4"/>
+  <text x="12" y="23" text-anchor="middle" fill="#00d4aa" font-size="5" font-weight="600" font-family="sans-serif">AGC</text>
+</svg>

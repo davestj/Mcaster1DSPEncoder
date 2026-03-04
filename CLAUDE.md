@@ -26,7 +26,7 @@ DB growth plan, and architectural decisions recorded there.
 
 ## Project Overview
 
-Mcaster1DSPEncoder is a dual-platform (Windows + Linux) broadcast audio encoder with:
+Mcaster1DSPEncoder is a triple-platform (Windows + Linux + macOS) broadcast audio encoder with:
 - Embedded HTTP/HTTPS admin server (cpp-httplib v0.18)
 - Full PHP web UI (FastCGI → php-fpm)
 - DSP chain (10-band EQ, AGC/limiter, equal-power crossfader)
@@ -34,23 +34,26 @@ Mcaster1DSPEncoder is a dual-platform (Windows + Linux) broadcast audio encoder 
 - Live broadcast to Icecast2 / Shoutcast / Mcaster1DNAS
 - Two-layer auth: C++ in-memory sessions + MySQL PHP sessions
 
-**Windows and Linux builds are parallel — they share NO source code.**
+**All three platform builds are parallel — they share NO source code (macOS ports from Linux).**
 - Windows: `src/` (VS2022 project) — maintained separately
-- Linux: `src/linux/` (custom shell build scripts) — this is the active dev branch
+- Linux: `src/linux/` (custom shell build scripts) — active Linux dev branch
+- macOS: `src/macos/` (Qt 6 Widgets GUI) — active macOS dev branch (`macos-dev`)
 
 ---
 
 ## Platform Split
 
-| Aspect | Windows | Linux |
-|--------|---------|-------|
-| Source root | `src/` | `src/linux/` |
-| Build system | VS2022 .sln | Autotools (canonical) + `make_phase4.sh` (legacy) |
-| Vendor headers | `external/include/` (Windows only) | `src/linux/external/include/` (Linux only) |
-| Audio backend | WASAPI / DirectSound | PortAudio (ALSA/PulseAudio/JACK) |
-| HTTP server | cpp-httplib | cpp-httplib |
-| IDE | Visual Studio 2022 | vim / neovim / Claude Code |
-| Deploy path | Windows service | systemd service |
+| Aspect | Windows | Linux | macOS |
+|--------|---------|-------|-------|
+| Source root | `src/` | `src/linux/` | `src/macos/` |
+| Build system | VS2022 .sln | Autotools (canonical) | Autotools (`--enable-macos-gui`) |
+| Vendor headers | `external/include/` | `src/linux/external/include/` | System (Homebrew) |
+| Audio backend | WASAPI / DirectSound | PortAudio (ALSA/Pulse/JACK) | PortAudio (CoreAudio) + ScreenCaptureKit |
+| HTTP server | cpp-httplib | cpp-httplib | None (native Qt GUI) |
+| UI framework | MFC dialogs | PHP web UI | Qt 6 Widgets |
+| IDE | Visual Studio 2022 | vim / neovim / Claude Code | Claude Code |
+| Deploy path | Windows service | systemd service | .app bundle (planned) |
+| Branch | `master` | `linux-dev` | `macos-dev` |
 
 ---
 
@@ -658,6 +661,8 @@ Or generate self-signed:
 
 ## Phase Status
 
+### Linux Phases
+
 | Phase | Version | Description | Status |
 |-------|---------|-------------|--------|
 | L1 | v1.0.0 | Infrastructure (platform.h, build system) | **COMPLETE** |
@@ -666,6 +671,27 @@ Or generate self-signed:
 | L4 | v1.3.0 | DSP chain (EQ/AGC/xfade) + ICY2 + DNAS stats | **COMPLETE** |
 | **L5** | **v1.4.0** | **Full PHP frontend overhaul + logging system** | **COMPLETE** |
 | L6 | v1.5.0 | Analytics, listener metrics, engagement platform | PLANNED |
+
+### macOS Phases (Qt 6 GUI — branch: `macos-dev`)
+
+See `PLANNING-MACOS.html` for detailed roadmap with per-phase feature lists.
+
+| Phase | Version | Description | Status |
+|-------|---------|-------------|--------|
+| M1 | v0.1.0 | Main window shell, menus, tray, VU meter, encoder list | **COMPLETE** |
+| M2 | v0.2.0 | Config dialogs (4 tabs), YAML config, encoder presets | **COMPLETE** |
+| M3 | v0.3.0 | Audio engine: DSP, codecs, PortAudio, ScreenCaptureKit | **COMPLETE** |
+| M4 | v0.4.0 | Streaming client, server protocols, metadata push | **COMPLETE** |
+| M5 | v0.5.0 | Polish: presets UI, preferences, log viewer, EQ visualizer | **COMPLETE** |
+| M6 | v0.6.0 | .app bundle, 31-band EQ, Sonic Enhancer, video pipeline | **COMPLETE** |
+| M6.5 | v0.6.5 | Video effects (13), overlays, SRT, broadcast pipeline | **COMPLETE** |
+| M7 | v0.7.0 | Radio/Podcast/TV-Video categories, RSS, SFTP, Studio dialog | **COMPLETE** |
+| M8 | v0.8.0 | PTT ducking, DBX Voice, REST publishing, Stream Target Editor | **COMPLETE** |
+| M8.5 | v0.8.5 | DSP Effects Rack, Effects Rack Tab, Per-encoder DSP controls | **COMPLETE** |
+| M9 | v0.9.0 | Video streaming pipeline: RTMP, HLS, WebM, FLV, transitions | **COMPLETE** |
+| M10 | v1.0.0 | Integration, distribution, VP8/VP9, entitlements, DMG, notifications | **COMPLETE** |
+| **M11** | **v1.1.0** | **Global DSP rack persistence, per-unit YAML, Save Settings buttons** | **COMPLETE** |
+| **M11.5** | **v1.1.5** | **DSP persistence bug fixes, 10-band EQ sync, model vector fixes** | **COMPLETE** |
 
 ---
 

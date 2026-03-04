@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Microphone body -->
+  <rect x="9" y="2" width="6" height="10" rx="3" ry="3"/>
+  <path d="M5 10a7 7 0 0 0 14 0"/>
+  <line x1="12" y1="17" x2="12" y2="20"/>
+  <!-- Downward duck arrows -->
+  <polyline points="7,15 7,21" stroke="#4fc3f7" stroke-width="1.5"/>
+  <polyline points="5,19 7,21 9,19" stroke="#4fc3f7" stroke-width="1.5"/>
+  <polyline points="17,15 17,21" stroke="#4fc3f7" stroke-width="1.5"/>
+  <polyline points="15,19 17,21 19,19" stroke="#4fc3f7" stroke-width="1.5"/>
+</svg>
