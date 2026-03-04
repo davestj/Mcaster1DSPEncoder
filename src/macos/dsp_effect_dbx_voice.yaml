@@ -1,0 +1,33 @@
+# Mcaster1 DSP Encoder — Per-Unit Effect Config
+# Auto-generated — do not edit while encoder is running
+
+unit_id: dbx_voice
+preset: "flat"
+
+dbx_voice:
+  gate:
+    threshold_db: -50
+    ratio: 2
+    attack_ms: 1
+    release_ms: 100
+    enabled: true
+  compressor:
+    threshold_db: -20
+    ratio: 3
+    attack_ms: 5
+    release_ms: 150
+    enabled: true
+  deesser:
+    frequency_hz: 6000
+    threshold_db: -20
+    reduction_db: -6
+    bandwidth_q: 2
+    enabled: true
+  lf_enhancer:
+    frequency_hz: 120
+    amount_db: 3
+    enabled: true
+  hf_detail:
+    frequency_hz: 4000
+    amount_db: 3
+    enabled: true

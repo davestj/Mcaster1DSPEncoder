@@ -190,3 +190,34 @@ certs/
 # Keep locally; never commit. Copy from config/*.yaml.example
 # ---------------------------------------------------------------
 src/linux/config/*.yaml
+
+# ---------------------------------------------------------------
+# macOS build artifacts and runtime files
+# ---------------------------------------------------------------
+
+# Built binary and .app bundle (rebuilt by make / make app-bundle)
+src/macos/mcaster1-encoder-gui
+src/macos/Mcaster1DSPEncoder.app/
+
+# Generated Makefiles (created by ./configure)
+/Makefile
+src/macos/Makefile
+
+# Autotools .dirstamp files
+**/.dirstamp
+
+# ---------------------------------------------------------------
+# macOS Finder metadata
+# ---------------------------------------------------------------
+.DS_Store
+**/.DS_Store
+
+# ---------------------------------------------------------------
+# Editor / tool backup files
+# ---------------------------------------------------------------
+*~
+
+# ---------------------------------------------------------------
+# Claude Code session files (user-specific, not project code)
+# ---------------------------------------------------------------
+resume-claude-cmd.txt

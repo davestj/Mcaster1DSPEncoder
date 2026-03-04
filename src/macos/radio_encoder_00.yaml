@@ -1,0 +1,232 @@
+# Mcaster1 Encoder Profile
+# Auto-generated — do not edit while encoder is running
+
+encoder:
+  name: "Encoder 1"
+  type: "radio"
+  slot_id: 2
+  codec: "mp3"
+  bitrate_kbps: 128
+  quality: 5
+  sample_rate: 44100
+  channels: 2
+  encode_mode: "cbr"
+  channel_mode: "joint"
+  shuffle: false
+  repeat_all: true
+  auto_start: false
+  auto_reconnect: true
+  per_encoder_device_index: -1
+  use_global_metadata: true
+
+dsp:
+  eq_enabled: true
+  agc_enabled: true
+  crossfade_enabled: true
+  crossfade_duration: 3
+  eq_preset: "Modern Rock"
+  sonic_enabled: true
+  eq_mode: 1
+  eq31_preset: "music_warm"
+  ptt_duck_enabled: true
+  dbx_voice_enabled: false
+  sonic_preset: "flat"
+  dbx_preset: "flat"
+  agc_preset: "— Custom —"
+
+dsp_agc:
+  input_gain_db: 0
+  gate_threshold_db: -60
+  threshold_db: -18
+  ratio: 4
+  attack_ms: 10
+  release_ms: 200
+  knee_db: 6
+  makeup_gain_db: 0
+  limiter_db: -1
+
+dsp_sonic:
+  lo_contour: 7
+  process: 7
+  output_gain: 1.5
+
+dsp_ptt_duck:
+  duck_level_db: -12
+  attack_ms: 5
+  release_ms: 100
+  mic_gain_db: 0
+
+dsp_dbx_voice:
+  gate:
+    threshold_db: -50
+    ratio: 2
+    attack_ms: 1
+    release_ms: 100
+    enabled: true
+  compressor:
+    threshold_db: -20
+    ratio: 3
+    attack_ms: 5
+    release_ms: 150
+    enabled: true
+  deesser:
+    frequency_hz: 6000
+    threshold_db: -20
+    reduction_db: -6
+    bandwidth_q: 2
+    enabled: true
+  lf_enhancer:
+    frequency_hz: 120
+    amount_db: 3
+    enabled: true
+  hf_detail:
+    frequency_hz: 4000
+    amount_db: 3
+    enabled: true
+
+dsp_crossfader:
+  duration_sec: 3
+  enabled: true
+
+dsp_eq10:
+  linked: true
+  band_0:
+    type: "low_shelf"
+    freq_hz: 80
+    gain_db: 5
+    q: 0.707
+    enabled: true
+  band_1:
+    type: "peaking"
+    freq_hz: 150
+    gain_db: 1.5
+    q: 1
+    enabled: true
+  band_2:
+    type: "peaking"
+    freq_hz: 400
+    gain_db: -1
+    q: 1
+    enabled: true
+  band_3:
+    type: "peaking"
+    freq_hz: 800
+    gain_db: -2
+    q: 1
+    enabled: true
+  band_4:
+    type: "peaking"
+    freq_hz: 1500
+    gain_db: 3
+    q: 1.2
+    enabled: true
+  band_5:
+    type: "peaking"
+    freq_hz: 3000
+    gain_db: 5
+    q: 1.2
+    enabled: true
+  band_6:
+    type: "peaking"
+    freq_hz: 5000
+    gain_db: 3.5
+    q: 1.2
+    enabled: true
+  band_7:
+    type: "peaking"
+    freq_hz: 8000
+    gain_db: 2.5
+    q: 1.2
+    enabled: true
+  band_8:
+    type: "peaking"
+    freq_hz: 12000
+    gain_db: 2
+    q: 1.2
+    enabled: true
+  band_9:
+    type: "high_shelf"
+    freq_hz: 16000
+    gain_db: 1.5
+    q: 0.707
+    enabled: true
+
+dsp_eq31:
+  linked: true
+  gain_l_0: 4
+  gain_r_0: 4
+  gain_l_1: 4
+  gain_r_1: 4
+  gain_l_2: 5
+  gain_r_2: 5
+  gain_l_3: 5
+  gain_r_3: 5
+  gain_l_4: 4
+  gain_r_4: 4
+  gain_l_5: 4
+  gain_r_5: 4
+  gain_l_6: 3
+  gain_r_6: 3
+  gain_l_7: 3
+  gain_r_7: 3
+  gain_l_8: 2
+  gain_r_8: 2
+  gain_l_9: 2
+  gain_r_9: 2
+  gain_l_10: 1
+  gain_r_10: 1
+  gain_l_11: 1
+  gain_r_11: 1
+  gain_l_12: 0
+  gain_r_12: 0
+  gain_l_13: 0
+  gain_r_13: 0
+  gain_l_14: 0
+  gain_r_14: 0
+  gain_l_15: 0
+  gain_r_15: 0
+  gain_l_16: -1
+  gain_r_16: -1
+  gain_l_17: -1
+  gain_r_17: -1
+  gain_l_18: 0
+  gain_r_18: 0
+  gain_l_19: 0
+  gain_r_19: 0
+  gain_l_20: 0
+  gain_r_20: 0
+  gain_l_21: 0
+  gain_r_21: 0
+  gain_l_22: 0
+  gain_r_22: 0
+  gain_l_23: 0
+  gain_r_23: 0
+  gain_l_24: -1
+  gain_r_24: -1
+  gain_l_25: -1
+  gain_r_25: -1
+  gain_l_26: -2
+  gain_r_26: -2
+  gain_l_27: -2
+  gain_r_27: -2
+  gain_l_28: -3
+  gain_r_28: -3
+  gain_l_29: -3
+  gain_r_29: -3
+  gain_l_30: -4
+  gain_r_30: -4
+
+stream:
+  protocol: "icecast2"
+  host: "localhost"
+  port: 8000
+  mount: "/stream"
+  username: "source"
+  password: ""
+  station_name: ""
+  description: ""
+  genre: ""
+  url: ""
+  auto_reconnect: true
+  reconnect_interval_sec: 5
+  reconnect_max_attempts: 0

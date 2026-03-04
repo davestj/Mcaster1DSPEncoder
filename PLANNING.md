@@ -2,7 +2,7 @@
 
 **Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-03-03
 
 This document captures all planned future phases. Reference it in CLAUDE.md for context.
 

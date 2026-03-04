@@ -1,0 +1,68 @@
+# Mcaster1 DSP Encoder — Per-Unit Effect Config
+# Auto-generated — do not edit while encoder is running
+
+unit_id: eq10
+preset: "flat"
+
+eq10:
+  linked: true
+  band_0:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_1:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_2:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_3:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_4:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_5:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_6:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_7:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_8:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_9:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true

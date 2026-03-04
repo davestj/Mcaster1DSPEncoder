@@ -1,0 +1,251 @@
+# Mcaster1 Encoder Profile
+# Auto-generated — do not edit while encoder is running
+
+encoder:
+  name: "Podcast 1"
+  type: "podcast"
+  slot_id: 1
+  codec: "mp3"
+  bitrate_kbps: 128
+  quality: 5
+  sample_rate: 44100
+  channels: 2
+  encode_mode: "cbr"
+  channel_mode: "joint"
+  shuffle: false
+  repeat_all: true
+  auto_start: false
+  auto_reconnect: true
+  per_encoder_device_index: -1
+  use_global_metadata: true
+
+dsp:
+  eq_enabled: true
+  agc_enabled: true
+  crossfade_enabled: true
+  crossfade_duration: 3
+  eq_preset: "flat"
+  sonic_enabled: true
+  eq_mode: 0
+  eq31_preset: "flat"
+  ptt_duck_enabled: false
+  dbx_voice_enabled: true
+  sonic_preset: "flat"
+  dbx_preset: "Broadcast Voice"
+  agc_preset: "Talk Radio"
+
+dsp_agc:
+  input_gain_db: 0
+  gate_threshold_db: -50
+  threshold_db: -12
+  ratio: 6
+  attack_ms: 3
+  release_ms: 80
+  knee_db: 4
+  makeup_gain_db: 6
+  limiter_db: -0.5
+
+dsp_sonic:
+  lo_contour: 7
+  process: 7
+  output_gain: 1.5
+
+dsp_ptt_duck:
+  duck_level_db: -12
+  attack_ms: 5
+  release_ms: 100
+  mic_gain_db: 0
+
+dsp_dbx_voice:
+  gate:
+    threshold_db: -50
+    ratio: 2
+    attack_ms: 1
+    release_ms: 100
+    enabled: true
+  compressor:
+    threshold_db: -20
+    ratio: 3
+    attack_ms: 5
+    release_ms: 150
+    enabled: true
+  deesser:
+    frequency_hz: 6000
+    threshold_db: -20
+    reduction_db: -6
+    bandwidth_q: 2
+    enabled: true
+  lf_enhancer:
+    frequency_hz: 120
+    amount_db: 3
+    enabled: true
+  hf_detail:
+    frequency_hz: 4000
+    amount_db: 3
+    enabled: true
+
+dsp_crossfader:
+  duration_sec: 3
+  enabled: true
+
+dsp_eq10:
+  linked: true
+  band_0:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_1:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_2:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_3:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_4:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_5:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_6:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_7:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_8:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+  band_9:
+    type: "peaking"
+    freq_hz: 1000
+    gain_db: 0
+    q: 1
+    enabled: true
+
+dsp_eq31:
+  linked: true
+  gain_l_0: 0
+  gain_r_0: 0
+  gain_l_1: 0
+  gain_r_1: 0
+  gain_l_2: 0
+  gain_r_2: 0
+  gain_l_3: 0
+  gain_r_3: 0
+  gain_l_4: 0
+  gain_r_4: 0
+  gain_l_5: 0
+  gain_r_5: 0
+  gain_l_6: 0
+  gain_r_6: 0
+  gain_l_7: 0
+  gain_r_7: 0
+  gain_l_8: 0
+  gain_r_8: 0
+  gain_l_9: 0
+  gain_r_9: 0
+  gain_l_10: 0
+  gain_r_10: 0
+  gain_l_11: 0
+  gain_r_11: 0
+  gain_l_12: 0
+  gain_r_12: 0
+  gain_l_13: 0
+  gain_r_13: 0
+  gain_l_14: 0
+  gain_r_14: 0
+  gain_l_15: 0
+  gain_r_15: 0
+  gain_l_16: 0
+  gain_r_16: 0
+  gain_l_17: 0
+  gain_r_17: 0
+  gain_l_18: 0
+  gain_r_18: 0
+  gain_l_19: 0
+  gain_r_19: 0
+  gain_l_20: 0
+  gain_r_20: 0
+  gain_l_21: 0
+  gain_r_21: 0
+  gain_l_22: 0
+  gain_r_22: 0
+  gain_l_23: 0
+  gain_r_23: 0
+  gain_l_24: 0
+  gain_r_24: 0
+  gain_l_25: 0
+  gain_r_25: 0
+  gain_l_26: 0
+  gain_r_26: 0
+  gain_l_27: 0
+  gain_r_27: 0
+  gain_l_28: 0
+  gain_r_28: 0
+  gain_l_29: 0
+  gain_r_29: 0
+  gain_l_30: 0
+  gain_r_30: 0
+
+stream:
+  protocol: "icecast2"
+  host: "localhost"
+  port: 8000
+  mount: "/stream"
+  username: "source"
+  password: ""
+  station_name: ""
+  description: ""
+  genre: ""
+  url: ""
+  auto_reconnect: true
+  reconnect_interval_sec: 5
+  reconnect_max_attempts: 0
+
+podcast:
+  generate_rss: false
+  title: ""
+  author: ""
+  category: "Technology"
+  language: "en-us"
+  copyright: ""
+  website: ""
+  cover_art_url: ""
+  description: ""
+  rss_output_dir: ""
+  episode_output_dir: ""
+  sftp_enabled: false
+  sftp_host: ""
+  sftp_port: 22
+  sftp_username: ""
+  sftp_remote_dir: ""
+  simulcast_dnas: false
