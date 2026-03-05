@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Microphone body -->
+  <rect x="24" y="8" width="16" height="26" rx="8" stroke="#00d4aa" stroke-width="3" fill="rgba(0,212,170,0.15)"/>
+  <!-- Mic grille lines -->
+  <line x1="27" y1="16" x2="37" y2="16" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/>
+  <line x1="27" y1="20" x2="37" y2="20" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/>
+  <line x1="27" y1="24" x2="37" y2="24" stroke="#00d4aa" stroke-width="1.5" opacity="0.5"/>
+  <!-- Mic cradle arc -->
+  <path d="M18 30 A14 14 0 0 0 46 30" stroke="#00d4aa" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+  <!-- Stand pole -->
+  <line x1="32" y1="44" x2="32" y2="54" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/>
+  <!-- Stand base -->
+  <line x1="22" y1="54" x2="42" y2="54" stroke="#00d4aa" stroke-width="3" stroke-linecap="round"/>
+  <!-- Sound waves -->
+  <path d="M50 16 A6 6 0 0 1 50 28" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+  <path d="M14 16 A6 6 0 0 0 14 28" stroke="#00d4aa" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.6"/>
+</svg>
