@@ -9,6 +9,7 @@
 #include "eq.h"
 #include "agc.h"
 #include "crossfader.h"
+#include "dj_crossfader.h"
 
 #include <cstddef>
 #include <string>
@@ -22,6 +23,7 @@ struct DspChainConfig {
     int    sample_rate        = 44100;
     int    channels           = 2;
     float  crossfade_duration = 3.0f;   // seconds
+    int    crossfade_curve    = 1;     // mc1xf::Curve enum (0-8, default ConstantPower)
     // EQ preset applied on configure (empty = no preset)
     std::string eq_preset;
 };
@@ -40,13 +42,15 @@ public:
     // Crossfader is NOT called here — use crossfader() directly from EncoderSlot
     void process(float* pcm, size_t frames);
 
-    DspEq&         eq()         { return eq_; }
-    DspAgc&        agc()        { return agc_; }
-    DspCrossfader& crossfader() { return crossfader_; }
+    DspEq&          eq()            { return eq_; }
+    DspAgc&         agc()           { return agc_; }
+    DspCrossfader&  crossfader()    { return crossfader_; }
+    DjCrossfader&   dj_crossfader() { return dj_crossfader_; }
 
-    const DspEq&         eq()         const { return eq_; }
-    const DspAgc&        agc()        const { return agc_; }
-    const DspCrossfader& crossfader() const { return crossfader_; }
+    const DspEq&          eq()            const { return eq_; }
+    const DspAgc&         agc()           const { return agc_; }
+    const DspCrossfader&  crossfader()    const { return crossfader_; }
+    const DjCrossfader&   dj_crossfader() const { return dj_crossfader_; }
 
     const DspChainConfig& config() const { return cfg_; }
 
@@ -55,6 +59,7 @@ private:
     DspEq          eq_;
     DspAgc         agc_;
     DspCrossfader  crossfader_;
+    DjCrossfader   dj_crossfader_;
 };
 
 } // namespace mc1dsp

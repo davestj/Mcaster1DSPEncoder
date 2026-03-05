@@ -21,6 +21,11 @@ void DspChain::configure(const DspChainConfig& cfg)
     xf.enabled      = cfg.crossfader_enabled;
     crossfader_.set_config(xf);
     crossfader_.set_sample_rate(cfg.sample_rate);
+
+    /* We configure the DJ crossfader with the selected curve algorithm */
+    int curve_id = std::clamp(cfg.crossfade_curve, 0, static_cast<int>(mc1xf::Curve::COUNT) - 1);
+    dj_crossfader_.set_curve(static_cast<mc1xf::Curve>(curve_id));
+    dj_crossfader_.set_sample_rate(cfg.sample_rate);
 }
 
 void DspChain::process(float* pcm, size_t frames)
