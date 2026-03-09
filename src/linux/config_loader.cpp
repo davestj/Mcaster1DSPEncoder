@@ -453,17 +453,8 @@ bool mc1_load_slots_from_db(AudioPipeline* pipeline)
         cfg.reconnect_interval_sec  = row[col] ? atoi(row[col]) : 5; col++;
         cfg.reconnect_max_attempts  = row[col] ? atoi(row[col]) : 0; col++;
 
-        // We derive MIME type from codec (init_aac overrides for AAC variants at runtime)
-        switch (cfg.codec) {
-            case EncoderConfig::Codec::MP3:       st.content_type = "audio/mpeg"; break;
-            case EncoderConfig::Codec::VORBIS:    st.content_type = "audio/ogg";  break;
-            case EncoderConfig::Codec::OPUS:      st.content_type = "audio/ogg";  break;
-            case EncoderConfig::Codec::FLAC:      st.content_type = "audio/flac"; break;
-            case EncoderConfig::Codec::AAC_LC:    st.content_type = "audio/aac";  break;
-            case EncoderConfig::Codec::AAC_HE:    st.content_type = "audio/aacp"; break;
-            case EncoderConfig::Codec::AAC_HE_V2: st.content_type = "audio/aacp"; break;
-            case EncoderConfig::Codec::AAC_ELD:   st.content_type = "audio/aac";  break;
-        }
+        // Derive MIME type from codec via centralized helper (init_aac overrides for AAC variants at runtime)
+        st.content_type = EncoderConfig::codec_content_type(cfg.codec);
 
         // Mirror codec params into StreamTarget for ICY header negotiation
         st.bitrate     = cfg.bitrate_kbps;

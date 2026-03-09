@@ -130,6 +130,54 @@ bool Mc1Db::exec(const std::string& sql)
 }
 
 // ---------------------------------------------------------------------------
+// query — SELECT with row results
+// ---------------------------------------------------------------------------
+
+std::vector<Mc1Db::Row> Mc1Db::query(const std::string& sql)
+{
+    std::vector<Row> results;
+    std::lock_guard<std::mutex> lk(mtx_);
+
+    if (!mysql_) {
+        if (cfg_set_) { if (!do_connect()) return results; }
+        else return results;
+    }
+
+    if (mysql_real_query(mysql_, sql.c_str(), (unsigned long)sql.size()) != 0) {
+        if (check_reconnect()) {
+            if (mysql_real_query(mysql_, sql.c_str(), (unsigned long)sql.size()) != 0) {
+                MC1_WARN("Mc1Db::query failed: " + std::string(mysql_error(mysql_)));
+                return results;
+            }
+        } else {
+            MC1_WARN("Mc1Db::query failed: " + std::string(mysql_error(mysql_)));
+            return results;
+        }
+    }
+
+    MYSQL_RES* res = mysql_store_result(mysql_);
+    if (!res) return results;
+
+    int num_fields = mysql_num_fields(res);
+    MYSQL_FIELD* fields = mysql_fetch_fields(res);
+
+    MYSQL_ROW row;
+    while ((row = mysql_fetch_row(res))) {
+        unsigned long* lengths = mysql_fetch_lengths(res);
+        Row r;
+        for (int i = 0; i < num_fields; ++i) {
+            std::string key = fields[i].name;
+            std::string val = row[i] ? std::string(row[i], lengths[i]) : "";
+            r[key] = val;
+        }
+        results.push_back(std::move(r));
+    }
+
+    mysql_free_result(res);
+    return results;
+}
+
+// ---------------------------------------------------------------------------
 // execf
 // ---------------------------------------------------------------------------
 

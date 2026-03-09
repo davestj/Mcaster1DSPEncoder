@@ -25,6 +25,8 @@
 #pragma once
 
 #include <string>
+#include <vector>
+#include <map>
 #include <mutex>
 #include <cstdarg>
 #include <cstdio>
@@ -62,6 +64,11 @@ public:
 
     // We return true if currently connected.
     bool is_connected() const;
+
+    // We execute a SELECT query and return rows as vector of string maps.
+    // Thread-safe. Returns empty vector on error.
+    using Row = std::map<std::string, std::string>;
+    std::vector<Row> query(const std::string& sql);
 
     // We fetch password_hash and is_active for the given username from
     // mcaster1_encoder.users.  Returns false if user not found or DB error.

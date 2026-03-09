@@ -46,6 +46,27 @@ struct EncoderConfig {
     int         sample_rate  = 44100;
     int         channels     = 2;
 
+    // Canonical MIME content-type for each codec (used in Icecast SOURCE headers).
+    // Icecast2/DNAS strip params after ';' for format routing but forward the
+    // full header to listeners — the codec hint helps players.
+    //
+    // NOTE: FLAC uses "audio/ogg" because Icecast2/DNAS only support OggFLAC,
+    // not native FLAC. If the encoder ever wraps FLAC in Ogg, this is correct.
+    // Until then, FLAC streams may be rejected by some servers.
+    static const char* codec_content_type(Codec c) {
+        switch (c) {
+            case Codec::MP3:       return "audio/mpeg";
+            case Codec::VORBIS:    return "audio/ogg; codecs=vorbis";
+            case Codec::OPUS:      return "audio/ogg; codecs=opus";
+            case Codec::FLAC:      return "audio/ogg; codecs=flac";
+            case Codec::AAC_LC:    return "audio/aac";
+            case Codec::AAC_HE:    return "audio/aacp";
+            case Codec::AAC_HE_V2: return "audio/aacp";
+            case Codec::AAC_ELD:   return "audio/aac";
+        }
+        return "audio/mpeg";
+    }
+
     // Encode mode (MP3: CBR/VBR/ABR; Opus: CBR/VBR; others: ignored)
     enum class EncodeMode { CBR, VBR, ABR } encode_mode = EncodeMode::CBR;
 
@@ -71,7 +92,21 @@ struct EncoderConfig {
     bool        dsp_agc_enabled        = false;
     bool        dsp_crossfade_enabled  = true;
     float       dsp_crossfade_duration = 3.0f;   // seconds
+    int         dsp_crossfade_curve    = 1;       // mc1xf::Curve (0-8, default ConstantPower)
     std::string dsp_eq_preset;                    // "flat","classic_rock","country",...
+
+    // Effects rack mode (Phase DJ-5)
+    enum class EffectsMode { GLOBAL = 0, BYPASS = 1, CUSTOM = 2 };
+    EffectsMode effects_mode = EffectsMode::GLOBAL;
+
+    // Clockwheel scheduler (Phase L9)
+    bool        clockwheel_enabled = false;
+
+    // Dead air detection (Phase L9)
+    bool        dead_air_enabled          = false;
+    float       dead_air_threshold_db     = -60.0f;
+    int         dead_air_timeout_sec      = 10;
+    std::string dead_air_fallback_playlist;
 
     // Auto-start on encoder launch
     bool        auto_start           = false;

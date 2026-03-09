@@ -4,6 +4,9 @@
 
 #include "encoder_slot.h"
 #include "audio_source.h"
+#include "dsp/effects_rack.h"
+#include "dsp/sidechain_ducker.h"
+#include "jack_manager.h"
 
 #include <vector>
 #include <memory>
@@ -84,11 +87,31 @@ public:
     void  set_master_volume(float v);
     float master_volume() const { return master_volume_; }
 
+    // -------------------------------------------------------------------
+    // Global effects rack (Phase DJ-2)
+    // -------------------------------------------------------------------
+    mc1dsp::EffectsRack& global_effects_rack() { return global_effects_rack_; }
+
+    // -------------------------------------------------------------------
+    // PTT / Push-to-Talk ducking (Phase DJ-3)
+    // -------------------------------------------------------------------
+    mc1dsp::SidechainDucker& ducker() { return ducker_; }
+    void set_ptt(bool active) { ducker_.set_ptt_active(active); }
+    bool is_ptt_active() const { return ducker_.is_ptt_active(); }
+
+    // -------------------------------------------------------------------
+    // JACK Audio Manager (Phase DJ-4)
+    // -------------------------------------------------------------------
+    JackManager& jack_manager() { return jack_mgr_; }
+
 private:
     mutable std::mutex slots_mtx_;
     std::map<int, std::unique_ptr<EncoderSlot>> slots_;
     int  next_slot_id_  = 1;
     float master_volume_ = 1.0f;
+    mc1dsp::EffectsRack  global_effects_rack_;
+    mc1dsp::SidechainDucker ducker_;
+    JackManager          jack_mgr_;
 
     EncoderSlot* find_slot(int slot_id) const;  // must hold slots_mtx_
 };

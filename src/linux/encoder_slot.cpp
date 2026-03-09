@@ -608,7 +608,7 @@ bool EncoderSlot::init_lame()
     }
     lame_enc_ = gfp;
 
-    cfg_.stream_target.content_type = "audio/mpeg";
+    cfg_.stream_target.content_type = EncoderConfig::codec_content_type(EncoderConfig::Codec::MP3);
     MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] LAME init: "
              + (cfg_.encode_mode == EncoderConfig::EncodeMode::VBR ? "VBR" :
                 cfg_.encode_mode == EncoderConfig::EncodeMode::ABR ? "ABR" : "CBR")
@@ -650,7 +650,7 @@ bool EncoderSlot::init_vorbis()
     vorbis_block_init(&vs->vd, &vs->vb);
 
     vorbis_enc_  = vs;
-    cfg_.stream_target.content_type = "application/ogg";
+    cfg_.stream_target.content_type = EncoderConfig::codec_content_type(EncoderConfig::Codec::VORBIS);
     return true;
 #else
     fprintf(stderr, "[EncoderSlot] Vorbis not compiled in\n");
@@ -687,7 +687,7 @@ bool EncoderSlot::init_opus()
     ope_encoder_ctl(state->enc, OPUS_SET_BITRATE(cfg_.bitrate_kbps * 1000));
 
     opus_enc_ = state;
-    cfg_.stream_target.content_type = "audio/ogg";
+    cfg_.stream_target.content_type = EncoderConfig::codec_content_type(EncoderConfig::Codec::OPUS);
     return true;
 #else
     fprintf(stderr, "[EncoderSlot] Opus not compiled in\n");
@@ -722,7 +722,7 @@ bool EncoderSlot::init_flac()
     }
 
     flac_enc_ = state;
-    cfg_.stream_target.content_type = "audio/flac";
+    cfg_.stream_target.content_type = EncoderConfig::codec_content_type(EncoderConfig::Codec::FLAC);
     return true;
 #else
     fprintf(stderr, "[EncoderSlot] FLAC not compiled in\n");
@@ -999,11 +999,7 @@ bool EncoderSlot::init_aac()
     aac_enc_ = state;
 
     // MIME: audio/aacp for HE-AAC profiles, audio/aac for LC and ELD
-    if (cfg_.codec == EncoderConfig::Codec::AAC_HE ||
-        cfg_.codec == EncoderConfig::Codec::AAC_HE_V2)
-        cfg_.stream_target.content_type = "audio/aacp";
-    else
-        cfg_.stream_target.content_type = "audio/aac";
+    cfg_.stream_target.content_type = EncoderConfig::codec_content_type(cfg_.codec);
 
     fprintf(stderr, "[EncoderSlot %d] %s init: %dk %dHz ch=%d framesize=%d\n",
             cfg_.slot_id, aot_name, cfg_.bitrate_kbps, cfg_.sample_rate,
