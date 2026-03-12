@@ -699,6 +699,7 @@ static void setup_routes(httplib::Server& svr)
                         j["agc_enabled"]        = cfg.dsp_agc_enabled;
                         j["crossfade_enabled"]  = cfg.dsp_crossfade_enabled;
                         j["crossfade_duration"] = cfg.dsp_crossfade_duration;
+                        j["crossfade_curve"]    = cfg.dsp_crossfade_curve;
                         j["eq_preset"]          = cfg.dsp_eq_preset;
                         j["presets_available"]  = json::array(
                             {"flat","classic_rock","country","modern_rock",
@@ -745,6 +746,8 @@ static void setup_routes(httplib::Server& svr)
                     cfg.dsp_crossfade_enabled = body["crossfade_enabled"].get<bool>();
                 if (body.contains("crossfade_duration"))
                     cfg.dsp_crossfade_duration= body["crossfade_duration"].get<float>();
+                if (body.contains("crossfade_curve"))
+                    cfg.dsp_crossfade_curve   = std::clamp(body["crossfade_curve"].get<int>(), 0, 8);
                 if (body.contains("eq_preset"))
                     cfg.dsp_eq_preset         = body["eq_preset"].get<std::string>();
 
@@ -755,6 +758,7 @@ static void setup_routes(httplib::Server& svr)
                 dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
                 dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
                 dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                dsp_cfg.crossfade_curve    = cfg.dsp_crossfade_curve;
                 dsp_cfg.eq_preset          = cfg.dsp_eq_preset;
                 g_pipeline->reconfigure_dsp(slot_id, dsp_cfg);
 
@@ -803,6 +807,604 @@ static void setup_routes(httplib::Server& svr)
                 g_pipeline->reconfigure_dsp(slot_id, dsp_cfg);
 
                 json r; r["ok"] = true; r["slot_id"] = slot_id; r["preset"] = preset;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/crossfader/curves — list all 9 curve algorithms ──────────
+    svr.Get("/api/v1/crossfader/curves",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json j; j["ok"] = true;
+                json curves = json::array();
+                for (int i = 0; i < static_cast<int>(mc1xf::Curve::COUNT); ++i) {
+                    json c;
+                    c["id"]          = i;
+                    c["name"]        = mc1xf::CURVE_NAMES[i];
+                    c["description"] = mc1xf::CURVE_DESCRIPTIONS[i];
+                    curves.push_back(c);
+                }
+                j["curves"] = curves;
+                res.set_content(j.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/crossfader/curves/{id}/sample — 100-point gain arrays ──
+    svr.Get(R"(/api/v1/crossfader/curves/(\d+)/sample)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int id = std::stoi(req.matches[1].str());
+                if (id < 0 || id >= static_cast<int>(mc1xf::Curve::COUNT)) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid curve id"})", "application/json");
+                    return;
+                }
+                mc1xf::Curve cv = static_cast<mc1xf::Curve>(id);
+                const int n = 100;
+                float sa[n], sb[n];
+                mc1xf::sampleCurveA(cv, sa, n);
+                mc1xf::sampleCurveB(cv, sb, n);
+                json j;
+                j["ok"]   = true;
+                j["id"]   = id;
+                j["name"] = mc1xf::CURVE_NAMES[id];
+                j["points"] = n;
+                j["a"] = json::array();
+                j["b"] = json::array();
+                for (int i = 0; i < n; ++i) {
+                    j["a"].push_back(std::round(sa[i] * 10000.0f) / 10000.0f);
+                    j["b"].push_back(std::round(sb[i] * 10000.0f) / 10000.0f);
+                }
+                res.set_content(j.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/encoders/{slot}/crossfader — get crossfader state ───────
+    svr.Get(R"(/api/v1/encoders/(\d+)/crossfader)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json j; j["ok"] = true;
+                EncoderConfig cfg;
+                if (g_pipeline && g_pipeline->get_slot_config(slot_id, cfg)) {
+                    j["slot_id"]       = slot_id;
+                    j["curve"]         = cfg.dsp_crossfade_curve;
+                    j["curve_name"]    = mc1xf::CURVE_NAMES[std::clamp(cfg.dsp_crossfade_curve, 0, 8)];
+                    j["duration"]      = cfg.dsp_crossfade_duration;
+                    j["enabled"]       = cfg.dsp_crossfade_enabled;
+                } else {
+                    res.status = 404;
+                    j["ok"] = false; j["error"] = "Slot not found";
+                }
+                res.set_content(j.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/encoders/{slot}/crossfader — set crossfader config ──────
+    svr.Put(R"(/api/v1/encoders/(\d+)/crossfader)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                EncoderConfig cfg;
+                if (!g_pipeline || !g_pipeline->get_slot_config(slot_id, cfg)) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Slot not found"})", "application/json");
+                    return;
+                }
+                if (body.contains("curve"))
+                    cfg.dsp_crossfade_curve    = std::clamp(body["curve"].get<int>(), 0, 8);
+                if (body.contains("duration"))
+                    cfg.dsp_crossfade_duration = body["duration"].get<float>();
+                if (body.contains("enabled"))
+                    cfg.dsp_crossfade_enabled  = body["enabled"].get<bool>();
+
+                mc1dsp::DspChainConfig dsp_cfg;
+                dsp_cfg.sample_rate        = cfg.sample_rate;
+                dsp_cfg.channels           = cfg.channels;
+                dsp_cfg.eq_enabled         = cfg.dsp_eq_enabled;
+                dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
+                dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
+                dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                dsp_cfg.crossfade_curve    = cfg.dsp_crossfade_curve;
+                dsp_cfg.eq_preset          = cfg.dsp_eq_preset;
+                g_pipeline->reconfigure_dsp(slot_id, dsp_cfg);
+
+                json r;
+                r["ok"]         = true;
+                r["slot_id"]    = slot_id;
+                r["curve"]      = cfg.dsp_crossfade_curve;
+                r["curve_name"] = mc1xf::CURVE_NAMES[cfg.dsp_crossfade_curve];
+                r["duration"]   = cfg.dsp_crossfade_duration;
+                r["enabled"]    = cfg.dsp_crossfade_enabled;
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/encoders/{slot}/effects — per-slot effects config ──────
+    svr.Get(R"(/api/v1/encoders/(\d+)/effects)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json j; j["ok"] = true;
+                EncoderConfig cfg;
+                if (g_pipeline && g_pipeline->get_slot_config(slot_id, cfg)) {
+                    j["slot_id"]      = slot_id;
+                    const char* modes[] = {"global","bypass","custom"};
+                    j["effects_mode"] = modes[static_cast<int>(cfg.effects_mode)];
+                } else {
+                    res.status = 404; j["ok"] = false; j["error"] = "Slot not found";
+                }
+                res.set_content(j.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/encoders/{slot}/effects — set per-slot effects mode ─────
+    svr.Put(R"(/api/v1/encoders/(\d+)/effects)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int slot_id = std::stoi(req.matches[1].str());
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                EncoderConfig cfg;
+                if (!g_pipeline || !g_pipeline->get_slot_config(slot_id, cfg)) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Slot not found"})", "application/json");
+                    return;
+                }
+                if (body.contains("effects_mode")) {
+                    std::string mode = body["effects_mode"].get<std::string>();
+                    if (mode == "global")  cfg.effects_mode = EncoderConfig::EffectsMode::GLOBAL;
+                    else if (mode == "bypass")  cfg.effects_mode = EncoderConfig::EffectsMode::BYPASS;
+                    else if (mode == "custom")  cfg.effects_mode = EncoderConfig::EffectsMode::CUSTOM;
+                }
+                json r; r["ok"] = true; r["slot_id"] = slot_id;
+                const char* modes[] = {"global","bypass","custom"};
+                r["effects_mode"] = modes[static_cast<int>(cfg.effects_mode)];
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/effects/unit-types — list available effect types ────────
+    svr.Get("/api/v1/effects/unit-types",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json j; j["ok"] = true;
+                j["types"] = mc1dsp::EffectsRack::available_types();
+                res.set_content(j.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/effects/global — get global rack state ──────────────────
+    svr.Get("/api/v1/effects/global",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json j; j["ok"] = true;
+                if (g_pipeline) {
+                    j["rack"] = g_pipeline->global_effects_rack().to_json();
+                } else {
+                    j["rack"] = json::object();
+                }
+                res.set_content(j.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/effects/global — update global rack (bypass, unit params) ─
+    svr.Put("/api/v1/effects/global",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                auto& rack = g_pipeline->global_effects_rack();
+                if (body.contains("bypass"))
+                    rack.set_bypass(body["bypass"].get<bool>());
+                /* We allow updating a specific unit's params */
+                if (body.contains("unit_id") && body.contains("params")) {
+                    int uid = body["unit_id"].get<int>();
+                    rack.set_unit_params(uid, body["params"]);
+                }
+                if (body.contains("unit_id") && body.contains("enabled")) {
+                    int uid = body["unit_id"].get<int>();
+                    rack.set_unit_enabled(uid, body["enabled"].get<bool>());
+                }
+                json r; r["ok"] = true; r["rack"] = rack.to_json();
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/effects/global/units — add a unit to global rack ───────
+    svr.Post("/api/v1/effects/global/units",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                std::string type = body.value("type", "");
+                auto unit = mc1dsp::EffectsRack::create_unit(type);
+                if (!unit) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Unknown unit type"})", "application/json");
+                    return;
+                }
+                if (body.contains("params")) unit->set_params(body["params"]);
+                if (body.contains("enabled")) unit->set_enabled(body["enabled"].get<bool>());
+                int id = g_pipeline->global_effects_rack().add_unit(std::move(unit));
+                json r; r["ok"] = true; r["unit_id"] = id; r["type"] = type;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── DELETE /api/v1/effects/global/units/{id} — remove a unit ────────────
+    svr.Delete(R"(/api/v1/effects/global/units/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int uid = std::stoi(req.matches[1].str());
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                bool ok = g_pipeline->global_effects_rack().remove_unit(uid);
+                json r; r["ok"] = ok;
+                if (!ok) r["error"] = "Unit not found";
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/effects/global/reorder — reorder the chain ──────────────
+    svr.Put("/api/v1/effects/global/reorder",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                if (!g_pipeline || !body.contains("order")) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"order array required"})", "application/json");
+                    return;
+                }
+                std::vector<int> order;
+                for (const auto& v : body["order"]) order.push_back(v.get<int>());
+                bool ok = g_pipeline->global_effects_rack().reorder(order);
+                json r; r["ok"] = ok;
+                if (!ok) r["error"] = "Reorder failed — check all IDs present";
+                else r["rack"] = g_pipeline->global_effects_rack().to_json();
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/ptt/activate — activate push-to-talk ducking ─────────
+    svr.Post("/api/v1/ptt/activate",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) { g_pipeline->set_ptt(true); }
+                json r; r["ok"] = true; r["ptt_active"] = true;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/ptt/deactivate — deactivate PTT ducking ────────────
+    svr.Post("/api/v1/ptt/deactivate",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) { g_pipeline->set_ptt(false); }
+                json r; r["ok"] = true; r["ptt_active"] = false;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/ptt/status — current PTT state + duck level ─────────
+    svr.Get("/api/v1/ptt/status",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json r; r["ok"] = true;
+                if (g_pipeline) {
+                    auto& d = g_pipeline->ducker();
+                    r["ptt_active"]     = d.is_ptt_active();
+                    r["current_duck_db"]= d.current_duck_db();
+                    r["config"]         = d.get_params();
+                } else {
+                    r["ptt_active"] = false;
+                }
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/ptt/config — configure ducker params ────────────────
+    svr.Put("/api/v1/ptt/config",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                if (g_pipeline) {
+                    g_pipeline->ducker().set_params(body);
+                }
+                json r; r["ok"] = true;
+                if (g_pipeline) r["config"] = g_pipeline->ducker().get_params();
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/jack/status — JACK daemon status ────────────────────
+    svr.Get("/api/v1/jack/status",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json r; r["ok"] = true;
+                if (g_pipeline) {
+                    auto& jm = g_pipeline->jack_manager();
+                    r["daemon_running"]    = jm.is_daemon_running();
+                    r["client_connected"]  = jm.is_client_connected();
+                    r["sample_rate"]       = jm.sample_rate();
+                    r["buffer_size"]       = jm.buffer_size();
+                    r["driver"]            = jm.driver();
+                    auto cables = jm.list_cables();
+                    r["cable_count"]       = (int)cables.size();
+                } else {
+                    r["daemon_running"] = false;
+                }
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/jack/start — start JACK daemon ─────────────────────
+    svr.Post("/api/v1/jack/start",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); } catch (...) { body = json::object(); }
+                std::string driver = body.value("driver", "dummy");
+                int sr = body.value("sample_rate", 44100);
+                int bs = body.value("buffer_size", 1024);
+                int cables = body.value("cables", 12);
+
+                json r;
+                if (!g_pipeline) { r["ok"] = false; r["error"] = "No pipeline"; }
+                else {
+                    auto& jm = g_pipeline->jack_manager();
+                    bool ok = jm.start_daemon(driver, sr, bs);
+                    if (ok) {
+                        ok = jm.connect_client();
+                        if (ok && cables > 0) jm.create_cables(cables);
+                    }
+                    r["ok"] = ok;
+                    if (!ok) r["error"] = "Failed to start JACK daemon";
+                    else {
+                        r["sample_rate"]  = jm.sample_rate();
+                        r["buffer_size"]  = jm.buffer_size();
+                        r["cable_count"]  = (int)jm.list_cables().size();
+                    }
+                }
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/jack/stop — stop JACK daemon ───────────────────────
+    svr.Post("/api/v1/jack/stop",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) {
+                    g_pipeline->jack_manager().disconnect_client();
+                    g_pipeline->jack_manager().stop_daemon();
+                }
+                json r; r["ok"] = true;
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/jack/ports — list all JACK ports ────────────────────
+    svr.Get("/api/v1/jack/ports",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json r; r["ok"] = true;
+                json ports = json::array();
+                if (g_pipeline) {
+                    for (const auto& p : g_pipeline->jack_manager().list_ports()) {
+                        ports.push_back({{"name", p.name}, {"is_input", p.is_input},
+                                         {"is_output", p.is_output}, {"is_physical", p.is_physical}});
+                    }
+                }
+                r["ports"] = ports;
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/jack/cables — list virtual audio cables ─────────────
+    svr.Get("/api/v1/jack/cables",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json r; r["ok"] = true;
+                json cables = json::array();
+                if (g_pipeline) {
+                    for (const auto& c : g_pipeline->jack_manager().list_cables()) {
+                        cables.push_back({{"id", c.id}, {"capture", c.capture_name}, {"playback", c.playback_name}});
+                    }
+                }
+                r["cables"] = cables;
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/jack/cables — create a virtual cable ───────────────
+    svr.Post("/api/v1/jack/cables",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json r;
+                if (g_pipeline) {
+                    int id = g_pipeline->jack_manager().create_cable();
+                    r["ok"] = (id > 0); r["cable_id"] = id;
+                } else { r["ok"] = false; }
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── DELETE /api/v1/jack/cables/{id} — destroy a virtual cable ────────
+    svr.Delete(R"(/api/v1/jack/cables/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                int id = std::stoi(req.matches[1].str());
+                json r;
+                if (g_pipeline) {
+                    r["ok"] = g_pipeline->jack_manager().destroy_cable(id);
+                } else { r["ok"] = false; }
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/jack/connect — connect two JACK ports ──────────────
+    svr.Post("/api/v1/jack/connect",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); } catch (...) { body = json::object(); }
+                std::string src = body.value("src", "");
+                std::string dst = body.value("dst", "");
+                json r;
+                if (g_pipeline && !src.empty() && !dst.empty()) {
+                    r["ok"] = g_pipeline->jack_manager().connect_ports(src, dst);
+                } else { r["ok"] = false; r["error"] = "src and dst required"; }
+                res.set_content(r.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/jack/disconnect — disconnect two JACK ports ────────
+    svr.Post("/api/v1/jack/disconnect",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); } catch (...) { body = json::object(); }
+                std::string src = body.value("src", "");
+                std::string dst = body.value("dst", "");
+                json r;
+                if (g_pipeline && !src.empty() && !dst.empty()) {
+                    r["ok"] = g_pipeline->jack_manager().disconnect_ports(src, dst);
+                } else { r["ok"] = false; r["error"] = "src and dst required"; }
                 res.set_content(r.dump(), "application/json");
 #else
                 res.set_content(R"({"ok":false})", "application/json");
