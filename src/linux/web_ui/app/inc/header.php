@@ -329,6 +329,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <i class="fa-solid fa-headphones fa-fw"></i> Media Player
   </a>
 
+  <div class="nav-section">DJ</div>
+  <a class="nav-item <?= $active_nav === 'crossfader' ? 'active' : '' ?>" href="/crossfader.php">
+    <i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader
+  </a>
+  <a class="nav-item <?= $active_nav === 'effects' ? 'active' : '' ?>" href="/effects-rack.php">
+    <i class="fa-solid fa-sliders fa-fw"></i> Effects Rack
+  </a>
+  <a class="nav-item <?= $active_nav === 'jack' ? 'active' : '' ?>" href="/jack.php">
+    <i class="fa-solid fa-plug fa-fw"></i> JACK Audio
+  </a>
+
+  <div class="nav-section">Automation</div>
+  <a class="nav-item <?= $active_nav === 'schedule' ? 'active' : '' ?>" href="/schedule.php">
+    <i class="fa-solid fa-clock fa-fw"></i> Schedule
+  </a>
+
   <div class="nav-section">Analytics</div>
   <a class="nav-item <?= $active_nav === 'metrics' ? 'active' : '' ?>" href="/metrics.php">
     <i class="fa-solid fa-chart-line fa-fw"></i> Listener Metrics
@@ -340,6 +356,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   </a>
   <a class="nav-item <?= $active_nav === 'profile' ? 'active' : '' ?>" href="/profile.php">
     <i class="fa-solid fa-circle-user fa-fw"></i> My Profile
+  </a>
+  <a class="nav-item <?= $active_nav === 'compliance' ? 'active' : '' ?>" href="/compliance.php">
+    <i class="fa-solid fa-shield-halved fa-fw" style="color:#00d4aa"></i> Compliance
   </a>
 
   <div class="sidebar-spacer"></div>

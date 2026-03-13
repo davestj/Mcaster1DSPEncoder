@@ -263,6 +263,15 @@ class EditEncoders
             'agc_enabled'           => (int)(bool)($raw['agc_enabled']       ?? false),
             'crossfade_enabled'     => (int)(bool)($raw['crossfade_enabled'] ?? true),
             'crossfade_duration'    => min(10.0, max(1.0, (float)($raw['crossfade_duration'] ?? 3.0))),
+            'crossfade_curve'       => min(8, max(0, (int)($raw['crossfade_curve'] ?? 1))),
+            // Effects rack mode
+            'effects_mode'          => in_array($raw['effects_mode'] ?? '', ['global','bypass','custom']) ? $raw['effects_mode'] : 'global',
+            // Clockwheel + Dead air (L9)
+            'clockwheel_enabled'    => (int)(bool)($raw['clockwheel_enabled'] ?? false),
+            'dead_air_enabled'      => (int)(bool)($raw['dead_air_enabled']   ?? false),
+            'dead_air_threshold_db' => min(0.0, max(-96.0, (float)($raw['dead_air_threshold_db'] ?? -60.0))),
+            'dead_air_timeout_sec'  => min(120, max(1, (int)($raw['dead_air_timeout_sec'] ?? 10))),
+            'dead_air_fallback_playlist' => trim($raw['dead_air_fallback_playlist'] ?? ''),
             'is_active'             => (int)(bool)($raw['is_active'] ?? true),
             // Auto-start
             'auto_start'            => (int)(bool)($raw['auto_start']            ?? false),

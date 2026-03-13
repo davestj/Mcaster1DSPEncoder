@@ -624,6 +624,78 @@ require_once __DIR__ . '/app/inc/header.php';
 
     </div>
 
+    <!-- ── Crossfade Curve Selector ──────────────────────────────────── -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div class="section-hdr">Crossfade Curve</div>
+      <div class="form-group">
+        <label style="font-size:12px;color:var(--text-dim);margin-bottom:6px;display:block">Algorithm</label>
+        <select id="ef-xf-curve" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:var(--radius-xs);font-size:13px;">
+          <option value="0">Linear</option>
+          <option value="1" selected>Constant Power (DJ Standard)</option>
+          <option value="2">S-Curve</option>
+          <option value="3">Exponential</option>
+          <option value="4">Log Taper</option>
+          <option value="5">Broadcast Blend (EBU)</option>
+          <option value="6">Transform Cut</option>
+          <option value="7">Hard Cut</option>
+          <option value="8">Pioneer Style</option>
+        </select>
+        <canvas id="ef-xf-preview" style="width:100%;height:60px;margin-top:8px;border-radius:var(--radius-xs);background:var(--bg)"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Effects Mode ──────────────────────────────────────────────── -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div class="section-hdr">Effects Rack Mode</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;font-size:12px;color:var(--text);">
+          <input type="radio" name="effects_mode" value="global" checked> Global Rack
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;font-size:12px;color:var(--text);">
+          <input type="radio" name="effects_mode" value="bypass"> Bypass
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;font-size:12px;color:var(--text);">
+          <input type="radio" name="effects_mode" value="custom"> Custom Rack
+        </label>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin:6px 0 0;">Global = uses the system effects rack. Bypass = no effects. Custom = slot-specific rack (configure on <a href="/effects-rack.php" style="color:var(--teal);">Effects Rack</a> page).</p>
+    </div>
+
+    <!-- ── Clockwheel + Dead Air (L9) ────────────────────────────────── -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div class="section-hdr">Automation</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;font-size:12px;color:var(--text);">
+          <input type="checkbox" id="ef-cw-en"> Clockwheel Enabled
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-xs);cursor:pointer;font-size:12px;color:var(--text);">
+          <input type="checkbox" id="ef-da-en"> Dead Air Detection
+        </label>
+      </div>
+      <div id="da-config" style="margin-top:12px;display:none;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;color:var(--text-dim);">Silence Threshold (dB)</label>
+            <input type="number" id="ef-da-thresh" value="-60" min="-96" max="0" step="1" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:var(--radius-xs);font-size:12px;">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-dim);">Timeout (seconds)</label>
+            <input type="number" id="ef-da-timeout" value="10" min="1" max="120" step="1" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:var(--radius-xs);font-size:12px;">
+          </div>
+        </div>
+        <div style="margin-top:8px;">
+          <label style="font-size:11px;color:var(--text-dim);">Fallback Playlist Path</label>
+          <input type="text" id="ef-da-fallback" placeholder="/path/to/fallback.m3u" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:var(--radius-xs);font-size:12px;">
+        </div>
+        <p style="font-size:10px;color:var(--muted);margin:6px 0 0;">If silence persists for <strong>timeout</strong> seconds below <strong>threshold</strong>, we skip the track. If still silent after 5s more, we load the fallback playlist.</p>
+      </div>
+    </div>
+    <script>
+    document.getElementById('ef-da-en').addEventListener('change', function(){
+      document.getElementById('da-config').style.display = this.checked ? 'block' : 'none';
+    });
+    </script>
+
     <?php if (!$is_new): ?>
     <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
       <div class="section-hdr">Live DSP Status</div>
@@ -714,11 +786,69 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('ef-xf-dur').value = dsp.crossfade_duration;
                 document.getElementById('ef-xf-lbl').textContent = parseFloat(dsp.crossfade_duration).toFixed(1) + 's';
             }
+            if (dsp.crossfade_curve !== undefined) {
+                document.getElementById('ef-xf-curve').value = dsp.crossfade_curve;
+                drawMiniCurve(dsp.crossfade_curve);
+            }
             var stat = document.getElementById('dsp-live-status');
             if (stat) stat.textContent = 'DSP loaded from running encoder (Slot ' + EDITING_SLOT + ').';
         }).catch(function () {});
+
+        /* We also load effects mode */
+        mc1Api('GET', '/api/v1/encoders/' + EDITING_SLOT + '/effects').then(function (d) {
+            if (!d || !d.ok) return;
+            var radios = document.querySelectorAll('input[name="effects_mode"]');
+            radios.forEach(function(r){ r.checked = (r.value === d.effects_mode); });
+        }).catch(function(){});
     }
+
+    /* We set up curve preview on change */
+    var curveSelect = document.getElementById('ef-xf-curve');
+    if (curveSelect) {
+        curveSelect.addEventListener('change', function(){ drawMiniCurve(parseInt(this.value)); });
+        drawMiniCurve(parseInt(curveSelect.value));
+    }
+
+    /* We set up effects mode save on change */
+    document.querySelectorAll('input[name="effects_mode"]').forEach(function(r){
+        r.addEventListener('change', function(){
+            if (EDITING_SLOT > 0) {
+                mc1Api('PUT', '/api/v1/encoders/' + EDITING_SLOT + '/effects', {effects_mode: this.value});
+            }
+        });
+    });
 });
+
+/* ── Mini crossfade curve preview (same math as crossfader.php) ────────────── */
+var _kPi2 = Math.PI / 2;
+var _curveFns = [
+    function(x){ return {a:1-x, b:x}; },
+    function(x){ return {a:Math.cos(x*_kPi2), b:Math.sin(x*_kPi2)}; },
+    function(x){ var t=x*x*(3-2*x); return {a:1-t, b:t}; },
+    function(x){ return {a:(1-x)*(1-x), b:x*x}; },
+    function(x){ return {a:Math.pow(1-x,1.5), b:Math.pow(x,1.5)}; },
+    function(x){ return {a:Math.cos(x*_kPi2)*0.7071+(1-x)*0.2929, b:Math.sin(x*_kPi2)*0.7071+x*0.2929}; },
+    function(x){ return {a:x<0.5?1:0, b:x>=0.5?1:0}; },
+    function(x){ var lo=0.45,hi=0.55,ov=0.10; return {a:x<lo?1:x>hi?0:Math.cos(((x-lo)/ov)*_kPi2), b:x>hi?1:x<lo?0:Math.sin(((x-lo)/ov)*_kPi2)}; },
+    function(x){ return {a:x<0.5?1:Math.cos((x-0.5)*_kPi2*2), b:x>0.5?1:Math.cos((0.5-x)*_kPi2*2)}; }
+];
+function drawMiniCurve(curveId) {
+    var canvas = document.getElementById('ef-xf-preview');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, w, h);
+    var fn = _curveFns[curveId] || _curveFns[1];
+    ctx.beginPath();
+    for (var i = 0; i <= 80; i++) { var x = i/80, g = fn(x); i===0?ctx.moveTo(x*w,(1-g.a)*h):ctx.lineTo(x*w,(1-g.a)*h); }
+    ctx.strokeStyle='#14b8a6'; ctx.lineWidth=2; ctx.stroke();
+    ctx.beginPath();
+    for (var i = 0; i <= 80; i++) { var x = i/80, g = fn(x); i===0?ctx.moveTo(x*w,(1-g.b)*h):ctx.lineTo(x*w,(1-g.b)*h); }
+    ctx.strokeStyle='#0891b2'; ctx.lineWidth=2; ctx.stroke();
+}
 
 // ── Server preset ──────────────────────────────────────────────────────────
 
@@ -807,6 +937,15 @@ function buildPayload() {
         agc_enabled:             document.getElementById('ef-agc').checked ? 1 : 0,
         crossfade_enabled:       document.getElementById('ef-xf-en').checked ? 1 : 0,
         crossfade_duration:      parseFloat(document.getElementById('ef-xf-dur').value),
+        crossfade_curve:         parseInt(document.getElementById('ef-xf-curve').value) || 1,
+        // Effects mode
+        effects_mode:            (document.querySelector('input[name="effects_mode"]:checked') || {}).value || 'global',
+        // Clockwheel + Dead air
+        clockwheel_enabled:      document.getElementById('ef-cw-en').checked ? 1 : 0,
+        dead_air_enabled:        document.getElementById('ef-da-en').checked ? 1 : 0,
+        dead_air_threshold_db:   parseFloat(document.getElementById('ef-da-thresh').value) || -60,
+        dead_air_timeout_sec:    parseInt(document.getElementById('ef-da-timeout').value) || 10,
+        dead_air_fallback_playlist: (document.getElementById('ef-da-fallback') || {}).value || '',
         // Archive
         archive_enabled:         document.getElementById('ef-arch-en').checked ? 1 : 0,
         archive_dir:             document.getElementById('ef-arch-dir').value.trim(),
@@ -851,7 +990,8 @@ window.applyDspLive = function () {
         eq_preset:          document.getElementById('ef-eq-preset').value,
         agc_enabled:        document.getElementById('ef-agc').checked,
         crossfade_enabled:  document.getElementById('ef-xf-en').checked,
-        crossfade_duration: parseFloat(document.getElementById('ef-xf-dur').value)
+        crossfade_duration: parseFloat(document.getElementById('ef-xf-dur').value),
+        crossfade_curve:    parseInt(document.getElementById('ef-xf-curve').value)
     }).then(function (d) {
         if (d && d.ok !== false) {
             mc1Toast('DSP applied to Slot ' + EDITING_SLOT, 'ok');

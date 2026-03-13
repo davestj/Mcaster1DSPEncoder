@@ -71,6 +71,9 @@ foreach ($db_configs as $idx => $cfg):
       <button class="btn btn-success btn-sm" onclick="slotAct(<?= $slot ?>,'start')">
         <i class="fa-solid fa-play"></i> Start
       </button>
+      <a href="/encoder-effects-rack.php?slot=<?= (int)$cfg['slot_id'] ?>" class="btn btn-icon btn-sm" title="Effects Rack" style="color:var(--cyan)">
+        <i class="fa-solid fa-sliders"></i>
+      </a>
       <a href="/edit_encoders.php?id=<?= (int)$cfg['id'] ?>" class="btn btn-icon btn-sm" title="Configure this slot">
         <i class="fa-solid fa-gear"></i>
       </a>
@@ -505,16 +508,19 @@ function updateSlotLive(enc, idx) {
       ea.innerHTML =
         '<button class="btn btn-danger btn-sm" onclick="slotAct('+id+',\'stop\')"><i class="fa-solid fa-stop"></i> Stop</button>'
        +'<button class="btn btn-secondary btn-sm" onclick="slotAct('+id+',\'restart\')"><i class="fa-solid fa-rotate-right"></i></button>'
+       +'<a href="/encoder-effects-rack.php?slot='+id+'" class="btn btn-icon btn-sm" title="Effects" style="color:var(--cyan)"><i class="fa-solid fa-sliders"></i></a>'
        +'<a href="/edit_encoders.php?id='+(SLOT_CFG_IDS[id]||0)+'" class="btn btn-icon btn-sm" title="Configure"><i class="fa-solid fa-gear"></i></a>';
     } else if (cls === 'sleep') {
       // SLEEP: encoder was live but exhausted reconnect attempts; show Wake button
       ea.innerHTML =
         '<button class="btn btn-warn btn-sm" onclick="slotAct('+id+',\'wake\')"><i class="fa-solid fa-bell"></i> Wake</button>'
        +'<button class="btn btn-success btn-sm" onclick="slotAct('+id+',\'start\')" title="Force fresh start"><i class="fa-solid fa-play"></i></button>'
+       +'<a href="/encoder-effects-rack.php?slot='+id+'" class="btn btn-icon btn-sm" title="Effects" style="color:var(--cyan)"><i class="fa-solid fa-sliders"></i></a>'
        +'<a href="/edit_encoders.php?id='+(SLOT_CFG_IDS[id]||0)+'" class="btn btn-icon btn-sm" title="Configure"><i class="fa-solid fa-gear"></i></a>';
     } else {
       ea.innerHTML =
         '<button class="btn btn-success btn-sm" onclick="slotAct('+id+',\'start\')"><i class="fa-solid fa-play"></i> Start</button>'
+       +'<a href="/encoder-effects-rack.php?slot='+id+'" class="btn btn-icon btn-sm" title="Effects" style="color:var(--cyan)"><i class="fa-solid fa-sliders"></i></a>'
        +'<a href="/edit_encoders.php?id='+(SLOT_CFG_IDS[id]||0)+'" class="btn btn-icon btn-sm" title="Configure"><i class="fa-solid fa-gear"></i></a>';
     }
   }
