@@ -64,7 +64,7 @@ try {
 $categories = [];
 try {
     $categories = mc1_db('mcaster1_media')->query(
-        'SELECT c.id, c.name, c.color_hex, c.icon, c.type,
+        'SELECT c.id, c.name, c.color_hex, c.icon, c.type, c.weight, c.cat_type,
                 COUNT(tc.track_id) AS track_count
          FROM categories c
          LEFT JOIN track_categories tc ON tc.category_id = c.id
@@ -213,6 +213,22 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
                    border-radius:7px; box-shadow:0 8px 28px rgba(0,0,0,.45); min-width:190px;
                    padding:5px 0; display:none; }
 
+/* ── Category weight badge ──────────────────────────────────────────── */
+.cat-weight-badge { font-size:9px; background:rgba(20,184,166,.15); color:var(--teal); padding:1px 4px;
+                    border-radius:3px; font-weight:600; margin-left:2px; flex-shrink:0;
+                    font-variant-numeric:tabular-nums; }
+
+/* ── Context menu submenu ───────────────────────────────────────────── */
+.ctx-item.has-sub { position:relative; }
+.ctx-item.has-sub::after { content:'\25B6'; position:absolute; right:10px; font-size:8px;
+                           color:var(--muted); top:50%; transform:translateY(-50%); }
+.ctx-submenu     { position:fixed; z-index:10000; background:var(--card); border:1px solid var(--border);
+                   border-radius:7px; box-shadow:0 8px 28px rgba(0,0,0,.45); min-width:180px;
+                   max-height:320px; overflow-y:auto; padding:5px 0; display:none; }
+.ctx-submenu .ctx-item { font-size:12px; padding:6px 14px; }
+.ctx-submenu .ctx-sub-hdr { font-size:10px; font-weight:700; color:var(--muted); padding:4px 14px 2px;
+                            text-transform:uppercase; letter-spacing:.05em; }
+
 /* ── Media tabs card: allow content to flow freely, no clipping ────── */
 /* The global .card rule has overflow:hidden (for border-radius clipping).
  * That causes the tab panes to be cut off when taller than the viewport.
@@ -233,6 +249,35 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
 .uprog-size              { flex-shrink:0; color:var(--muted); }
 .uprog-bar-wrap          { height:3px; background:var(--bg3); border-radius:2px; margin-top:4px; }
 .uprog-bar-fill          { height:100%; border-radius:2px; transition:width .1s; }
+
+/* ── Folder Browser Modal ────────────────────────────────────────────── */
+.fb-breadcrumb   { display:flex; align-items:center; flex-wrap:wrap; gap:2px; padding:10px 16px;
+                   background:var(--bg2); border-bottom:1px solid var(--border); font-size:12px; }
+.fb-crumb        { cursor:pointer; color:var(--teal); padding:2px 5px; border-radius:4px; }
+.fb-crumb:hover  { background:var(--bg3); text-decoration:underline; }
+.fb-crumb-sep    { color:var(--muted); font-size:10px; }
+.fb-crumb.active { color:var(--text); font-weight:600; cursor:default; }
+.fb-crumb.active:hover { background:transparent; text-decoration:none; }
+.fb-list         { max-height:400px; overflow-y:auto; padding:4px 0; }
+.fb-item         { display:flex; align-items:center; gap:8px; padding:8px 16px; cursor:pointer;
+                   font-size:13px; color:var(--text); transition:background .1s; }
+.fb-item:hover   { background:var(--bg3); }
+.fb-item.parent  { color:var(--muted); font-style:italic; }
+.fb-item-icon    { width:18px; text-align:center; flex-shrink:0; color:var(--teal); font-size:14px; }
+.fb-item-name    { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fb-item-arrow   { color:var(--muted); font-size:11px; flex-shrink:0; }
+.fb-empty        { padding:24px 16px; text-align:center; color:var(--muted); font-size:13px; }
+.fb-path-display { padding:10px 16px; background:var(--bg); border-top:1px solid var(--border);
+                   font-family:monospace; font-size:12px; color:var(--text); word-break:break-all; }
+.fb-loading      { padding:32px 16px; text-align:center; }
+
+/* ── Scan Progress Modal ─────────────────────────────────────────────── */
+.scan-prog-path  { font-family:monospace; font-size:12px; color:var(--muted); word-break:break-all;
+                   margin-bottom:12px; }
+.scan-prog-bar   { height:6px; background:var(--bg3); border-radius:3px; overflow:hidden; margin-bottom:10px; }
+.scan-prog-fill  { height:100%; background:var(--teal); border-radius:3px; transition:width .3s; }
+.scan-prog-stats { display:flex; gap:16px; font-size:13px; color:var(--text); margin-bottom:8px; }
+.scan-prog-stats span { font-weight:600; color:var(--teal); }
 </style>
 
 <div class="sec-hdr">
@@ -314,17 +359,20 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
           </ul>
 
           <!-- Categories section -->
-          <div class="ftree-section" style="margin-top:12px">Categories</div>
+          <div class="ftree-section" style="margin-top:12px" oncontextmenu="catAreaCtxShow(event)">Categories</div>
           <ul id="cat-list">
             <?php foreach ($categories as $cat): ?>
             <li>
               <div class="ftree-item" onclick="loadCategoryTracks(<?= (int)$cat['id'] ?>,<?= h(json_encode($cat['name'])) ?>)"
                    oncontextmenu="catCtxShow(event,<?= (int)$cat['id'] ?>,<?= h(json_encode($cat['name'])) ?>)"
                    id="cat-item-<?= (int)$cat['id'] ?>"
-                   data-cat-id="<?= (int)$cat['id'] ?>">
+                   data-cat-id="<?= (int)$cat['id'] ?>"
+                   data-weight="<?= (float)($cat['weight'] ?? 1.0) ?>"
+                   data-cat-type="<?= h($cat['cat_type'] ?? 'music') ?>">
                 <span class="ftree-arrow" style="visibility:hidden"></span>
                 <span class="cat-dot" style="background:<?= h($cat['color_hex']) ?>"></span>
                 <span class="ftree-label"><?= h($cat['name']) ?></span>
+                <span class="cat-weight-badge" title="Weight: <?= number_format((float)($cat['weight'] ?? 1.0), 1) ?>"><?= number_format((float)($cat['weight'] ?? 1.0), 1) ?></span>
                 <span class="ftree-cnt"><?= (int)$cat['track_count'] ?></span>
               </div>
             </li>
@@ -374,6 +422,9 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
         <input type="text" class="form-input" id="scan-dir"
                value="<?= h(MC1_AUDIO_ROOT) ?>"
                placeholder="/path/to/audio">
+        <button class="btn btn-secondary" id="browse-btn" onclick="openFolderBrowser()">
+          <i class="fa-solid fa-folder-tree"></i> Browse
+        </button>
         <button class="btn btn-primary" id="scan-btn" onclick="doScan()">
           <i class="fa-solid fa-folder-open"></i> Scan
         </button>
@@ -657,7 +708,7 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
   <div class="ctx-item" onclick="ctxNewPlaylistAdd()">
     <span class="ci-icon"><i class="fa-solid fa-plus"></i></span> New Playlist + Add
   </div>
-  <div class="ctx-item" onclick="ctxAddToCategory()">
+  <div class="ctx-item has-sub" onmouseenter="showCatSubMenu(this,'track')" onmouseleave="scheduleCatSubHide()">
     <span class="ci-icon"><i class="fa-solid fa-tag"></i></span> Add to Category
   </div>
   <hr class="ctx-sep">
@@ -673,6 +724,16 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
   </div>
   <div class="ctx-item" onclick="catCtxAddToPlaylist()">
     <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Add to Playlist…
+  </div>
+  <hr class="ctx-sep">
+  <div class="ctx-item" onclick="catCtxRename()">
+    <span class="ci-icon"><i class="fa-solid fa-pen"></i></span> Rename Category
+  </div>
+  <div class="ctx-item" onclick="catCtxSetWeight()">
+    <span class="ci-icon"><i class="fa-solid fa-weight-hanging"></i></span> Set Weight…
+  </div>
+  <div class="ctx-item" onclick="catCtxNewCategory()">
+    <span class="ci-icon"><i class="fa-solid fa-plus"></i></span> New Category…
   </div>
   <hr class="ctx-sep">
   <div class="ctx-item danger" onclick="catCtxDelete()">
@@ -691,10 +752,17 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
   <div class="ctx-item" onclick="folderCtxPlaylist()">
     <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Create Playlist from Folder
   </div>
+  <div class="ctx-item has-sub" onmouseenter="showCatSubMenu(this,'folder')" onmouseleave="scheduleCatSubHide()">
+    <span class="ci-icon"><i class="fa-solid fa-tag"></i></span> Add to Category
+  </div>
   <hr class="ctx-sep">
   <div class="ctx-item danger" onclick="folderCtxDelete()">
     <span class="ci-icon"><i class="fa-solid fa-trash"></i></span> Remove from Library
   </div>
+</div>
+
+<!-- ═══════════════ CATEGORY SUBMENU (shared by track + folder ctx menus) ═ -->
+<div class="ctx-submenu" id="cat-submenu" onmouseenter="cancelCatSubHide()" onmouseleave="hideCatSubMenu()">
 </div>
 
 <!-- ══════════════════════ MODAL: EDIT TAGS ═══════════════════════════════ -->
@@ -970,6 +1038,36 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
         <label class="form-label">Category Name</label>
         <input type="text" class="form-input" id="newcat-name" placeholder="e.g. Drive Time, Sweepers, Holiday">
       </div>
+      <div class="form-row cols-2" style="margin-bottom:12px">
+        <div class="form-group">
+          <label class="form-label">Category Type</label>
+          <select class="form-select" id="newcat-type">
+            <option value="music">Music</option>
+            <option value="station_ids">Station IDs</option>
+            <option value="stingers">Stingers</option>
+            <option value="ads">Ads/Commercials</option>
+            <option value="bumpers">Bumpers</option>
+            <option value="liners">Liners</option>
+            <option value="jingles">Jingles</option>
+            <option value="promos">Promos</option>
+            <option value="sweepers">Sweepers</option>
+            <option value="sfx">Sound Effects</option>
+            <option value="talk">Talk/Voice</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">
+            Weight
+            <span style="font-size:10px;color:var(--muted);margin-left:4px">— playlist generation</span>
+          </label>
+          <div class="weight-wrap">
+            <input type="range" id="newcat-weight" min="0.1" max="10" step="0.1" value="1.0"
+                   oninput="document.getElementById('newcat-weight-val').textContent=parseFloat(this.value).toFixed(1)">
+            <span class="weight-val" id="newcat-weight-val">1.0</span>
+          </div>
+        </div>
+      </div>
       <div class="form-group" style="margin-bottom:12px">
         <label class="form-label">Color</label>
         <div class="color-strip" id="newcat-color-strip">
@@ -980,7 +1078,7 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
           <div class="color-swatch <?= $ci === 0 ? 'sel' : '' ?>"
                style="background:<?= $cc ?>"
                data-color="<?= $cc ?>"
-               onclick="selectColor(this)"></div>
+               onclick="selectColor(this,'newcat')"></div>
           <?php endforeach; ?>
         </div>
         <input type="hidden" id="newcat-color" value="#14b8a6">
@@ -990,6 +1088,102 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
       <button class="btn btn-secondary" onclick="hideModal('modal-newcat')">Cancel</button>
       <button class="btn btn-primary" onclick="doCreateCategory()">
         <i class="fa-solid fa-plus"></i> Create Category
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: RENAME CATEGORY ════════════════════════════ -->
+<div class="mc1-modal-bg" id="modal-rename-cat">
+  <div class="mc1-modal" style="width:min(380px,96vw)">
+    <div class="mc1-modal-hdr">
+      <span class="mc1-modal-title"><i class="fa-solid fa-pen" style="color:var(--teal);margin-right:6px"></i>Rename Category</span>
+      <button class="btn btn-secondary btn-sm" onclick="hideModal('modal-rename-cat')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="mc1-modal-body">
+      <input type="hidden" id="rename-cat-id">
+      <div class="form-group" style="margin-bottom:12px">
+        <label class="form-label">Category Name</label>
+        <input type="text" class="form-input" id="rename-cat-name" placeholder="New name">
+      </div>
+      <div class="form-row cols-2" style="margin-bottom:12px">
+        <div class="form-group">
+          <label class="form-label">Category Type</label>
+          <select class="form-select" id="rename-cat-type">
+            <option value="music">Music</option>
+            <option value="station_ids">Station IDs</option>
+            <option value="stingers">Stingers</option>
+            <option value="ads">Ads/Commercials</option>
+            <option value="bumpers">Bumpers</option>
+            <option value="liners">Liners</option>
+            <option value="jingles">Jingles</option>
+            <option value="promos">Promos</option>
+            <option value="sweepers">Sweepers</option>
+            <option value="sfx">Sound Effects</option>
+            <option value="talk">Talk/Voice</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <div class="color-strip" id="rename-cat-color-strip">
+            <?php foreach ($cat_colors as $ci => $cc): ?>
+            <div class="color-swatch <?= $ci === 0 ? 'sel' : '' ?>"
+                 style="background:<?= $cc ?>"
+                 data-color="<?= $cc ?>"
+                 onclick="selectColor(this,'rename-cat')"></div>
+            <?php endforeach; ?>
+          </div>
+          <input type="hidden" id="rename-cat-color" value="#14b8a6">
+        </div>
+      </div>
+    </div>
+    <div class="mc1-modal-ftr">
+      <button class="btn btn-secondary" onclick="hideModal('modal-rename-cat')">Cancel</button>
+      <button class="btn btn-primary" onclick="doRenameCategory()">
+        <i class="fa-solid fa-check"></i> Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: SET CATEGORY WEIGHT ═══════════════════════ -->
+<div class="mc1-modal-bg" id="modal-set-weight">
+  <div class="mc1-modal" style="width:min(380px,96vw)">
+    <div class="mc1-modal-hdr">
+      <span class="mc1-modal-title"><i class="fa-solid fa-weight-hanging" style="color:var(--teal);margin-right:6px"></i>Set Category Weight</span>
+      <button class="btn btn-secondary btn-sm" onclick="hideModal('modal-set-weight')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="mc1-modal-body">
+      <input type="hidden" id="setw-cat-id">
+      <div style="font-size:13px;margin-bottom:12px">
+        Category: <strong id="setw-cat-name"></strong>
+      </div>
+      <div class="form-group">
+        <label class="form-label">
+          Rotation Weight
+          <span style="font-size:10px;color:var(--muted);margin-left:4px">— clockwheel playback frequency</span>
+        </label>
+        <div class="weight-wrap">
+          <span style="font-size:11px;color:var(--muted)">Rare<br>0.1</span>
+          <input type="range" id="setw-weight" min="0.1" max="10" step="0.1" value="1.0"
+                 oninput="document.getElementById('setw-weight-val').textContent=parseFloat(this.value).toFixed(1)">
+          <span style="font-size:11px;color:var(--muted)">Often<br>10.0</span>
+          <span class="weight-val" id="setw-weight-val">1.0</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">
+          Weight 1.0 = normal rotation &nbsp; 3.0 = plays 3x as often &nbsp; 0.3 = rarely selected
+        </div>
+      </div>
+    </div>
+    <div class="mc1-modal-ftr">
+      <button class="btn btn-secondary" onclick="hideModal('modal-set-weight')">Cancel</button>
+      <button class="btn btn-primary" onclick="doSetCategoryWeight()">
+        <i class="fa-solid fa-check"></i> Set Weight
       </button>
     </div>
   </div>
@@ -1025,6 +1219,66 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
       <button class="btn btn-secondary" onclick="hideModal('modal-wipe')">Cancel</button>
       <button class="btn btn-danger" onclick="doWipeLibrary()">
         <i class="fa-solid fa-trash"></i> Delete All Library Records
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: FOLDER BROWSER ═══════════════════════════════ -->
+<div class="mc1-modal-bg" id="modal-folder-browser">
+  <div class="mc1-modal" style="width:min(680px, 96vw)">
+    <div class="mc1-modal-hdr">
+      <span class="mc1-modal-title">
+        <i class="fa-solid fa-folder-tree" style="color:var(--teal);margin-right:8px"></i>Browse Folders
+      </span>
+      <button class="btn btn-secondary btn-sm" onclick="hideModal('modal-folder-browser')">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <!-- We render breadcrumbs here dynamically -->
+    <div class="fb-breadcrumb" id="fb-breadcrumb"></div>
+    <!-- We render folder listing here -->
+    <div class="fb-list" id="fb-list"></div>
+    <!-- We show the currently selected path -->
+    <div class="fb-path-display">
+      <strong style="color:var(--muted);font-size:11px">Selected:</strong>
+      <span id="fb-selected-path">/home/mediacast1</span>
+    </div>
+    <div class="mc1-modal-ftr">
+      <button class="btn btn-secondary" onclick="hideModal('modal-folder-browser')">Cancel</button>
+      <button class="btn btn-primary" id="fb-select-btn" onclick="fbSelectFolder()">
+        <i class="fa-solid fa-check"></i> Select This Folder
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ MODAL: SCAN PROGRESS ════════════════════════════════ -->
+<div class="mc1-modal-bg" id="modal-scan-progress">
+  <div class="mc1-modal" style="max-width:520px">
+    <div class="mc1-modal-hdr">
+      <span class="mc1-modal-title">
+        <i class="fa-solid fa-magnifying-glass" style="color:var(--teal);margin-right:8px"></i>Scanning Directory
+      </span>
+    </div>
+    <div class="mc1-modal-body">
+      <div class="scan-prog-path" id="sp-path"></div>
+      <div class="scan-prog-bar">
+        <div class="scan-prog-fill" id="sp-bar" style="width:100%"></div>
+      </div>
+      <div class="scan-prog-stats">
+        <div>Added: <span id="sp-added">0</span></div>
+        <div>Skipped: <span id="sp-skipped">0</span></div>
+        <div>Errors: <span id="sp-errors" style="color:var(--red,#ef4444)">0</span></div>
+      </div>
+      <div id="sp-status" style="font-size:13px;color:var(--muted)">
+        <div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div>
+        Scanning files, please wait...
+      </div>
+    </div>
+    <div class="mc1-modal-ftr" id="sp-footer" style="display:none">
+      <button class="btn btn-primary" onclick="hideModal('modal-scan-progress')">
+        <i class="fa-solid fa-check"></i> Done
       </button>
     </div>
   </div>
@@ -1311,6 +1565,10 @@ function refreshTotalBadge() {
 /* ── Right-click context menu ───────────────────────────────────────────── */
 var ctxMenu = document.getElementById('ctx-menu');
 function showCtxMenu(x, y) {
+    /* We close other context menus and any open submenu */
+    catCtxMenu.style.display    = 'none';
+    folderCtxMenu.style.display = 'none';
+    hideCatSubMenu();
     ctxMenu.style.display = 'block';
     /* We keep menu inside the viewport */
     var vw = window.innerWidth, vh = window.innerHeight;
@@ -1379,6 +1637,8 @@ window.catCtxShow = function(e, catId, catName) {
     ctxCatId   = catId;
     ctxCatName = catName;
     if (ctxMenu) ctxMenu.style.display = 'none';   /* We hide the track menu if open */
+    if (folderCtxMenu) folderCtxMenu.style.display = 'none';
+    hideCatSubMenu();
     catCtxMenu.style.display = 'block';
     var vw = window.innerWidth, vh = window.innerHeight;
     var mw = catCtxMenu.offsetWidth  || 170;
@@ -1458,6 +1718,257 @@ window.catCtxDelete = function() {
     }).catch(function() { mc1Toast('Delete request failed', 'err'); });
 };
 
+/* ── Category Rename ────────────────────────────────────────────────────── */
+window.catCtxRename = function() {
+    catCtxMenu.style.display = 'none';
+    if (!ctxCatId) { return; }
+    /* We pre-fill the rename modal from the sidebar DOM data attributes */
+    document.getElementById('rename-cat-id').value = ctxCatId;
+    document.getElementById('rename-cat-name').value = ctxCatName;
+    var catEl = document.getElementById('cat-item-' + ctxCatId);
+    if (catEl) {
+        var ct = catEl.getAttribute('data-cat-type') || 'music';
+        document.getElementById('rename-cat-type').value = ct;
+        /* We find and select the matching color swatch */
+        var dot = catEl.querySelector('.cat-dot');
+        var curColor = dot ? dot.style.background : '#14b8a6';
+        /* Normalize rgb to hex */
+        if (curColor.indexOf('rgb') === 0) {
+            var m = curColor.match(/\d+/g);
+            if (m && m.length >= 3) curColor = '#' + ((1<<24)+(+m[0]<<16)+(+m[1]<<8)+(+m[2])).toString(16).slice(1);
+        }
+        document.getElementById('rename-cat-color').value = curColor;
+        document.querySelectorAll('#rename-cat-color-strip .color-swatch').forEach(function(sw) {
+            sw.classList.toggle('sel', sw.getAttribute('data-color') === curColor);
+        });
+    }
+    showModal('modal-rename-cat');
+};
+
+window.doRenameCategory = function() {
+    var id      = parseInt(document.getElementById('rename-cat-id').value);
+    var name    = document.getElementById('rename-cat-name').value.trim();
+    var catType = document.getElementById('rename-cat-type').value;
+    var color   = document.getElementById('rename-cat-color').value;
+    if (!name) { mc1Toast('Enter a category name', 'warn'); return; }
+    mc1Api('POST', '/app/api/tracks.php', {
+        action: 'update_category', id: id, name: name, cat_type: catType, color_hex: color
+    }).then(function(d) {
+        if (d.ok) {
+            mc1Toast('Category updated', 'ok');
+            hideModal('modal-rename-cat');
+            /* We update the sidebar DOM */
+            var catEl = document.getElementById('cat-item-' + id);
+            if (catEl) {
+                var lbl = catEl.querySelector('.ftree-label');
+                if (lbl) lbl.textContent = name;
+                var dot = catEl.querySelector('.cat-dot');
+                if (dot) dot.style.background = color;
+                catEl.setAttribute('data-cat-type', catType);
+                catEl.setAttribute('onclick', 'loadCategoryTracks(' + id + ',' + esc(JSON.stringify(name)).replace(/'/g,"\\'") + ')');
+                catEl.setAttribute('oncontextmenu', 'catCtxShow(event,' + id + ',' + esc(JSON.stringify(name)).replace(/'/g,"\\'") + ')');
+            }
+            /* We update the in-memory array */
+            allCategories.forEach(function(c) {
+                if (c.id === id) { c.name = name; c.color_hex = color; c.cat_type = catType; }
+            });
+        } else mc1Toast(d.error || 'Update failed', 'err');
+    }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* ── Category Set Weight ────────────────────────────────────────────────── */
+window.catCtxSetWeight = function() {
+    catCtxMenu.style.display = 'none';
+    if (!ctxCatId) { return; }
+    document.getElementById('setw-cat-id').value = ctxCatId;
+    document.getElementById('setw-cat-name').textContent = ctxCatName;
+    /* We read current weight from DOM */
+    var catEl = document.getElementById('cat-item-' + ctxCatId);
+    var curW = catEl ? parseFloat(catEl.getAttribute('data-weight')) || 1.0 : 1.0;
+    document.getElementById('setw-weight').value = curW;
+    document.getElementById('setw-weight-val').textContent = curW.toFixed(1);
+    showModal('modal-set-weight');
+};
+
+window.doSetCategoryWeight = function() {
+    var id     = parseInt(document.getElementById('setw-cat-id').value);
+    var weight = parseFloat(document.getElementById('setw-weight').value) || 1.0;
+    mc1Api('POST', '/app/api/tracks.php', {
+        action: 'update_category', id: id, weight: weight
+    }).then(function(d) {
+        if (d.ok) {
+            mc1Toast('Weight set to ' + weight.toFixed(1), 'ok');
+            hideModal('modal-set-weight');
+            /* We update the sidebar DOM */
+            var catEl = document.getElementById('cat-item-' + id);
+            if (catEl) {
+                catEl.setAttribute('data-weight', weight);
+                var badge = catEl.querySelector('.cat-weight-badge');
+                if (badge) {
+                    badge.textContent = weight.toFixed(1);
+                    badge.title = 'Weight: ' + weight.toFixed(1);
+                }
+            }
+            /* We update the in-memory array */
+            allCategories.forEach(function(c) {
+                if (c.id === id) { c.weight = weight; }
+            });
+        } else mc1Toast(d.error || 'Update failed', 'err');
+    }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* ── Category area right-click (empty space in categories panel) ────────── */
+window.catCtxNewCategory = function() {
+    catCtxMenu.style.display = 'none';
+    showCreateCategory();
+};
+
+window.catAreaCtxShow = function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    /* We close other menus and show category context menu with limited options */
+    if (ctxMenu)       ctxMenu.style.display       = 'none';
+    if (folderCtxMenu) folderCtxMenu.style.display  = 'none';
+    catCtxMenu.style.display = 'none';
+
+    /* We create a lightweight inline menu for the blank area with just "New Category" */
+    ctxCatId   = null;
+    ctxCatName = '';
+    catCtxMenu.style.display = 'block';
+    var vw = window.innerWidth, vh = window.innerHeight;
+    var mw = catCtxMenu.offsetWidth  || 170;
+    var mh = catCtxMenu.offsetHeight || 80;
+    catCtxMenu.style.left = Math.min(e.clientX, vw - mw - 8) + 'px';
+    catCtxMenu.style.top  = Math.min(e.clientY, vh - mh - 8) + 'px';
+};
+
+/* ── Category submenu for "Add to Category >" in track + folder context menus ── */
+var catSubMenu       = null;
+var catSubHideTimer  = null;
+var catSubMenuSource = '';  /* 'track' or 'folder' — tells us what to add when clicked */
+
+window.showCatSubMenu = function(triggerEl, source) {
+    cancelCatSubHide();
+    catSubMenuSource = source;
+    catSubMenu = document.getElementById('cat-submenu');
+    if (!catSubMenu) return;
+
+    /* We build the submenu items from the in-memory categories list */
+    var html = '';
+    if (allCategories.length === 0) {
+        html = '<div class="ctx-item" style="color:var(--muted);font-style:italic;cursor:default">No categories yet</div>';
+    } else {
+        allCategories.forEach(function(c) {
+            html += '<div class="ctx-item" onclick="catSubAdd(' + c.id + ',' + esc(JSON.stringify(c.name)) + ')">'
+                  + '<span class="cat-dot" style="background:' + esc(c.color_hex || '#14b8a6') + ';width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px"></span>'
+                  + esc(c.name)
+                  + '<span style="margin-left:auto;font-size:10px;color:var(--muted)">' + (c.track_count||0) + '</span>'
+                  + '</div>';
+        });
+    }
+    html += '<hr class="ctx-sep">';
+    html += '<div class="ctx-item" onclick="catSubNew()">'
+          + '<span class="ci-icon"><i class="fa-solid fa-plus"></i></span> New Category…'
+          + '</div>';
+    catSubMenu.innerHTML = html;
+
+    /* We position the submenu to the right of the trigger item */
+    var rect = triggerEl.getBoundingClientRect();
+    var vw   = window.innerWidth;
+    var vh   = window.innerHeight;
+    catSubMenu.style.display = 'block';
+    var smW = catSubMenu.offsetWidth  || 180;
+    var smH = catSubMenu.offsetHeight || 200;
+
+    /* We try to place right; if it goes off screen, place left */
+    var left = rect.right + 2;
+    if (left + smW > vw - 8) left = rect.left - smW - 2;
+    var top = rect.top;
+    if (top + smH > vh - 8) top = vh - smH - 8;
+    if (top < 4) top = 4;
+
+    catSubMenu.style.left = left + 'px';
+    catSubMenu.style.top  = top  + 'px';
+};
+
+window.cancelCatSubHide = function() {
+    if (catSubHideTimer) { clearTimeout(catSubHideTimer); catSubHideTimer = null; }
+};
+
+window.scheduleCatSubHide = function() {
+    catSubHideTimer = setTimeout(function() { hideCatSubMenu(); }, 250);
+};
+
+window.hideCatSubMenu = function() {
+    if (catSubMenu) catSubMenu.style.display = 'none';
+};
+
+/* We handle clicking a category in the submenu — adds the track or folder tracks to that category */
+window.catSubAdd = function(catId, catName) {
+    hideCatSubMenu();
+    if (ctxMenu)       ctxMenu.style.display       = 'none';
+    if (folderCtxMenu) folderCtxMenu.style.display  = 'none';
+
+    if (catSubMenuSource === 'track') {
+        /* We add the single right-clicked track to the category */
+        if (!ctxTrackId) { mc1Toast('No track selected', 'warn'); return; }
+        mc1Api('POST', '/app/api/tracks.php', {
+            action: 'add_to_category', track_id: ctxTrackId, category_id: catId
+        }).then(function(d) {
+            if (d.ok) {
+                mc1Toast('Added to ' + catName, 'ok');
+                updateCatSidebarCount(catId, 1);
+                if (currentCatId === catId) fetchCategoryTracks(catId, currentPage);
+            } else mc1Toast(d.error || 'Failed', 'err');
+        }).catch(function() { mc1Toast('Request failed', 'err'); });
+
+    } else if (catSubMenuSource === 'folder') {
+        /* We add all tracks in the right-clicked folder to the category */
+        if (!ctxFolderPath) { mc1Toast('No folder selected', 'warn'); return; }
+        mc1Toast('Adding folder tracks to ' + catName + '…', 'ok');
+        mc1Api('POST', '/app/api/tracks.php', {action: 'list', folder: ctxFolderPath, page: 1, limit: 500})
+        .then(function(d) {
+            if (!d.ok || !d.data || !d.data.length) {
+                mc1Toast('No tracks found in this folder (scan it first)', 'warn');
+                return;
+            }
+            var ids = d.data.map(function(t) { return t.id; });
+            return mc1Api('POST', '/app/api/tracks.php', {
+                action: 'add_to_category', track_ids: ids, category_id: catId
+            });
+        }).then(function(d) {
+            if (d && d.ok) {
+                mc1Toast(d.added + ' track(s) added to ' + catName, 'ok');
+                updateCatSidebarCount(catId, d.added);
+                if (currentCatId === catId) fetchCategoryTracks(catId, currentPage);
+            } else if (d) {
+                mc1Toast(d.error || 'Failed', 'err');
+            }
+        }).catch(function() { mc1Toast('Request failed', 'err'); });
+    }
+};
+
+/* We open the New Category modal from the submenu */
+window.catSubNew = function() {
+    hideCatSubMenu();
+    if (ctxMenu)       ctxMenu.style.display       = 'none';
+    if (folderCtxMenu) folderCtxMenu.style.display  = 'none';
+    showCreateCategory();
+};
+
+/* We update the track count badge in the sidebar for a category */
+function updateCatSidebarCount(catId, delta) {
+    var cntEl = document.querySelector('#cat-item-' + catId + ' .ftree-cnt');
+    if (cntEl) { cntEl.textContent = (parseInt(cntEl.textContent) || 0) + delta; }
+    allCategories.forEach(function(c) {
+        if (c.id === catId) { c.track_count = (c.track_count || 0) + delta; }
+    });
+}
+
+/* We close the category submenu on document click or Escape */
+document.addEventListener('click', function() { hideCatSubMenu(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') hideCatSubMenu(); });
+
 /* ── Folder context menu ────────────────────────────────────────────────── */
 var folderCtxMenu  = document.getElementById('folder-ctx-menu');
 var ctxFolderPath  = '';
@@ -1485,6 +1996,7 @@ window.folderCtxShow = function(e, path) {
     /* Close other context menus */
     ctxMenu.style.display    = 'none';
     catCtxMenu.style.display = 'none';
+    hideCatSubMenu();
     folderCtxMenu.style.display = 'block';
     var vw = window.innerWidth, vh = window.innerHeight;
     var mw = folderCtxMenu.offsetWidth  || 190;
@@ -1964,28 +2476,39 @@ window.doAddToCategory = function() {
 /* ── Create Category ────────────────────────────────────────────────────── */
 window.showCreateCategory = function() {
     document.getElementById('newcat-name').value = '';
+    document.getElementById('newcat-type').value = 'music';
+    document.getElementById('newcat-weight').value = '1.0';
+    document.getElementById('newcat-weight-val').textContent = '1.0';
+    document.getElementById('newcat-color').value = '#14b8a6';
+    document.querySelectorAll('#newcat-color-strip .color-swatch').forEach(function(s, i) {
+        s.classList.toggle('sel', i === 0);
+    });
     showModal('modal-newcat');
 };
 window.doCreateCategory = function() {
-    var name  = document.getElementById('newcat-name').value.trim();
-    var color = document.getElementById('newcat-color').value;
+    var name    = document.getElementById('newcat-name').value.trim();
+    var color   = document.getElementById('newcat-color').value;
+    var catType = document.getElementById('newcat-type').value;
+    var weight  = parseFloat(document.getElementById('newcat-weight').value) || 1.0;
     if (!name) { mc1Toast('Enter a category name', 'warn'); return; }
     mc1Api('POST', '/app/api/tracks.php', {
-        action: 'create_category', name: name, color_hex: color
+        action: 'create_category', name: name, color_hex: color, cat_type: catType, weight: weight
     }).then(function(d) {
         if (d.ok) {
             mc1Toast('Category "' + name + '" created', 'ok');
             hideModal('modal-newcat');
             /* We add the new category to the sidebar without a full page reload */
-            var cat = {id: d.id, name: name, color_hex: color, track_count: 0};
+            var cat = {id: d.id, name: name, color_hex: color, track_count: 0, weight: weight, cat_type: catType};
             allCategories.push(cat);
             var li = document.createElement('li');
             li.innerHTML = '<div class="ftree-item" id="cat-item-' + d.id + '" data-cat-id="' + d.id + '"'
+                + ' data-weight="' + weight + '" data-cat-type="' + esc(catType) + '"'
                 + ' onclick="loadCategoryTracks(' + d.id + ',' + esc(JSON.stringify(name)) + ')"'
                 + ' oncontextmenu="catCtxShow(event,' + d.id + ',' + esc(JSON.stringify(name)) + ')">'
                 + '<span class="ftree-arrow" style="visibility:hidden"></span>'
                 + '<span class="cat-dot" style="background:' + esc(color) + '"></span>'
                 + '<span class="ftree-label">' + esc(name) + '</span>'
+                + '<span class="cat-weight-badge" title="Weight: ' + weight.toFixed(1) + '">' + weight.toFixed(1) + '</span>'
                 + '<span class="ftree-cnt">0</span>'
                 + '</div>';
             document.getElementById('cat-list').appendChild(li);
@@ -1993,36 +2516,163 @@ window.doCreateCategory = function() {
     }).catch(function() { mc1Toast('Request failed', 'err'); });
 };
 
-window.selectColor = function(el) {
-    document.querySelectorAll('#newcat-color-strip .color-swatch').forEach(function(s) { s.classList.remove('sel'); });
+window.selectColor = function(el, prefix) {
+    prefix = prefix || 'newcat';
+    var strip = el.closest('.color-strip');
+    if (strip) {
+        strip.querySelectorAll('.color-swatch').forEach(function(s) { s.classList.remove('sel'); });
+    }
     el.classList.add('sel');
-    document.getElementById('newcat-color').value = el.getAttribute('data-color');
+    var hidden = document.getElementById(prefix + '-color');
+    if (hidden) hidden.value = el.getAttribute('data-color');
 };
 
-/* ── Folder Scan ────────────────────────────────────────────────────────── */
+/* ── Folder Browser ─────────────────────────────────────────────────────── */
+var fbCurrentPath = '/home/mediacast1';
+
+/* We open the folder browser modal and load the initial directory listing */
+window.openFolderBrowser = function() {
+    fbCurrentPath = '/home/mediacast1';
+    showModal('modal-folder-browser');
+    fbNavigate(fbCurrentPath);
+};
+
+/* We navigate to a path and update the folder listing + breadcrumbs */
+function fbNavigate(path) {
+    fbCurrentPath = path;
+    document.getElementById('fb-selected-path').textContent = path;
+    var listEl = document.getElementById('fb-list');
+    listEl.innerHTML = '<div class="fb-loading"><div class="spinner" style="width:20px;height:20px;display:inline-block"></div></div>';
+
+    mc1Api('POST', '/app/api/tracks.php', {action: 'browse_folders', path: path}).then(function(d) {
+        if (!d.ok) {
+            listEl.innerHTML = '<div class="fb-empty"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);margin-right:6px"></i>' + esc(d.error || 'Failed to read directory') + '</div>';
+            return;
+        }
+
+        /* We update the resolved path (realpath may differ from input) */
+        fbCurrentPath = d.path;
+        document.getElementById('fb-selected-path').textContent = d.path;
+
+        /* We render breadcrumbs */
+        var bcEl = document.getElementById('fb-breadcrumb');
+        var bcHtml = '';
+        if (d.breadcrumbs && d.breadcrumbs.length) {
+            d.breadcrumbs.forEach(function(bc, idx) {
+                if (idx > 0) bcHtml += '<span class="fb-crumb-sep"><i class="fa-solid fa-chevron-right"></i></span>';
+                if (idx === d.breadcrumbs.length - 1) {
+                    bcHtml += '<span class="fb-crumb active">' + esc(bc.name) + '</span>';
+                } else {
+                    bcHtml += '<span class="fb-crumb" onclick="fbNav(\'' + esc(bc.path.replace(/'/g, "\\'")) + '\')">' + esc(bc.name) + '</span>';
+                }
+            });
+        }
+        bcEl.innerHTML = bcHtml;
+
+        /* We render folder list */
+        var html = '';
+
+        /* Parent directory link (..) if we are not at root */
+        if (d.parent) {
+            html += '<div class="fb-item parent" onclick="fbNav(\'' + esc(d.parent.replace(/'/g, "\\'")) + '\')">'
+                 + '<span class="fb-item-icon"><i class="fa-solid fa-arrow-up"></i></span>'
+                 + '<span class="fb-item-name">..</span>'
+                 + '</div>';
+        }
+
+        if (d.folders && d.folders.length) {
+            d.folders.forEach(function(f) {
+                html += '<div class="fb-item" onclick="fbNav(\'' + esc(f.path.replace(/'/g, "\\'")) + '\')">'
+                     + '<span class="fb-item-icon"><i class="fa-solid fa-folder"></i></span>'
+                     + '<span class="fb-item-name">' + esc(f.name) + '</span>'
+                     + (f.has_children ? '<span class="fb-item-arrow"><i class="fa-solid fa-chevron-right"></i></span>' : '')
+                     + '</div>';
+            });
+        } else if (!d.parent) {
+            html += '<div class="fb-empty">No subdirectories found</div>';
+        } else if (!d.folders || d.folders.length === 0) {
+            html += '<div class="fb-empty" style="font-style:italic">No subdirectories in this folder</div>';
+        }
+
+        listEl.innerHTML = html;
+    }).catch(function() {
+        listEl.innerHTML = '<div class="fb-empty"><i class="fa-solid fa-triangle-exclamation" style="color:var(--red);margin-right:6px"></i>Request failed</div>';
+    });
+}
+
+/* We expose fbNavigate so onclick handlers in rendered HTML can call it */
+window.fbNav = function(path) { fbNavigate(path); };
+
+/* We select the current folder and place it in the scan directory input */
+window.fbSelectFolder = function() {
+    var path = fbCurrentPath;
+    document.getElementById('scan-dir').value = path;
+    hideModal('modal-folder-browser');
+    mc1Toast('Selected: ' + path, 'ok');
+};
+
+/* ── Folder Scan (with progress modal) ─────────────────────────────────── */
 window.doScan = function() {
     var dir = document.getElementById('scan-dir').value.trim();
     if (!dir) { mc1Toast('Enter a directory path', 'warn'); return; }
     var btn = document.getElementById('scan-btn');
     var res = document.getElementById('scan-res');
+
+    /* We show the scan progress modal */
+    document.getElementById('sp-path').textContent = dir;
+    document.getElementById('sp-added').textContent = '0';
+    document.getElementById('sp-skipped').textContent = '0';
+    document.getElementById('sp-errors').textContent = '0';
+    document.getElementById('sp-bar').style.width = '100%';
+    document.getElementById('sp-bar').style.background = 'var(--teal)';
+    document.getElementById('sp-status').innerHTML = '<div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle;margin-right:6px"></div> Scanning files, please wait...';
+    document.getElementById('sp-footer').style.display = 'none';
+    showModal('modal-scan-progress');
+
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block"></div> Scanning…';
-    res.innerHTML = '<div class="alert alert-info"><i class="fa-solid fa-circle-info"></i> Scanning ' + esc(dir) + '…</div>';
+    res.innerHTML = '';
+
     mc1Api('POST', '/app/api/tracks.php', {action: 'scan', directory: dir}).then(function(d) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-folder-open"></i> Scan';
+
         if (d.ok) {
+            /* We update the progress modal with results */
+            document.getElementById('sp-added').textContent = d.added;
+            document.getElementById('sp-skipped').textContent = d.skipped;
+            var errCount = (d.errors && d.errors.length) ? d.errors.length : 0;
+            document.getElementById('sp-errors').textContent = errCount;
+            document.getElementById('sp-bar').style.width = '100%';
+            document.getElementById('sp-bar').style.background = errCount > 0 ? 'var(--orange, #f97316)' : 'var(--teal)';
+
+            var statusMsg = '<i class="fa-solid fa-circle-check" style="color:var(--teal);margin-right:6px"></i>'
+                + 'Scan complete! Added <strong>' + d.added + '</strong> tracks, skipped ' + d.skipped + '.';
+            if (errCount > 0) {
+                statusMsg += '<br><small style="color:var(--muted)">' + esc(d.errors.join('; ').substring(0, 200)) + '</small>';
+            }
+            document.getElementById('sp-status').innerHTML = statusMsg;
+            document.getElementById('sp-footer').style.display = 'flex';
+
+            /* We also update the inline result area */
             var errs = (d.errors && d.errors.length) ? ' Errors: ' + esc(d.errors.join('; ')) : '';
             res.innerHTML = '<div class="alert alert-success"><i class="fa-solid fa-circle-check"></i> '
                 + 'Added <strong>' + d.added + '</strong> tracks, skipped ' + d.skipped + '.' + errs + '</div>';
             refreshTotalBadge();
             loadTracks(currentFolder, 1);
         } else {
+            document.getElementById('sp-bar').style.background = 'var(--red, #ef4444)';
+            document.getElementById('sp-status').innerHTML = '<i class="fa-solid fa-xmark" style="color:var(--red);margin-right:6px"></i>' + esc(d.error || 'Scan failed');
+            document.getElementById('sp-footer').style.display = 'flex';
+
             res.innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> ' + esc(d.error || 'Scan failed') + '</div>';
         }
     }).catch(function() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-folder-open"></i> Scan';
+        document.getElementById('sp-bar').style.background = 'var(--red, #ef4444)';
+        document.getElementById('sp-status').innerHTML = '<i class="fa-solid fa-xmark" style="color:var(--red);margin-right:6px"></i>Request failed — check server connection';
+        document.getElementById('sp-footer').style.display = 'flex';
         res.innerHTML = '<div class="alert alert-error">Request failed</div>';
     });
 };

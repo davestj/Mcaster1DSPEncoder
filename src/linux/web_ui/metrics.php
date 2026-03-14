@@ -22,6 +22,75 @@ $mounts     = Mc1MetricsCalculator::getMountBreakdown(30);
 $top_tracks = Mc1MetricsCalculator::getTopTracks(20);
 $recent     = Mc1MetricsCalculator::getRecentSessions(50);
 
+/* ── L7: Geographic + Client breakdown ─────────────────────────────────── */
+$geo_data   = [];
+$client_data = [];
+
+/* Geographic: resolve IPs from listener_sessions + stream_events via geoiplookup */
+try {
+    $db = mc1_db('mcaster1_metrics');
+    $ips = $db->query("SELECT DISTINCT client_ip FROM (
+        SELECT client_ip FROM listener_sessions WHERE connected_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+        UNION SELECT SUBSTRING_INDEX(detail, ' ', 1) as client_ip FROM stream_events WHERE event_type = 'listener_connect' AND created_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+    ) combined WHERE client_ip != '' LIMIT 500")->fetchAll(PDO::FETCH_COLUMN);
+
+    $country_counts = [];
+    foreach ($ips as $ip) {
+        $ip = trim($ip);
+        if (!$ip || !filter_var($ip, FILTER_VALIDATE_IP)) continue;
+        /* Check cache first */
+        $cached = $db->prepare("SELECT country_code, country_name FROM geographic_stats WHERE client_ip = ? LIMIT 1");
+        $cached->execute([$ip]);
+        $row = $cached->fetch();
+        if ($row) {
+            $cc = $row['country_code'];
+            $cn = $row['country_name'];
+        } else {
+            /* Resolve via geoiplookup CLI */
+            $out = shell_exec("geoiplookup " . escapeshellarg($ip) . " 2>/dev/null");
+            $cc = '--'; $cn = 'Unknown';
+            if ($out && preg_match('/: ([A-Z]{2}), (.+)/', $out, $m)) { $cc = $m[1]; $cn = trim($m[2]); }
+            $db->prepare("INSERT IGNORE INTO geographic_stats (client_ip, country_code, country_name) VALUES (?, ?, ?)")
+                ->execute([$ip, $cc, $cn]);
+        }
+        if (!isset($country_counts[$cc])) $country_counts[$cc] = ['name' => $cn, 'count' => 0];
+        $country_counts[$cc]['count']++;
+    }
+    arsort($country_counts);
+    $geo_data = array_slice($country_counts, 0, 15, true);
+} catch (Exception $e) {}
+
+/* Client breakdown from user_agent in listener_sessions + stream_events */
+try {
+    $agents = $db->query("SELECT user_agent, COUNT(*) as cnt FROM (
+        SELECT user_agent FROM listener_sessions WHERE connected_at > DATE_SUB(NOW(), INTERVAL 30 DAY) AND user_agent != ''
+        UNION ALL SELECT detail as user_agent FROM stream_events WHERE event_type = 'listener_connect' AND created_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+    ) combined GROUP BY user_agent ORDER BY cnt DESC LIMIT 100")->fetchAll();
+
+    $clients = ['VLC'=>0, 'Chrome'=>0, 'Firefox'=>0, 'Safari'=>0, 'Winamp'=>0, 'iTunes'=>0, 'Foobar'=>0, 'mpv'=>0, 'MC1AMP'=>0, 'Other'=>0];
+    foreach ($agents as $a) {
+        $ua = strtolower($a['user_agent'] ?? '');
+        $c = (int)$a['cnt'];
+        if (strpos($ua,'vlc') !== false) $clients['VLC'] += $c;
+        elseif (strpos($ua,'chrome') !== false) $clients['Chrome'] += $c;
+        elseif (strpos($ua,'firefox') !== false) $clients['Firefox'] += $c;
+        elseif (strpos($ua,'safari') !== false && strpos($ua,'chrome') === false) $clients['Safari'] += $c;
+        elseif (strpos($ua,'winamp') !== false || strpos($ua,'shoutcast') !== false) $clients['Winamp'] += $c;
+        elseif (strpos($ua,'itunes') !== false || strpos($ua,'applecore') !== false) $clients['iTunes'] += $c;
+        elseif (strpos($ua,'foobar') !== false) $clients['Foobar'] += $c;
+        elseif (strpos($ua,'mpv') !== false || strpos($ua,'libmpv') !== false) $clients['mpv'] += $c;
+        elseif (strpos($ua,'mc1amp') !== false || strpos($ua,'mcaster1') !== false) $clients['MC1AMP'] += $c;
+        else $clients['Other'] += $c;
+    }
+    $client_data = array_filter($clients, fn($v) => $v > 0);
+} catch (Exception $e) {}
+
+/* Stream events for health timeline */
+$stream_events = [];
+try {
+    $stream_events = $db->query("SELECT event_type, detail, created_at, slot_id FROM stream_events WHERE created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY created_at DESC LIMIT 100")->fetchAll();
+} catch (Exception $e) {}
+
 require_once __DIR__ . '/app/inc/header.php';
 ?>
 
@@ -102,11 +171,52 @@ require_once __DIR__ . '/app/inc/header.php';
     </div>
   </div>
 
+  <!-- Disk + Swap + SSL row -->
+  <div class="gauge-grid" id="sys-extras" style="margin-top:12px">
+    <div class="gauge-card" id="gc-swap">
+      <div class="gauge-label"><i class="fa-solid fa-hard-drive fa-fw"></i> Swap</div>
+      <div class="gauge-val"><span id="g-swap">—</span><span style="font-size:14px;color:var(--muted)">%</span></div>
+      <div class="gauge-bar"><div class="gauge-fill" id="g-swap-bar" style="background:var(--yellow);width:0%"></div></div>
+      <div class="gauge-sub" id="g-swap-detail">— / — MB</div>
+    </div>
+    <div class="gauge-card" id="gc-fpm">
+      <div class="gauge-label"><i class="fa-brands fa-php fa-fw"></i> PHP-FPM</div>
+      <div class="gauge-val" id="g-fpm-status" style="font-size:1.2rem">—</div>
+      <div class="gauge-sub" id="g-fpm-detail">—</div>
+    </div>
+    <div class="gauge-card" id="gc-ssl">
+      <div class="gauge-label"><i class="fa-solid fa-lock fa-fw"></i> SSL Certificate</div>
+      <div class="gauge-val" id="g-ssl-days" style="font-size:1.2rem">—</div>
+      <div class="gauge-sub" id="g-ssl-detail">—</div>
+    </div>
+    <div class="gauge-card" id="gc-procs">
+      <div class="gauge-label"><i class="fa-solid fa-cogs fa-fw"></i> Processes</div>
+      <div class="gauge-val" id="g-enc-state" style="font-size:1rem">—</div>
+      <div class="gauge-sub" id="g-enc-pids">—</div>
+    </div>
+  </div>
+
+  <!-- Disk usage cards -->
+  <div id="sys-disks" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:12px"></div>
+
+  <!-- Codec detection panel -->
+  <div class="card" style="margin-top:12px">
+    <div class="card-hdr"><div class="card-title"><i class="fa-solid fa-puzzle-piece fa-fw"></i> Codec &amp; Library Status</div></div>
+    <div id="sys-codecs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;padding:12px">
+      <div style="color:var(--muted);font-size:.85rem;">Loading...</div>
+    </div>
+  </div>
+
   <!-- CPU + Memory history chart -->
-  <div class="card">
+  <div class="card" style="margin-top:12px">
     <div class="card-hdr">
-      <div class="card-title"><i class="fa-solid fa-chart-area fa-fw"></i> CPU &amp; Memory — Last 60 Minutes</div>
-      <span class="badge badge-gray" id="h-chart-age">loading…</span>
+      <div class="card-title"><i class="fa-solid fa-chart-area fa-fw"></i> CPU &amp; Memory History</div>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <button class="btn btn-xs" onclick="setHealthRange(60)" id="hr-60" style="background:var(--teal);color:#fff">1h</button>
+        <button class="btn btn-xs" onclick="setHealthRange(360)" id="hr-360">6h</button>
+        <button class="btn btn-xs" onclick="setHealthRange(1440)" id="hr-1440">24h</button>
+        <span class="badge badge-gray" id="h-chart-age">loading…</span>
+      </div>
     </div>
     <div class="chart-wrap"><canvas id="health-chart"></canvas></div>
   </div>
@@ -210,6 +320,77 @@ require_once __DIR__ . '/app/inc/header.php';
   <div class="card">
     <div class="card-hdr"><div class="card-title"><i class="fa-solid fa-chart-bar fa-fw"></i> Top Tracks by Play Count</div></div>
     <div class="chart-wrap" style="height:280px"><canvas id="tracks-chart"></canvas></div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Geographic + Client breakdown -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-title"><i class="fa-solid fa-globe fa-fw"></i> Geographic Distribution</div>
+        <button class="btn btn-secondary btn-xs" onclick="exportCSV('geo')"><i class="fa-solid fa-download fa-fw"></i> CSV</button>
+      </div>
+      <?php if (!empty($geo_data)): ?>
+      <div style="max-height:300px;overflow-y:auto">
+        <?php $max_geo = max(array_column($geo_data, 'count') ?: [1]);
+        foreach ($geo_data as $cc => $g): $pct = round($g['count'] / $max_geo * 100); ?>
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:12px">
+          <span style="min-width:24px;text-align:center;font-size:14px"><?= $cc !== '--' ? implode('', array_map(fn($c) => '&#x'.dechex(0x1F1E6 + ord($c) - 65).';', str_split($cc))) : '🌐' ?></span>
+          <span style="min-width:90px"><?= h($g['name']) ?></span>
+          <span style="flex:1"><div style="background:var(--border);border-radius:3px;height:6px;overflow:hidden"><div style="width:<?= $pct ?>%;height:100%;background:var(--teal);border-radius:3px"></div></div></span>
+          <span style="font-weight:700;min-width:30px;text-align:right"><?= $g['count'] ?></span>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php else: ?>
+      <div class="empty" style="padding:24px"><i class="fa-solid fa-globe"></i><p>No geographic data yet</p></div>
+      <?php endif; ?>
+    </div>
+
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-title"><i class="fa-solid fa-headphones fa-fw"></i> Client Breakdown</div>
+        <button class="btn btn-secondary btn-xs" onclick="exportCSV('clients')"><i class="fa-solid fa-download fa-fw"></i> CSV</button>
+      </div>
+      <?php if (!empty($client_data)): ?>
+      <div class="chart-wrap" style="height:250px"><canvas id="client-chart"></canvas></div>
+      <?php else: ?>
+      <div class="empty" style="padding:24px"><i class="fa-solid fa-headphones"></i><p>No client data yet</p></div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- Real-time listener count (live polling from server monitors) -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="fa-solid fa-signal fa-fw"></i> Real-Time Listeners</div>
+      <span class="badge badge-gray" id="rt-age">—</span>
+    </div>
+    <div class="chart-wrap" style="height:160px"><canvas id="rt-listeners-chart"></canvas></div>
+  </div>
+
+  <!-- Stream Health Timeline -->
+  <?php if (!empty($stream_events)): ?>
+  <div class="card">
+    <div class="card-hdr"><div class="card-title"><i class="fa-solid fa-timeline fa-fw"></i> Stream Health (Last 7 Days)</div></div>
+    <div class="tbl-wrap" style="max-height:250px;overflow-y:auto">
+      <table>
+        <thead><tr><th>Time</th><th>Slot</th><th>Event</th><th>Detail</th></tr></thead>
+        <tbody>
+        <?php foreach (array_slice($stream_events, 0, 50) as $ev):
+            $evColor = in_array($ev['event_type'], ['error','disconnect','dead_air']) ? 'red' :
+                      (in_array($ev['event_type'], ['reconnect','warning']) ? 'orange' : 'teal');
+        ?>
+          <tr>
+            <td style="font-size:11px;color:var(--muted);white-space:nowrap"><?= h($ev['created_at']) ?></td>
+            <td><span class="badge badge-gray">S<?= (int)$ev['slot_id'] ?></span></td>
+            <td><span class="badge badge-<?= $evColor ?>"><?= h($ev['event_type']) ?></span></td>
+            <td style="font-size:11px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= h(substr($ev['detail'] ?? '', 0, 120)) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
   </div>
   <?php endif; ?>
 
@@ -345,7 +526,69 @@ require_once __DIR__ . '/app/inc/header.php';
       },plugins:{legend:{display:false}}}
     });
   }
+  // L7: Client breakdown doughnut
+  var clCtx = document.getElementById('client-chart');
+  if (clCtx && window.Chart) {
+    var clLabels = <?= json_encode(array_keys($client_data)) ?>;
+    var clValues = <?= json_encode(array_values($client_data)) ?>;
+    if (clLabels.length > 0) {
+      new Chart(clCtx, {
+        type:'doughnut',
+        data:{labels:clLabels, datasets:[{data:clValues, backgroundColor:C.concat(['#ec4899','#a78bfa','#fb923c']), borderColor:'#1e293b', borderWidth:2}]},
+        options:{...base, cutout:'50%', plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{size:10},padding:8}}}}
+      });
+    }
+  }
 })();
+</script>
+
+<!-- L7: Real-time listener chart + CSV export -->
+<script>
+var rtChart = null;
+var rtLabels = [];
+var rtData = [];
+
+function pollRtListeners() {
+  mc1Api('GET', '/api/v1/server_monitors/stats').then(function(d){
+    if (!d || !d.ok) return;
+    var total = (d.servers||[]).reduce(function(s,srv){return s + (parseInt(srv.listeners)||0);},0);
+    var now = new Date().toLocaleTimeString().substring(0,5);
+    rtLabels.push(now);
+    rtData.push(total);
+    if (rtLabels.length > 60) { rtLabels.shift(); rtData.shift(); }
+    document.getElementById('rt-age').textContent = total + ' listener' + (total!==1?'s':'') + ' now';
+
+    var ctx = document.getElementById('rt-listeners-chart');
+    if (!ctx || !window.Chart) return;
+    if (!rtChart) {
+      rtChart = new Chart(ctx, {
+        type:'line',
+        data:{labels:rtLabels, datasets:[{label:'Listeners',data:rtData,borderColor:'#14b8a6',backgroundColor:'rgba(20,184,166,.1)',fill:true,tension:.3,pointRadius:0,borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,animation:false,
+          plugins:{legend:{display:false}},
+          scales:{x:{ticks:{font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:12},grid:{display:false}},
+                  y:{beginAtZero:true,ticks:{font:{size:10}},grid:{color:'rgba(51,65,85,.3)'}}}}
+      });
+    } else {
+      rtChart.data.labels = rtLabels;
+      rtChart.data.datasets[0].data = rtData;
+      rtChart.update('none');
+    }
+  }).catch(function(){});
+}
+
+function exportCSV(type) {
+  mc1Api('POST', '/app/api/metrics.php', {action:'export_csv', type:type, days:30}).then(function(d){
+    if (d && d.csv) {
+      var blob = new Blob([d.csv], {type:'text/csv'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = 'mc1_' + type + '_export.csv'; a.click();
+      URL.revokeObjectURL(url);
+      mc1Toast('CSV exported', 'ok');
+    }
+  }).catch(function(){ mc1Toast('Export failed','err'); });
+}
 </script>
 
 <!-- ═══════════════════════════════════════════════════════════════════════ -->
@@ -370,6 +613,7 @@ function switchTab(name) {
     activeTab = name;
     if (name === 'events') { evPage = 1; loadEvents(); }
     if (name === 'servers') pollServers();
+    if (name === 'analytics') pollRtListeners();
 }
 
 // ── System Health live poll ────────────────────────────────────────────────
@@ -396,7 +640,8 @@ function pollHealth() {
 }
 
 function pollHealthHistory() {
-    mc1Api('GET', '/api/v1/system/health/history?n=60').then(function(d) {
+    var n = Math.max(12, Math.round(healthRangeMin / 5));
+    mc1Api('GET', '/api/v1/system/health/history?n=' + n).then(function(d) {
         if (!d || !d.ok || !d.data) return;
         var labels = d.data.map(function(r){ return new Date(r.sampled_at*1000).toLocaleTimeString(); });
         var cpus   = d.data.map(function(r){ return r.cpu_pct; });
@@ -523,7 +768,45 @@ function toggleMounts(server_id) {
         ctr.innerHTML = '<div class="card" style="margin-top:0"><div class="card-hdr"><div class="card-title">Mounts — ' + escHtml(srv.name) + '</div><span class="badge badge-gray">fetch: ' + srv.fetch_ms + 'ms | ' + escHtml(srv.status_str||'') + '</span></div>'
             + (mts ? '<div class="tbl-wrap"><table><thead><tr><th>Mount</th><th>Codec</th><th>Listeners</th><th>Bitrate</th><th>Now Playing</th><th>Status</th></tr></thead><tbody>' + mts + '</tbody></table></div>'
                    : '<div class="empty" style="padding:16px"><p>No mounts found</p></div>')
+            + '<div style="margin-top:12px"><canvas id="srv-history-chart" height="120"></canvas></div>'
             + '</div>';
+        /* Load history sparkline */
+        loadServerHistory(server_id);
+    }).catch(function(){});
+}
+
+/* ── Server listener history sparkline chart ── */
+var srvHistoryChart = null;
+function loadServerHistory(server_id) {
+    mc1Api('POST', '/app/api/serverstats.php', {action:'get_history', id:server_id, hours:24}).then(function(d){
+        if (!d || !d.ok || !d.data || !d.data.length) return;
+        var labels = d.data.map(function(p){ return p.sampled_at ? p.sampled_at.substring(11,16) : ''; });
+        var listeners = d.data.map(function(p){ return parseInt(p.listeners)||0; });
+        var kbps = d.data.map(function(p){ return parseInt(p.out_kbps)||0; });
+
+        var ctx = document.getElementById('srv-history-chart');
+        if (!ctx) return;
+        if (srvHistoryChart) srvHistoryChart.destroy();
+        srvHistoryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label:'Listeners', data:listeners, borderColor:'var(--teal)', backgroundColor:'rgba(20,184,166,.1)', fill:true, tension:0.3, pointRadius:0, borderWidth:2 },
+                    { label:'Out kbps', data:kbps, borderColor:'var(--cyan)', backgroundColor:'rgba(8,145,178,.05)', fill:true, tension:0.3, pointRadius:0, borderWidth:1.5, yAxisID:'y1' }
+                ]
+            },
+            options: {
+                responsive: true,
+                interaction: { intersect:false, mode:'index' },
+                plugins: { legend:{ position:'top', labels:{ boxWidth:10, padding:6, font:{size:10} } } },
+                scales: {
+                    x: { display:true, grid:{display:false}, ticks:{font:{size:9}, maxRotation:0, autoSkip:true, maxTicksLimit:12} },
+                    y: { display:true, beginAtZero:true, grid:{color:'rgba(255,255,255,.04)'}, ticks:{font:{size:10}} },
+                    y1:{ display:true, position:'right', beginAtZero:true, grid:{display:false}, ticks:{font:{size:9}} }
+                }
+            }
+        });
     }).catch(function(){});
 }
 
@@ -583,6 +866,102 @@ function fmtBytes(b) {
     if (b < 1073741824) return (b/1048576).toFixed(2) + ' MB';
     return (b/1073741824).toFixed(2) + ' GB';
 }
+// ── System Health extras: disk, swap, FPM, SSL, codecs ───────────────────
+var healthRangeMin = 60;
+
+function setHealthRange(min) {
+  healthRangeMin = min;
+  document.querySelectorAll('[id^="hr-"]').forEach(function(b){ b.style.background=''; b.style.color=''; });
+  var btn = document.getElementById('hr-'+min);
+  if (btn) { btn.style.background='var(--teal)'; btn.style.color='#fff'; }
+  pollHealthHistory();
+}
+
+function loadSwap() {
+  mc1Api('POST', '/app/api/health.php', {action:'swap_info'}).then(function(d) {
+    if (!d || !d.ok) return;
+    var s = d.swap;
+    setText('g-swap', s.pct); setBar('g-swap-bar', s.pct);
+    setText('g-swap-detail', s.used_mb + ' / ' + s.total_mb + ' MB');
+  }).catch(function(){});
+}
+
+function loadFpm() {
+  mc1Api('POST', '/app/api/health.php', {action:'fpm_status'}).then(function(d) {
+    if (!d || !d.ok) return;
+    var f = d.fpm;
+    var el = document.getElementById('g-fpm-status');
+    if (el) { el.textContent = f.active ? 'Active' : 'Down'; el.style.color = f.active ? 'var(--green)' : 'var(--red)'; }
+    setText('g-fpm-detail', 'PHP ' + f.php_version + ' · ' + f.processes + ' workers');
+  }).catch(function(){});
+}
+
+function loadSsl() {
+  mc1Api('POST', '/app/api/health.php', {action:'ssl_info'}).then(function(d) {
+    if (!d || !d.ok) return;
+    var s = d.ssl;
+    var el = document.getElementById('g-ssl-days');
+    if (el) {
+      if (s.has_cert) {
+        el.textContent = s.days_left + ' days';
+        el.style.color = s.days_left > 30 ? 'var(--green)' : s.days_left > 7 ? 'var(--yellow)' : 'var(--red)';
+      } else {
+        el.textContent = 'No cert'; el.style.color = 'var(--red)';
+      }
+    }
+    setText('g-ssl-detail', s.has_cert ? s.subject + ' · ' + s.issuer : 'Not configured');
+  }).catch(function(){});
+}
+
+function loadDisks() {
+  mc1Api('POST', '/app/api/health.php', {action:'disk_usage'}).then(function(d) {
+    if (!d || !d.ok) return;
+    var el = document.getElementById('sys-disks');
+    el.innerHTML = '';
+    (d.disks || []).forEach(function(dk) {
+      var color = dk.use_pct > 90 ? 'var(--red)' : dk.use_pct > 75 ? 'var(--orange)' : 'var(--teal)';
+      el.innerHTML +=
+        '<div class="gauge-card">' +
+        '<div class="gauge-label"><i class="fa-solid fa-hard-drive fa-fw"></i> ' + escHtml(dk.mount) + '</div>' +
+        '<div class="gauge-val" style="color:' + color + '">' + dk.use_pct + '<span style="font-size:14px;color:var(--muted)">%</span></div>' +
+        '<div class="gauge-bar"><div class="gauge-fill" style="background:' + color + ';width:' + dk.use_pct + '%"></div></div>' +
+        '<div class="gauge-sub">' + Math.round(dk.used_mb/1024) + ' / ' + Math.round(dk.size_mb/1024) + ' GB · ' + dk.fstype + '</div>' +
+        '</div>';
+    });
+  }).catch(function(){});
+}
+
+function loadCodecs() {
+  mc1Api('POST', '/app/api/health.php', {action:'codec_check'}).then(function(d) {
+    if (!d || !d.ok) return;
+    var el = document.getElementById('sys-codecs');
+    el.innerHTML = '';
+    (d.codecs || []).forEach(function(c) {
+      var color = c.installed ? 'var(--green)' : 'var(--red)';
+      var icon = c.installed ? 'fa-circle-check' : 'fa-circle-xmark';
+      el.innerHTML +=
+        '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-xs);">' +
+        '<i class="fa-solid ' + icon + '" style="color:' + color + ';font-size:1rem"></i>' +
+        '<div><div style="font-size:.8rem;font-weight:600;color:var(--text)">' + c.name + '</div>' +
+        '<div style="font-size:.65rem;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (c.version || 'not found') + '</div></div>' +
+        '</div>';
+    });
+  }).catch(function(){});
+}
+
+function loadProcessInfo() {
+  mc1Api('GET', '/api/v1/encoder/status').catch(function(){ return null; }).then(function(d) {
+    var el = document.getElementById('g-enc-state');
+    var el2 = document.getElementById('g-enc-pids');
+    if (d && d.ok) {
+      if (el) { el.textContent = d.slots_live + '/' + d.slot_count + ' live'; el.style.color = 'var(--green)'; }
+      if (el2) el2.textContent = 'Encoder PID: ' + d.pid;
+    } else {
+      if (el) { el.textContent = 'Offline'; el.style.color = 'var(--red)'; }
+    }
+  });
+}
+
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
@@ -592,9 +971,17 @@ function escHtml(s) {
 document.addEventListener('DOMContentLoaded', function() {
     pollHealth();
     pollHealthHistory();
+    loadSwap();
+    loadFpm();
+    loadSsl();
+    loadDisks();
+    loadCodecs();
+    loadProcessInfo();
     setInterval(pollHealth, 5000);
     setInterval(pollHealthHistory, 60000);
+    setInterval(function(){ if (activeTab === 'health') { loadSwap(); loadProcessInfo(); } }, 10000);
     setInterval(function(){ if (activeTab === 'servers') pollServers(); }, 30000);
+    setInterval(function(){ if (activeTab === 'analytics') pollRtListeners(); }, 30000);
 });
 </script>
 

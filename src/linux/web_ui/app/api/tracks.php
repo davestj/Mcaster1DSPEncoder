@@ -23,6 +23,7 @@
  *  add_library_path    — Add an additional server folder path to the media library DB
  *  list_library_paths  — Return all DB-stored media library scan paths
  *  remove_library_path — Remove a stored scan path by id
+ *  browse_folders      — Filesystem folder browser (unrestricted navigation for scan tab)
  *
  * Standards:
  *  - We never call exit() or die() — uopz extension is active on this server
@@ -119,6 +120,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             COMMENT='We link tracks to categories (many-to-many)'
         ");
+        /*
+         * We add weight and cat_type columns to the categories table for
+         * broadcaster-grade category management (playlist generation weighting
+         * and standard broadcast automation category types).
+         */
+        try {
+            $pdo->exec("ALTER TABLE categories ADD COLUMN weight FLOAT NOT NULL DEFAULT 1.0 COMMENT 'Playlist generation weight (0.1 - 10.0)'");
+        } catch (Exception $ignore) { /* Column already exists */ }
+        try {
+            $pdo->exec("ALTER TABLE categories ADD COLUMN cat_type VARCHAR(50) NOT NULL DEFAULT 'music' COMMENT 'Broadcast category type: music, station_ids, stingers, ads, bumpers, liners, jingles, promos, sweepers, sfx, talk, custom'");
+        } catch (Exception $ignore) { /* Column already exists */ }
     } catch (Exception $e) {
         /* We log but do not abort — tables may already exist or error is transient */
         mc1_log(2, 'tracks.php table bootstrap failed', json_encode(['err' => $e->getMessage()]));
@@ -1201,6 +1213,7 @@ if ($action === 'list_categories') {
         $pdo  = mc1_db('mcaster1_media');
         $stmt = $pdo->query(
             'SELECT c.id, c.name, c.color_hex, c.icon, c.type, c.sort_order, c.created_at,
+                    c.weight, c.cat_type,
                     COUNT(tc.track_id) AS track_count
              FROM categories c
              LEFT JOIN track_categories tc ON tc.category_id = c.id
@@ -1212,6 +1225,8 @@ if ($action === 'list_categories') {
             $r['id']          = (int)$r['id'];
             $r['sort_order']  = (int)$r['sort_order'];
             $r['track_count'] = (int)$r['track_count'];
+            $r['weight']      = (float)($r['weight'] ?? 1.0);
+            $r['cat_type']    = (string)($r['cat_type'] ?? 'music');
         }
         unset($r);
         mc1_api_respond(['ok' => true, 'categories' => $rows]);
@@ -1230,6 +1245,17 @@ if ($action === 'create_category') {
     $color_hex = trim((string)($body['color_hex'] ?? '#14b8a6'));
     $icon      = trim((string)($body['icon']      ?? 'fa-tag'));
     $type      = in_array($body['type'] ?? '', ['genre','custom']) ? $body['type'] : 'custom';
+    $weight    = isset($body['weight']) ? (float)$body['weight'] : 1.0;
+    $cat_type  = trim((string)($body['cat_type'] ?? 'music'));
+
+    /* We validate weight range for clockwheel generation weighting */
+    $weight = max(0.1, min(10.0, $weight));
+
+    /* We validate cat_type against the standard broadcast automation types */
+    $valid_cat_types = ['music','station_ids','stingers','ads','bumpers','liners','jingles','promos','sweepers','sfx','talk','custom'];
+    if (!in_array($cat_type, $valid_cat_types)) {
+        $cat_type = 'music';
+    }
 
     if ($name === '') {
         mc1_api_respond(['error' => 'name required'], 400);
@@ -1243,12 +1269,12 @@ if ($action === 'create_category') {
     try {
         $pdo  = mc1_db('mcaster1_media');
         $stmt = $pdo->prepare(
-            'INSERT INTO categories (name, color_hex, icon, type) VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex), icon = VALUES(icon)'
+            'INSERT INTO categories (name, color_hex, icon, type, weight, cat_type) VALUES (?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE color_hex = VALUES(color_hex), icon = VALUES(icon), weight = VALUES(weight), cat_type = VALUES(cat_type)'
         );
-        $stmt->execute([$name, $color_hex, $icon, $type]);
+        $stmt->execute([$name, $color_hex, $icon, $type, $weight, $cat_type]);
         $new_id = (int)$pdo->lastInsertId();
-        mc1_api_respond(['ok' => true, 'id' => $new_id, 'name' => $name]);
+        mc1_api_respond(['ok' => true, 'id' => $new_id, 'name' => $name, 'weight' => $weight, 'cat_type' => $cat_type]);
         return;
     } catch (Exception $e) {
         mc1_api_respond(['error' => 'Create failed: ' . $e->getMessage()], 500);
@@ -1275,6 +1301,23 @@ if ($action === 'update_category') {
     if ($name !== '')      { $sets[] = 'name = ?';      $params[] = $name;      }
     if ($color_hex !== '') { $sets[] = 'color_hex = ?'; $params[] = $color_hex; }
     if ($icon !== '')      { $sets[] = 'icon = ?';      $params[] = $icon;      }
+
+    /* We support updating weight for clockwheel playlist generation */
+    if (isset($body['weight'])) {
+        $weight = max(0.1, min(10.0, (float)$body['weight']));
+        $sets[] = 'weight = ?';
+        $params[] = $weight;
+    }
+
+    /* We support updating cat_type for broadcast automation type classification */
+    if (isset($body['cat_type']) && trim((string)$body['cat_type']) !== '') {
+        $cat_type = trim((string)$body['cat_type']);
+        $valid_cat_types = ['music','station_ids','stingers','ads','bumpers','liners','jingles','promos','sweepers','sfx','talk','custom'];
+        if (in_array($cat_type, $valid_cat_types)) {
+            $sets[] = 'cat_type = ?';
+            $params[] = $cat_type;
+        }
+    }
 
     if (!$sets) {
         mc1_api_respond(['error' => 'Nothing to update'], 400);
@@ -1721,6 +1764,129 @@ if ($action === 'remove_missing') {
     } catch (\Exception $e) {
         mc1_api_respond(['error' => 'Remove missing failed: ' . $e->getMessage()], 500);
     }
+    return;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * action: browse_folders — Filesystem folder browser for the scan tab
+ *
+ * We list subdirectories at a given path for navigation.  Unlike the
+ * `folders` action (which is restricted to allowed media library roots),
+ * this endpoint lets the operator explore the filesystem starting from
+ * /home/mediacast1 so they can pick a new directory to scan.
+ *
+ * We filter out hidden directories (starting with .), and system
+ * pseudo-filesystems (/proc, /sys, /dev, /run, /snap).
+ * We use realpath() to prevent traversal attacks and verify the
+ * resolved path starts with an allowed base.
+ * ══════════════════════════════════════════════════════════════════════════ */
+if ($action === 'browse_folders') {
+    $requested = trim((string)($body['path'] ?? '/home/mediacast1'));
+    if ($requested === '') {
+        $requested = '/home/mediacast1';
+    }
+
+    /* We resolve symlinks and normalise the path */
+    $real = realpath($requested);
+    if ($real === false || !is_dir($real)) {
+        mc1_api_respond(['error' => 'Path not found or not a directory'], 400);
+        return;
+    }
+
+    /* We block system pseudo-filesystems — operators should never browse these */
+    $blocked_prefixes = ['/proc', '/sys', '/dev', '/run/systemd', '/snap'];
+    foreach ($blocked_prefixes as $bp) {
+        if ($real === $bp || strncmp($real, $bp . '/', strlen($bp) + 1) === 0) {
+            mc1_api_respond(['error' => 'Access to system directories is not allowed'], 403);
+            return;
+        }
+    }
+
+    /* We compute the parent directory for ".." navigation */
+    $parent = null;
+    if ($real !== '/') {
+        $parent = dirname($real);
+    }
+
+    /* We build breadcrumb parts from the resolved path */
+    $breadcrumbs = [];
+    $parts = $real === '/' ? [''] : explode('/', $real);
+    $cumulative = '';
+    foreach ($parts as $i => $p) {
+        if ($i === 0) {
+            $cumulative = '/';
+            $breadcrumbs[] = ['name' => '/', 'path' => '/'];
+        } else {
+            $cumulative = rtrim($cumulative, '/') . '/' . $p;
+            $breadcrumbs[] = ['name' => $p, 'path' => $cumulative];
+        }
+    }
+
+    /* We list immediate subdirectories, filtering hidden and unreadable */
+    $entries = [];
+    try {
+        $iter = new \DirectoryIterator($real);
+        foreach ($iter as $item) {
+            if ($item->isDot()) {
+                continue;
+            }
+            if (!$item->isDir()) {
+                continue;
+            }
+            $fname = $item->getFilename();
+            /* We skip hidden directories */
+            if ($fname[0] === '.') {
+                continue;
+            }
+            $sub_real = $item->getRealPath();
+            if ($sub_real === false) {
+                continue;
+            }
+
+            /* We skip system pseudo-filesystem mounts */
+            $skip = false;
+            foreach ($blocked_prefixes as $bp) {
+                if ($sub_real === $bp || strncmp($sub_real, $bp . '/', strlen($bp) + 1) === 0) {
+                    $skip = true;
+                    break;
+                }
+            }
+            if ($skip) {
+                continue;
+            }
+
+            /* We check if this directory has subdirectories (for expand arrow) */
+            $has_children = false;
+            try {
+                if (is_readable($sub_real)) {
+                    foreach (new \DirectoryIterator($sub_real) as $si) {
+                        if (!$si->isDot() && $si->isDir() && $si->getFilename()[0] !== '.') {
+                            $has_children = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (\Exception $ignored) {}
+
+            $entries[] = [
+                'name'         => $fname,
+                'path'         => $sub_real,
+                'has_children' => $has_children,
+            ];
+        }
+    } catch (\Exception $e) {
+        mc1_api_respond(['error' => 'Cannot read directory: ' . $e->getMessage()], 403);
+        return;
+    }
+
+    usort($entries, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+    mc1_api_respond([
+        'ok'          => true,
+        'path'        => $real,
+        'parent'      => $parent,
+        'breadcrumbs' => $breadcrumbs,
+        'folders'     => $entries,
+    ]);
     return;
 }
 

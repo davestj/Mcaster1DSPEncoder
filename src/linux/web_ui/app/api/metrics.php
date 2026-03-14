@@ -173,6 +173,93 @@ if (!$authed) {
     $data  = Mc1MetricsCalculator::getTopTracks($limit);
     echo json_encode(['ok' => true, 'data' => $data]);
 
+} elseif ($action === 'export_csv') {
+
+    $type = trim($req['type'] ?? '');
+    $days = min(365, max(1, (int)($req['days'] ?? 30)));
+
+    try {
+        $csv = '';
+        if ($type === 'sessions') {
+            $db  = mc1_db('mcaster1_metrics');
+            $st  = $db->prepare(
+                "SELECT client_ip, user_agent, stream_mount,
+                        connected_at, disconnected_at, duration_sec, bytes_sent
+                 FROM listener_sessions
+                 WHERE connected_at > DATE_SUB(NOW(), INTERVAL ? DAY)
+                 ORDER BY connected_at DESC LIMIT 10000"
+            );
+            $st->execute([$days]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                $csv = implode(',', array_keys($rows[0])) . "\n";
+                foreach ($rows as $r) {
+                    $csv .= implode(',', array_map(function($v){
+                        return '"' . str_replace('"', '""', (string)$v) . '"';
+                    }, array_values($r))) . "\n";
+                }
+            }
+        } elseif ($type === 'daily') {
+            $db  = mc1_db('mcaster1_metrics');
+            $st  = $db->prepare(
+                "SELECT stat_date, mount, peak_listeners, total_sessions, total_hours
+                 FROM daily_stats
+                 WHERE stat_date >= CURDATE() - INTERVAL ? DAY
+                 ORDER BY stat_date DESC"
+            );
+            $st->execute([$days]);
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                $csv = implode(',', array_keys($rows[0])) . "\n";
+                foreach ($rows as $r) {
+                    $csv .= implode(',', array_map(function($v){
+                        return '"' . str_replace('"', '""', (string)$v) . '"';
+                    }, array_values($r))) . "\n";
+                }
+            }
+        } elseif ($type === 'top_tracks') {
+            $db  = mc1_db('mcaster1_media');
+            $st  = $db->prepare(
+                "SELECT title, artist, album, play_count, last_played_at
+                 FROM tracks WHERE play_count > 0
+                 ORDER BY play_count DESC LIMIT 500"
+            );
+            $st->execute();
+            $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                $csv = implode(',', array_keys($rows[0])) . "\n";
+                foreach ($rows as $r) {
+                    $csv .= implode(',', array_map(function($v){
+                        return '"' . str_replace('"', '""', (string)$v) . '"';
+                    }, array_values($r))) . "\n";
+                }
+            }
+        } elseif ($type === 'geo') {
+            $db  = mc1_db('mcaster1_metrics');
+            $rows = $db->query(
+                "SELECT client_ip, country_code, country_name, region, city,
+                        COALESCE(lat,0) as lat, COALESCE(lon,0) as lon, created_at
+                 FROM geographic_stats ORDER BY created_at DESC LIMIT 5000"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            if ($rows) {
+                $csv = implode(',', array_keys($rows[0])) . "\n";
+                foreach ($rows as $r) {
+                    $csv .= implode(',', array_map(function($v){
+                        return '"' . str_replace('"', '""', (string)$v) . '"';
+                    }, array_values($r))) . "\n";
+                }
+            }
+        } else {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Unknown export type: ' . $type]);
+            return;
+        }
+        echo json_encode(['ok' => true, 'csv' => $csv, 'rows' => substr_count($csv, "\n") - 1]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+
 } else {
 
     http_response_code(400);

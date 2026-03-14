@@ -244,6 +244,40 @@ require_once __DIR__ . '/app/inc/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     SLOT → SERVER MAPPING
+     ══════════════════════════════════════════════════════════════════════════ -->
+<?php if (!empty($enc_configs) && !empty($streaming_servers)): ?>
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title"><i class="fa-solid fa-diagram-project fa-fw"></i> Encoder → Server Mapping</div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;padding:4px 0">
+    <?php foreach ($enc_configs as $c):
+        $match_server = null;
+        foreach ($streaming_servers as $srv) {
+            if ($srv['host'] === $c['server_host'] && (int)$srv['port'] === (int)$c['server_port']) {
+                $match_server = $srv;
+                break;
+            }
+        }
+        $status_cls = $match_server ? ($match_server['last_status'] === 'online' ? 'online' : ($match_server['last_status'] === 'offline' ? 'offline' : 'unknown')) : 'unknown';
+    ?>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px">
+      <span style="font-weight:700;color:var(--teal);min-width:30px">S<?= (int)$c['slot_id'] ?></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="<?= h($c['name']) ?>"><?= h($c['name']) ?></span>
+      <svg width="16" height="8" style="flex-shrink:0;color:var(--muted)"><line x1="0" y1="4" x2="16" y2="4" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3,2"/></svg>
+      <span class="srv-dot <?= $status_cls ?>"></span>
+      <span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px" title="<?= h($c['server_host'].':'.$c['server_port'].$c['server_mount']) ?>">
+        <?= h($c['server_host'] ? ($c['server_mount'] ?: '/') : '—') ?>
+      </span>
+      <a href="/edit_encoders.php?id=<?= (int)$c['id'] ?>" class="btn btn-secondary btn-xs" title="Edit slot config" style="flex-shrink:0"><i class="fa-solid fa-pen" style="font-size:9px"></i></a>
+    </div>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      ENCODER SLOT CONFIGURATIONS
      ══════════════════════════════════════════════════════════════════════════ -->
 <div class="card" style="margin-top:4px">

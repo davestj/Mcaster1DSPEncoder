@@ -202,5 +202,41 @@ if ($action === 'get_summary') {
     return;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   get_history — Server stat history time-series for Chart.js sparklines
+   ═══════════════════════════════════════════════════════════════════════════ */
+if ($action === 'get_history') {
+    $id    = (int)($body['id'] ?? $body['server_id'] ?? 0);
+    $hours = min(168, max(1, (int)($body['hours'] ?? 24)));
+
+    if ($id <= 0) {
+        mc1_api_respond(['error' => 'Server id required'], 400);
+        return;
+    }
+
+    try {
+        $db   = mc1_db('mcaster1_metrics');
+        $rows = $db->prepare(
+            'SELECT sampled_at, listeners, out_kbps, sources_online, status
+             FROM server_stat_history
+             WHERE server_id = ? AND sampled_at > DATE_SUB(NOW(), INTERVAL ? HOUR)
+             ORDER BY sampled_at ASC'
+        );
+        $rows->execute([$id, $hours]);
+        $history = $rows->fetchAll(PDO::FETCH_ASSOC);
+
+        mc1_api_respond([
+            'ok'        => true,
+            'server_id' => $id,
+            'hours'     => $hours,
+            'points'    => count($history),
+            'data'      => $history,
+        ]);
+    } catch (Exception $e) {
+        mc1_api_respond(['ok' => false, 'error' => 'History query failed: ' . $e->getMessage()], 500);
+    }
+    return;
+}
+
 /* We return 400 for unknown actions */
 mc1_api_respond(['error' => 'Unknown action: ' . $action], 400);
