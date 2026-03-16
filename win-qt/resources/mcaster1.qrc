@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="icons/app-icon.svg">icons/app-icon.svg</file>
+        <file alias="icons/app-icon.ico">Mcaster1DSPEncoder_Qt.ico</file>
         <file alias="icons/live-on.svg">icons/live-on.svg</file>
         <file alias="icons/live-off.svg">icons/live-off.svg</file>
         <file alias="icons/connect.svg">icons/connect.svg</file>

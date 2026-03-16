@@ -51,16 +51,20 @@ AboutDialog::AboutDialog(QWidget *parent)
     links->setOpenExternalLinks(true);
     lay->addWidget(links);
 
-    auto *platform = new QLabel(QStringLiteral(
-        "<p><small>"
 #ifdef _WIN32
-        "Windows Qt 6 Build — x64<br>"
+    static const QString platform_html =
+        "<p><small>"
+        "Windows Qt 6 Build \u2014 x64<br>"
         "Audio: PortAudio + WASAPI<br>"
+        "Codecs: LAME, Vorbis, Opus, FLAC, fdk-aac</small></p>";
 #else
-        "macOS Qt 6 Build — ARM64 (Apple Silicon)<br>"
+    static const QString platform_html =
+        "<p><small>"
+        "macOS Qt 6 Build \u2014 ARM64 (Apple Silicon)<br>"
         "Audio: PortAudio + ScreenCaptureKit<br>"
+        "Codecs: LAME, Vorbis, Opus, FLAC, fdk-aac</small></p>";
 #endif
-        "Codecs: LAME, Vorbis, Opus, FLAC, fdk-aac</small></p>"));
+    auto *platform = new QLabel(platform_html);
     platform->setAlignment(Qt::AlignCenter);
     lay->addWidget(platform);
 

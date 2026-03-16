@@ -2,7 +2,7 @@
  * Mcaster1DSPEncoder — Windows Qt 6 Build
  * platform_windows.h — Windows platform integration
  *
- * Windows API: Shell_NotifyIconW (system tray), ToastNotification (WinRT)
+ * Taskbar badge (ITaskbarList3), toast notifications (Shell_NotifyIconW)
  *
  * Copyright (c) 2026 David St. John <davestj@gmail.com>
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -15,7 +15,7 @@ namespace mc1 {
 namespace platform {
 
 /* Initialize Windows-specific behavior (call from main before QApplication) */
-void macos_init();
+void windows_init();
 
 /* Set taskbar overlay badge text (e.g. "3" for 3 live slots) */
 void set_dock_badge(const char *text);

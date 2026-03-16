@@ -91,8 +91,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;_USE_MATH_DEFINES;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;HAVE_PORTAUDIO;HAVE_VPX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtMultimedia;$(QTDIR)\include\QtNetwork;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
@@ -102,12 +102,13 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <AdditionalOptions>/Zc:__cplusplus /utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Qt6Cored.lib;Qt6Widgetsd.lib;Qt6Guid.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Qt6Cored.lib;Qt6Widgetsd.lib;Qt6Guid.lib;Qt6Multimediad.lib;Qt6Networkd.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;vpx.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;d3d11.lib;dxgi.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;mf.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>
@@ -119,8 +120,8 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;WIN32_LEAN_AND_MEAN;NOMINMAX;_WIN32_WINNT=0x0A00;_USE_MATH_DEFINES;HAVE_LAME;HAVE_VORBIS;HAVE_FLAC;HAVE_FDKAAC;HAVE_OPUS;HAVE_PORTAUDIO;HAVE_VPX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(QTDIR)\include;$(QTDIR)\include\QtCore;$(QTDIR)\include\QtWidgets;$(QTDIR)\include\QtGui;$(QTDIR)\include\QtMultimedia;$(QTDIR)\include\QtNetwork;C:\vcpkg\installed\x64-windows\include;.\;.\dsp;.\video;.\podcast;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
@@ -132,6 +133,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <ExceptionHandling>Sync</ExceptionHandling>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
+      <AdditionalOptions>/Zc:__cplusplus /utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -139,7 +141,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>$(QTDIR)\lib;C:\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>Qt6Core.lib;Qt6Widgets.lib;Qt6Gui.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>Qt6Core.lib;Qt6Widgets.lib;Qt6Gui.lib;Qt6Multimedia.lib;Qt6Network.lib;yaml.lib;portaudio.lib;libmp3lame.lib;vorbis.lib;vorbisenc.lib;ogg.lib;opus.lib;opusenc.lib;FLAC.lib;fdk-aac.lib;vpx.lib;ws2_32.lib;winmm.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;user32.lib;gdi32.lib;d3d11.lib;dxgi.lib;mfplat.lib;mfreadwrite.lib;mfuuid.lib;mf.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>mainCRTStartup</EntryPointSymbol>
     </Link>
   </ItemDefinitionGroup>
@@ -175,8 +177,10 @@
     <ClCompile Include="eq_curve_widget.cpp" />
     <ClCompile Include="eq_graphic_dialog.cpp" />
     <ClCompile Include="file_source.cpp" />
+    <ClCompile Include="event_log.cpp" />
     <ClCompile Include="global_config_manager.cpp" />
     <ClCompile Include="icy22_settings_tab.cpp" />
+    <ClCompile Include="icy_stream_reader.cpp" />
     <ClCompile Include="input_level_monitor.cpp" />
     <ClCompile Include="log_viewer_dialog.cpp" />
     <ClCompile Include="main.cpp" />
@@ -186,6 +190,7 @@
     <ClCompile Include="podcast_settings_tab.cpp" />
     <ClCompile Include="preferences_dialog.cpp" />
     <ClCompile Include="preset_browser_dialog.cpp" />
+    <ClCompile Include="preview_audio_studio.cpp" />
     <ClCompile Include="profile_manager.cpp" />
     <ClCompile Include="sonic_enhancer_dialog.cpp" />
     <ClCompile Include="stream_client.cpp" />
@@ -216,11 +221,13 @@
     <ClCompile Include="video\hls_segmenter.cpp" />
     <ClCompile Include="video\image_source.cpp" />
     <ClCompile Include="video\live_video_studio.cpp" />
+    <ClCompile Include="video\manage_devices_dialog.cpp" />
     <ClCompile Include="video\overlay_renderer.cpp" />
     <ClCompile Include="video\rtmp_client.cpp" />
     <ClCompile Include="video\stream_target_editor.cpp" />
     <ClCompile Include="video\transition_engine.cpp" />
     <ClCompile Include="video\video_effects.cpp" />
+    <ClCompile Include="video\video_stream_monitor.cpp" />
     <ClCompile Include="video\video_stream_pipeline.cpp" />
     <ClCompile Include="video\vpx_encoder.cpp" />
     <ClCompile Include="video\webm_muxer.cpp" />
@@ -230,6 +237,7 @@
     <ClCompile Include="video\video_encoder_windows.cpp" />
     <ClCompile Include="video\screen_capture_windows.cpp" />
     <ClCompile Include="video\video_file_source_windows.cpp" />
+    <ClCompile Include="virtual_camera\vcam_frame_writer.cpp" />
 
     <!-- Podcast source files -->
     <ClCompile Include="podcast\http_client.cpp" />
@@ -268,10 +276,12 @@
     <ClInclude Include="encoder_slot.h" />
     <ClInclude Include="encoder_type_chooser.h" />
     <ClInclude Include="eq_curve_widget.h" />
+    <ClInclude Include="event_log.h" />
     <ClInclude Include="eq_graphic_dialog.h" />
     <ClInclude Include="file_source.h" />
     <ClInclude Include="global_config_manager.h" />
     <ClInclude Include="icy22_settings_tab.h" />
+    <ClInclude Include="icy_stream_reader.h" />
     <ClInclude Include="input_level_monitor.h" />
     <ClInclude Include="log_viewer_dialog.h" />
     <ClInclude Include="main_window.h" />
@@ -280,7 +290,9 @@
     <ClInclude Include="podcast_settings_tab.h" />
     <ClInclude Include="preferences_dialog.h" />
     <ClInclude Include="preset_browser_dialog.h" />
+    <ClInclude Include="preview_audio_studio.h" />
     <ClInclude Include="profile_manager.h" />
+    <ClInclude Include="ptt_mic_store.h" />
     <ClInclude Include="sonic_enhancer_dialog.h" />
     <ClInclude Include="stream_client.h" />
     <ClInclude Include="video_effects_panel.h" />
@@ -310,6 +322,7 @@
     <ClInclude Include="video\hls_segmenter.h" />
     <ClInclude Include="video\image_source.h" />
     <ClInclude Include="video\live_video_studio.h" />
+    <ClInclude Include="video\manage_devices_dialog.h" />
     <ClInclude Include="video\overlay_renderer.h" />
     <ClInclude Include="video\rtmp_client.h" />
     <ClInclude Include="video\screen_capture_source.h" />
@@ -319,6 +332,7 @@
     <ClInclude Include="video\video_encoder.h" />
     <ClInclude Include="video\video_file_source.h" />
     <ClInclude Include="video\video_source.h" />
+    <ClInclude Include="video\video_stream_monitor.h" />
     <ClInclude Include="video\video_stream_pipeline.h" />
     <ClInclude Include="video\vpx_encoder.h" />
     <ClInclude Include="video\webm_muxer.h" />
@@ -328,6 +342,10 @@
     <ClInclude Include="video\video_encoder_windows.h" />
     <ClInclude Include="video\screen_capture_windows.h" />
     <ClInclude Include="video\video_file_source_windows.h" />
+
+    <!-- Virtual Camera headers -->
+    <ClInclude Include="virtual_camera\vcam_shared_memory.h" />
+    <ClInclude Include="virtual_camera\vcam_frame_writer.h" />
 
     <!-- Podcast header files -->
     <ClInclude Include="podcast\http_client.h" />
@@ -432,6 +450,12 @@
       <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
       <Message>MOC icy22_settings_tab.h</Message>
     </CustomBuild>
+    <CustomBuild Include="icy_stream_reader.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC icy_stream_reader.h</Message>
+    </CustomBuild>
     <CustomBuild Include="log_viewer_dialog.h">
       <FileType>Document</FileType>
       <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
@@ -467,6 +491,12 @@
       <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
       <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
       <Message>MOC preset_browser_dialog.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="preview_audio_studio.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC preview_audio_studio.h</Message>
     </CustomBuild>
     <CustomBuild Include="sonic_enhancer_dialog.h">
       <FileType>Document</FileType>
@@ -518,11 +548,23 @@
       <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
       <Message>MOC live_video_studio.h</Message>
     </CustomBuild>
+    <CustomBuild Include="video\manage_devices_dialog.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC manage_devices_dialog.h</Message>
+    </CustomBuild>
     <CustomBuild Include="video\stream_target_editor.h">
       <FileType>Document</FileType>
       <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
       <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
       <Message>MOC stream_target_editor.h</Message>
+    </CustomBuild>
+    <CustomBuild Include="video\video_stream_monitor.h">
+      <FileType>Document</FileType>
+      <Command>$(QTDIR)\bin\moc.exe "%(FullPath)" -o "$(IntDir)\moc_%(Filename).cpp"</Command>
+      <Outputs>$(IntDir)\moc_%(Filename).cpp</Outputs>
+      <Message>MOC video_stream_monitor.h</Message>
     </CustomBuild>
   </ItemGroup>
 
@@ -560,12 +602,14 @@
     <ClCompile Include="$(IntDir)\moc_eq_curve_widget.cpp" />
     <ClCompile Include="$(IntDir)\moc_eq_graphic_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_icy22_settings_tab.cpp" />
+    <ClCompile Include="$(IntDir)\moc_icy_stream_reader.cpp" />
     <ClCompile Include="$(IntDir)\moc_log_viewer_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_main_window.cpp" />
     <ClCompile Include="$(IntDir)\moc_overlay_settings_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_podcast_settings_tab.cpp" />
     <ClCompile Include="$(IntDir)\moc_preferences_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_preset_browser_dialog.cpp" />
+    <ClCompile Include="$(IntDir)\moc_preview_audio_studio.cpp" />
     <ClCompile Include="$(IntDir)\moc_sonic_enhancer_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_video_effects_panel.cpp" />
     <ClCompile Include="$(IntDir)\moc_vu_meter_widget.cpp" />
@@ -576,7 +620,9 @@
     <ClCompile Include="$(IntDir)\moc_camera_preview_widget.cpp" />
     <ClCompile Include="$(IntDir)\moc_camera_preview_window.cpp" />
     <ClCompile Include="$(IntDir)\moc_live_video_studio.cpp" />
+    <ClCompile Include="$(IntDir)\moc_manage_devices_dialog.cpp" />
     <ClCompile Include="$(IntDir)\moc_stream_target_editor.cpp" />
+    <ClCompile Include="$(IntDir)\moc_video_stream_monitor.cpp" />
 
     <!-- RCC output -->
     <ClCompile Include="$(IntDir)\qrc_mcaster1.cpp" />
@@ -586,4 +632,10 @@
 
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+
+  <!-- Windows resource file: embeds app icon + version info -->
+  <ItemGroup>
+    <ResourceCompile Include="Mcaster1DSPEncoder_Qt.rc" />
+  </ItemGroup>
+
 </Project>

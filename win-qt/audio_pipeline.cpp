@@ -10,6 +10,8 @@
  */
 
 #include "audio_pipeline.h"
+#include "ptt_mic_store.h"
+#include "event_log.h"
 
 #include <cstdio>
 #include <thread>
@@ -19,16 +21,88 @@ namespace mc1 {
 
 AudioPipeline *g_pipeline = nullptr;
 
+/* Global PTT mic PCM store — written by PTT mic PortAudio callback,
+ * read by EncoderSlot::on_audio() before each DSP chain process. */
+PttMicStore g_ptt_mic_store;
+
 AudioPipeline::AudioPipeline() = default;
 
 AudioPipeline::~AudioPipeline()
 {
     stop_dnas_poller();
+    if (ptt_mic_src_) { ptt_mic_src_->stop(); ptt_mic_src_.reset(); }
     std::lock_guard<std::mutex> lk(slots_mtx_);
     for (auto &[id, slot] : slots_) {
         if (slot) slot->stop();
     }
     slots_.clear();
+}
+
+void AudioPipeline::set_ptt_mic_device(int pa_idx, int sr_override, int ch_override)
+{
+    /* Stop any existing PTT mic source */
+    if (ptt_mic_src_) {
+        ptt_mic_src_->stop();
+        ptt_mic_src_.reset();
+    }
+    /* Clear stale buffer */
+    {
+        std::lock_guard<std::mutex> lk(g_ptt_mic_store.mtx);
+        g_ptt_mic_store.frames = 0;
+    }
+
+    if (pa_idx < 0) {
+        fprintf(stderr, "[PTT] Mic disabled\n");
+        return;
+    }
+
+    /* Query device's native sample rate and channel count so the stream opens
+     * successfully regardless of Windows audio driver preferences.
+     * sr_override / ch_override: non-zero values override the auto-detected defaults. */
+    int ptt_sr = 44100;
+    int ptt_ch = 1;
+    {
+        auto devs = PortAudioSource::enumerate_devices();
+        for (const auto &d : devs) {
+            if (d.index == pa_idx) {
+                ptt_sr = static_cast<int>(d.default_sample_rate);
+                ptt_ch = d.max_input_channels;
+                if (ptt_ch < 1) ptt_ch = 1;
+                if (ptt_ch > 2) ptt_ch = 2;
+                break;
+            }
+        }
+    }
+    /* Apply user overrides if provided */
+    if (sr_override > 0)  ptt_sr = sr_override;
+    if (ch_override > 0)  ptt_ch = ch_override;
+    /* Store PTT mic sample rate in the global store so DspPttDuck can resample */
+    g_ptt_mic_store.sample_rate = ptt_sr;
+    {
+        char buf[160];
+        snprintf(buf, sizeof(buf), "Opening PTT mic: PA index=%d  %d Hz  %dch",
+                 pa_idx, ptt_sr, ptt_ch);
+        fprintf(stderr, "[PTT] %s\n", buf);
+        mc1::log_info("[PTT]", buf);
+    }
+
+    ptt_mic_src_ = std::make_unique<PortAudioSource>(pa_idx, ptt_sr, ptt_ch, 512);
+    bool ok = ptt_mic_src_->start(
+        [](const float *pcm, size_t frames, int ch, int /*sr*/) {
+            g_ptt_mic_store.write(pcm, frames, ch);
+        });
+    if (!ok) {
+        ptt_mic_src_.reset();
+        char buf[160];
+        snprintf(buf, sizeof(buf), "FAILED to open PTT mic PA device %d — check device in PTT combo", pa_idx);
+        fprintf(stderr, "[PTT] %s\n", buf);
+        mc1::log_error("[PTT]", buf);
+    } else {
+        char buf[160];
+        snprintf(buf, sizeof(buf), "PTT mic ready: PA device %d  %d Hz  %dch", pa_idx, ptt_sr, ptt_ch);
+        fprintf(stderr, "[PTT] %s\n", buf);
+        mc1::log_connect("[PTT]", buf);
+    }
 }
 
 int AudioPipeline::add_slot(const EncoderConfig &cfg)

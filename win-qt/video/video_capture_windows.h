@@ -56,7 +56,14 @@ private:
     VideoCallback     callback_;
 
     /* Media Foundation handles (opaque — defined in .cpp) */
+    void *media_source_  = nullptr;  /* IMFMediaSource*  */
     void *source_reader_ = nullptr;  /* IMFSourceReader* */
+    bool  mf_started_    = false;    /* MFStartup called */
+    int   stride_        = 0;        /* actual bytes-per-row (abs value) */
+    bool  bottom_up_     = false;    /* true if camera outputs bottom-up frames */
+    int   capture_fmt_   = 0;       /* 0=RGB32, 1=NV12, 2=YUY2 */
+    std::vector<uint8_t> flip_buf_;  /* reusable buffer for bottom-up → top-down flip */
+    std::vector<uint8_t> rgb_buf_;   /* NV12/YUY2 → BGRA conversion buffer */
     std::thread capture_thread_;
 
     void capture_loop();

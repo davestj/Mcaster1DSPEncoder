@@ -1,14 +1,16 @@
 # PLANNING.md — Mcaster1DSPEncoder Future Roadmap
 
-**Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
+**Project:** Mcaster1DSPEncoder — Triple-platform broadcast DSP encoder (Windows + Linux + macOS)
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Last Updated:** 2026-03-03
+**Last Updated:** 2026-03-07
 
 This document captures all planned future phases. Reference it in CLAUDE.md for context.
 
 ---
 
 ## Completed Phases
+
+### Linux (branch: `linux-dev`)
 
 | Phase | Version | Description | Status |
 |-------|---------|-------------|--------|
@@ -21,7 +23,50 @@ This document captures all planned future phases. Reference it in CLAUDE.md for 
 | L5.2 | v1.4.2 | Browser media player (queue, audio streaming, drag-select) | COMPLETE |
 | L5.3 | v1.4.3 | Session fix (30-day cookie), Content-Range fix for Firefox | COMPLETE |
 | L5.4 | v1.4.4 | User profile page, broadcast roles, per-user session TTL | COMPLETE |
-| L5.5 | v1.4.5 | Standalone popup player (mediaplayerpro.php), category UX overhaul, HTML attr quoting bug sweep | COMPLETE |
+| L5.5 | v1.4.5 | Standalone popup player, category UX overhaul, HTML attr quoting bug sweep | COMPLETE |
+
+### macOS (branch: `macos-dev`)
+
+| Phase | Version | Description | Status |
+|-------|---------|-------------|--------|
+| M1 | v0.1.0 | Main window shell, menus, tray, VU meter, encoder list | COMPLETE |
+| M2 | v0.2.0 | Config dialogs (4 tabs), YAML config, encoder presets | COMPLETE |
+| M3 | v0.3.0 | Audio engine: DSP, codecs, PortAudio, ScreenCaptureKit | COMPLETE |
+| M4 | v0.4.0 | Streaming client, server protocols, metadata push | COMPLETE |
+| M5 | v0.5.0 | Polish: presets UI, preferences, log viewer, EQ visualizer | COMPLETE |
+| M6 | v0.6.0 | .app bundle, 31-band EQ, Sonic Enhancer, video pipeline | COMPLETE |
+| M6.5 | v0.6.5 | Video effects (13), overlays, SRT, broadcast pipeline | COMPLETE |
+| M7 | v0.7.0 | Radio/Podcast/TV-Video categories, RSS, SFTP, Studio dialog | COMPLETE |
+| M8 | v0.8.0 | PTT ducking, DBX Voice, REST publishing, Stream Target Editor | COMPLETE |
+| M8.5 | v0.8.5 | DSP Effects Rack, Effects Rack Tab, Per-encoder DSP controls | COMPLETE |
+| M9 | v0.9.0 | Video streaming: RTMP, HLS, WebM, FLV, transitions | COMPLETE |
+| M10 | v1.0.0 | Integration, VP8/VP9, entitlements, DMG, notifications | COMPLETE |
+| M11 | v1.1.0 | Global DSP rack persistence, per-unit YAML, Save Settings buttons | COMPLETE |
+| M11.5 | v1.1.5 | DSP persistence bug fixes, 10-band EQ sync, model vector fixes | COMPLETE |
+
+### Windows Qt (branch: `winqt-dev`)
+
+| Phase | Version | Description | Status |
+|-------|---------|-------------|--------|
+| W0.1–W1.1 | v1.1.5 | Qt 6 port: main window, encoder list, VU, DSP chain, streaming, YAML config, presets, log viewer, video pipeline, ICY2.2 tab | COMPLETE |
+| W1.2 | v1.2.0 | Preview Audio Studio, ICY1/ICY2.2 protocol parser, live stream monitor | COMPLETE |
+| W1.2.5 | v1.2.5 | PTT resampling fix, event logging, sleep→IDLE fix, metadata persistence, save-on-exit | COMPLETE |
+| **W1.3** | **v1.3.0** | Video capture (MF+DirectShow), Live Video Studio, Virtual Camera, VP8/VP9, ON-AIR, Video Stream Monitor (AIR/CUE) | **IN PROGRESS** |
+
+### macOS Backport (PENDING)
+
+The Windows Qt build (W1.2.5–W1.3) introduced bug fixes and enhancements that need to be
+backported to the macOS build (`macos-dev` branch). Key items:
+
+- Sleep→IDLE fix (StreamClient::disconnect DISCONNECTED vs STOPPED)
+- PTT mic resampling fix (linear interpolation when rates differ)
+- Event logging system (`event_log.h/cpp`)
+- Save-on-exit (aboutToQuit + closeEvent dual path)
+- Video Stream Monitor (AIR/CUE) — new feature
+- ON-AIR indicator
+- DNAS slot poller admin creds fix
+- GO LIVE programSource() fix
+- Per-encoder metadata always written
 
 ---
 

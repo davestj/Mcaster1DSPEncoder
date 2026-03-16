@@ -7,8 +7,10 @@
  */
 
 #include "edit_metadata_dialog.h"
+#include <QFileDialog>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 #include <QButtonGroup>
@@ -71,8 +73,24 @@ EditMetadataDialog::EditMetadataDialog(MetadataConfig &cfg, QWidget *parent)
     ext_form->addRow(QStringLiteral("Meta URL:"), edit_meta_url_);
 
     edit_meta_file_ = new QLineEdit(QString::fromStdString(cfg_.meta_file));
-    edit_meta_file_->setPlaceholderText(QStringLiteral("/path/to/metadata.txt"));
-    ext_form->addRow(QStringLiteral("Meta File:"), edit_meta_file_);
+    edit_meta_file_->setPlaceholderText(QStringLiteral("C:\\path\\to\\nowplaying.txt"));
+    btn_browse_file_ = new QPushButton(QStringLiteral("Browse..."));
+    btn_browse_file_->setFixedWidth(72);
+    btn_browse_file_->setToolTip(QStringLiteral("Browse for a nowplaying text file"));
+    connect(btn_browse_file_, &QPushButton::clicked, this, [this]() {
+        QString path = QFileDialog::getOpenFileName(
+            this,
+            QStringLiteral("Select Metadata File"),
+            QStringLiteral("C:\\"),
+            QStringLiteral("Text files (*.txt);;All files (*.*)"));
+        if (!path.isEmpty())
+            edit_meta_file_->setText(path);
+    });
+    auto *file_row = new QHBoxLayout;
+    file_row->setSpacing(4);
+    file_row->addWidget(edit_meta_file_);
+    file_row->addWidget(btn_browse_file_);
+    ext_form->addRow(QStringLiteral("Meta File:"), file_row);
 
     spin_interval_ = new QSpinBox;
     spin_interval_->setRange(1, 600);
@@ -109,6 +127,7 @@ void EditMetadataDialog::updateEnabled()
 
     edit_meta_url_->setEnabled(url_mode);
     edit_meta_file_->setEnabled(file_mode);
+    btn_browse_file_->setEnabled(file_mode);
     spin_interval_->setEnabled(url_mode || file_mode);
     edit_manual_->setEnabled(disabled);
     chk_lock_->setEnabled(disabled);

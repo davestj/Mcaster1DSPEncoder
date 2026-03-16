@@ -303,11 +303,46 @@ std::vector<CoreAudioDevice> enumerate_coreaudio_devices()
     return result;
 }
 
-#else /* non-Apple */
+#else /* non-Apple — use PortAudio to enumerate devices into CoreAudioDevice structs */
 
 std::vector<CoreAudioDevice> enumerate_coreaudio_devices()
 {
-    return {};
+    std::vector<CoreAudioDevice> result;
+
+#ifdef HAVE_PORTAUDIO
+    PaError err = Pa_Initialize();
+    if (err != paNoError) {
+        fprintf(stderr, "[enumerate_devices] Pa_Initialize failed: %s\n",
+                Pa_GetErrorText(err));
+        return result;
+    }
+
+    int count       = Pa_GetDeviceCount();
+    int def_input   = Pa_GetDefaultInputDevice();
+    int def_output  = Pa_GetDefaultOutputDevice();
+
+    for (int i = 0; i < count; ++i) {
+        const PaDeviceInfo *info = Pa_GetDeviceInfo(i);
+        if (!info) continue;
+        /* Skip devices with no channels at all */
+        if (info->maxInputChannels == 0 && info->maxOutputChannels == 0) continue;
+
+        CoreAudioDevice cad{};
+        cad.device_id        = static_cast<uint32_t>(i);
+        cad.name             = info->name ? info->name : "(unknown)";
+        cad.uid              = cad.name; /* PortAudio has no persistent UID; use name */
+        cad.input_channels   = info->maxInputChannels;
+        cad.output_channels  = info->maxOutputChannels;
+        cad.sample_rate      = info->defaultSampleRate;
+        cad.is_default_input  = (i == def_input);
+        cad.is_default_output = (i == def_output);
+        result.push_back(std::move(cad));
+    }
+
+    Pa_Terminate();
+#endif /* HAVE_PORTAUDIO */
+
+    return result;
 }
 
 #endif

@@ -17,6 +17,9 @@
 
 #include <yaml.h>
 #include <cstring>
+#ifdef _WIN32
+#  define strcasecmp _stricmp
+#endif
 
 namespace mc1 {
 
@@ -146,6 +149,25 @@ static void emit_kv4(QTextStream& ts, const char* key, const std::string& val)
     ts << "    " << key << ": \"" << QString::fromStdString(val) << "\"\n";
 }
 
+static const char* metadata_source_str(MetadataConfig::Source s)
+{
+    switch (s) {
+        case MetadataConfig::Source::MANUAL:   return "manual";
+        case MetadataConfig::Source::URL:      return "url";
+        case MetadataConfig::Source::FILE:     return "file";
+        case MetadataConfig::Source::DISABLED: return "disabled";
+    }
+    return "disabled";
+}
+
+static MetadataConfig::Source parse_metadata_source(const std::string& s)
+{
+    if (s == "manual") return MetadataConfig::Source::MANUAL;
+    if (s == "url")    return MetadataConfig::Source::URL;
+    if (s == "file")   return MetadataConfig::Source::FILE;
+    return MetadataConfig::Source::DISABLED;
+}
+
 static const char* eq_band_type_tag(mc1dsp::EqBandType t)
 {
     switch (t) {
@@ -220,6 +242,23 @@ GlobalConfig GlobalConfigManager::load_global()
     cfg.playlist_dir       = ystr(&yd.doc, g, "playlist_dir");
     cfg.archive_dir        = ystr(&yd.doc, g, "archive_dir");
 
+    /* Global metadata */
+    yaml_node_t* meta = map_get(&yd.doc, g, "global_metadata");
+    if (meta) {
+        cfg.global_metadata.source             = parse_metadata_source(ystr(&yd.doc, meta, "source"));
+        cfg.global_metadata.lock_metadata      = ybool(&yd.doc, meta, "lock_metadata");
+        cfg.global_metadata.manual_text        = ystr(&yd.doc, meta, "manual_text");
+        cfg.global_metadata.append_string      = ystr(&yd.doc, meta, "append_string");
+        cfg.global_metadata.meta_url           = ystr(&yd.doc, meta, "meta_url");
+        cfg.global_metadata.meta_file          = ystr(&yd.doc, meta, "meta_file");
+        cfg.global_metadata.update_interval_sec = yint(&yd.doc, meta, "update_interval_sec", 10);
+    }
+
+    /* PTT mic device */
+    cfg.ptt_mic_device_name  = ystr(&yd.doc, g, "ptt_mic_device_name");
+    cfg.ptt_mic_sample_rate  = yint(&yd.doc, g, "ptt_mic_sample_rate", 48000);
+    cfg.ptt_mic_channels     = yint(&yd.doc, g, "ptt_mic_channels", 1);
+
     qDebug() << "GlobalConfigManager: loaded" << QString::fromStdString(path);
     return cfg;
 }
@@ -256,6 +295,21 @@ std::string GlobalConfigManager::save_global(const GlobalConfig& cfg)
     emit_kv(ts, "tray_on_close",      cfg.tray_on_close);
     emit_kv(ts, "playlist_dir",       cfg.playlist_dir);
     emit_kv(ts, "archive_dir",        cfg.archive_dir);
+
+    /* Global metadata */
+    ts << "  global_metadata:\n";
+    ts << "    source: \"" << metadata_source_str(cfg.global_metadata.source) << "\"\n";
+    ts << "    lock_metadata: " << (cfg.global_metadata.lock_metadata ? "true" : "false") << "\n";
+    ts << "    manual_text: \"" << QString::fromStdString(cfg.global_metadata.manual_text) << "\"\n";
+    ts << "    append_string: \"" << QString::fromStdString(cfg.global_metadata.append_string) << "\"\n";
+    ts << "    meta_url: \"" << QString::fromStdString(cfg.global_metadata.meta_url) << "\"\n";
+    ts << "    meta_file: \"" << QString::fromStdString(cfg.global_metadata.meta_file) << "\"\n";
+    ts << "    update_interval_sec: " << cfg.global_metadata.update_interval_sec << "\n";
+
+    /* PTT mic device */
+    emit_kv(ts, "ptt_mic_device_name", cfg.ptt_mic_device_name);
+    emit_kv(ts, "ptt_mic_sample_rate", cfg.ptt_mic_sample_rate);
+    emit_kv(ts, "ptt_mic_channels",    cfg.ptt_mic_channels);
 
     file.close();
     qDebug() << "GlobalConfigManager: saved" << QString::fromStdString(path);

@@ -1,9 +1,9 @@
 # CLAUDE.md — Mcaster1DSPEncoder Project Memory
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
-**Repo root:** `/var/www/mcaster1.com/Mcaster1DSPEncoder/`
-**Current branch:** `linux-dev`
+**Project:** Mcaster1DSPEncoder — Triple-platform broadcast DSP encoder (Windows + Linux + macOS)
+**Repo root:** `/var/www/mcaster1.com/Mcaster1DSPEncoder/` (Linux) | `C:\Users\dstjohn\dev\00_mcaster1.com\Mcaster1DSPEncoder` (Windows)
+**Active branches:** `winqt-dev` (Windows Qt), `linux-dev` (Linux), `macos-dev` (macOS)
 
 ---
 For mysql connection work from the command line, we use 
@@ -26,34 +26,37 @@ DB growth plan, and architectural decisions recorded there.
 
 ## Project Overview
 
-Mcaster1DSPEncoder is a triple-platform (Windows + Linux + macOS) broadcast audio encoder with:
-- Embedded HTTP/HTTPS admin server (cpp-httplib v0.18)
-- Full PHP web UI (FastCGI → php-fpm)
-- DSP chain (10-band EQ, AGC/limiter, equal-power crossfader)
-- Multi-format audio encoding (MP3/Vorbis/Opus/FLAC)
-- Live broadcast to Icecast2 / Shoutcast / Mcaster1DNAS
-- Two-layer auth: C++ in-memory sessions + MySQL PHP sessions
+Mcaster1DSPEncoder is a triple-platform (Windows + Linux + macOS) broadcast DSP encoder with:
+- **Qt 6 Widgets GUI** on Windows and macOS (native look + feel per platform)
+- Embedded HTTP/HTTPS admin server + PHP web UI on Linux (cpp-httplib v0.18 + FastCGI)
+- DSP chain: 10-band EQ, 31-band EQ, AGC/limiter, Sonic Enhancer, PTT Duck, DBX Voice, Crossfader
+- Multi-format audio encoding (MP3/Vorbis/Opus/FLAC/AAC-LC/HE-AAC v1/v2/AAC-ELD)
+- **Video streaming pipeline**: RTMP, HLS, WebM, FLV with VP8/VP9 + transition engine
+- Live broadcast to Icecast2 / Shoutcast / Mcaster1DNAS (ICY 2.2 compliant)
+- Virtual Camera output (DirectShow on Windows, ScreenCaptureKit on macOS)
+- Two-layer auth on Linux: C++ in-memory sessions + MySQL PHP sessions
 
-**All three platform builds are parallel — they share NO source code (macOS ports from Linux).**
-- Windows: `src/` (VS2022 project) — maintained separately
-- Linux: `src/linux/` (custom shell build scripts) — active Linux dev branch
-- macOS: `src/macos/` (Qt 6 Widgets GUI) — active macOS dev branch (`macos-dev`)
+**All three platform builds are parallel — they share NO source code (Windows ports from macOS, macOS ports from Linux).**
+- Windows Qt: `win-qt/` (VS2022 + Qt 6.9.3 msvc2022_64) — active branch `winqt-dev`
+- Linux: `src/linux/` (Autotools + g++) — active branch `linux-dev`
+- macOS: `src/macos/` (Qt 6 Widgets GUI) — active branch `macos-dev`
+- Legacy Windows MFC: `src/` (VS2022 .sln) — standalone encoder + DSP plugins, maintenance only
 
 ---
 
 ## Platform Split
 
-| Aspect | Windows | Linux | macOS |
-|--------|---------|-------|-------|
-| Source root | `src/` | `src/linux/` | `src/macos/` |
-| Build system | VS2022 .sln | Autotools (canonical) | Autotools (`--enable-macos-gui`) |
-| Vendor headers | `external/include/` | `src/linux/external/include/` | System (Homebrew) |
-| Audio backend | WASAPI / DirectSound | PortAudio (ALSA/Pulse/JACK) | PortAudio (CoreAudio) + ScreenCaptureKit |
-| HTTP server | cpp-httplib | cpp-httplib | None (native Qt GUI) |
-| UI framework | MFC dialogs | PHP web UI | Qt 6 Widgets |
-| IDE | Visual Studio 2022 | vim / neovim / Claude Code | Claude Code |
-| Deploy path | Windows service | systemd service | .app bundle (planned) |
-| Branch | `master` | `linux-dev` | `macos-dev` |
+| Aspect | Windows Qt (active) | Windows MFC (legacy) | Linux | macOS |
+|--------|---------------------|---------------------|-------|-------|
+| Source root | `win-qt/` | `src/` | `src/linux/` | `src/macos/` |
+| Build system | VS2022 `.vcxproj` + `build_winqt.ps1` | VS2022 `.sln` | Autotools (canonical) | Autotools (`--enable-macos-gui`) |
+| Vendor headers | vcpkg `x64-windows` | `external/include/` | `src/linux/external/include/` | System (Homebrew) |
+| Audio backend | PortAudio (WASAPI) | WASAPI / DirectSound | PortAudio (ALSA/Pulse/JACK) | PortAudio (CoreAudio) + ScreenCaptureKit |
+| Video backend | Media Foundation + DirectShow | N/A | N/A | AVFoundation + ScreenCaptureKit |
+| UI framework | Qt 6 Widgets | MFC dialogs | PHP web UI | Qt 6 Widgets |
+| IDE | VS2022 + Claude Code | Visual Studio 2022 | vim / neovim / Claude Code | Claude Code |
+| Deploy path | Exe + Qt DLLs | Windows service | systemd service | .app bundle |
+| Branch | `winqt-dev` | `master` | `linux-dev` | `macos-dev` |
 
 ---
 
@@ -695,27 +698,75 @@ See `PLANNING-MACOS.html` for detailed roadmap with per-phase feature lists.
 
 ---
 
-## Windows Dev Notes (VS2022)
+## Windows Qt Dev Notes (win-qt branch: winqt-dev)
 
-The Windows build lives in `src/` (NOT `src/linux/`). Key differences:
+The active Windows build is a **Qt 6 GUI application** in `win-qt/` — a full port of the macOS Qt build.
+**Branch:** `winqt-dev` | **Source:** `win-qt/` | **Build:** VS2022 + MSBuild + Qt 6.9.3 msvc2022_64
 
-| Aspect | Windows |
-|--------|---------|
-| Audio | WASAPI / DirectSound via Windows SDK |
-| Build | Visual Studio 2022, `Mcaster1DSPEncoder.sln` |
-| PHP bridge | None — Windows build is API-only |
-| Deploy | Windows service via `sc create` |
-| Config | `config/mcaster1.yaml` (in `config/` root) |
-| Credentials | See `config/` directory (gitignored sensitive files) |
+| Aspect | Windows Qt (win-qt) |
+|--------|---------------------|
+| Audio | PortAudio (WASAPI backend) |
+| Build | VS2022 `.vcxproj`, `build_winqt.ps1` (NEVER .bat) |
+| Config | YAML next to exe (`build\win-qt\Debug\`) |
+| UI | Qt 6 Widgets — same feature set as macOS build |
+| Branch | `winqt-dev` |
 
-Windows-specific source files:
-- `src/audio_wasapi.cpp` — WASAPI device capture
-- `src/audio_directsound.cpp` — DirectSound output
-- `src/win_service.cpp` — Windows service wrapper
-- `src/win_tray.cpp` — System tray icon
+### Build — ALWAYS use build_winqt.ps1
+```powershell
+powershell.exe -NoProfile -File "win-qt\build_winqt.ps1"
+```
+- Harvests MSVC env from vcvars64.bat, sets QTDIR + PATH, runs MSBuild Debug x64
+- Runs windeployqt **only when `Qt6Cored.dll` is missing** — never deletes existing DLLs or config files
+- **NEVER** use `.bat` scripts, `/t:Clean`, or `/t:Rebuild`
+- YAML/YML/XML config files in build dirs are NEVER deleted by any build step
 
-**Note:** `config/*.yaml` is in `.gitignore` to prevent credentials from being committed.
-For Windows config, manually copy from `config/mcaster1.yaml.example`.
+### Build Script Note — vcvars path mangling via bash
+When writing `build_winqt.ps1` or temp build scripts from bash (MSYS2), `>nul` in strings gets
+converted to `>/dev/null` by the shell. Workaround: use `2>&1` without a `>nul` redirect, or use
+the Edit tool to fix the line after writing. The project `build_winqt.ps1` is correct as-is (it is
+read by PowerShell directly, not bash).
+
+### Config file location policy
+All YAMLs (encoder profiles, DSP effects, global config) are saved **next to the running exe**.
+`ProfileManager::profiles_dir()` = `QCoreApplication::applicationDirPath()` on Windows.
+
+### Win-Qt Phase Status
+
+| Phase | Version | Description | Status |
+|-------|---------|-------------|--------|
+| W0.1–W1.1 | v1.1.5 | Qt 6 port foundation: main window, encoder list, VU, DSP chain, streaming, YAML config, presets, log viewer, video pipeline, ICY2.2 tab | **COMPLETE** |
+| W1.2 | v1.2.0 | Preview Audio Studio dialog, ICY1/ICY2.2 protocol parser, live stream monitor, deploy_release.ps1 | **COMPLETE** |
+| W1.2.5 | v1.2.5 | PTT resampling fix, event logging, sleep→IDLE fix, global/per-encoder metadata persistence, file browser, save-on-exit | **COMPLETE** |
+| **W1.3** | **v1.3.0** | Video capture (MF+DirectShow), Live Video Studio (3-source switcher + transitions), Virtual Camera (DirectShow DLL), VP8/VP9, ON-AIR indicator, Video Stream Monitor (AIR/CUE), DNAS slot poller | **IN PROGRESS** |
+| W1.4 | v1.4.0 | WASAPI loopback VU metering, stream health dashboard, bitrate graph, NSIS installer | PLANNED |
+
+### Key Win-Qt Gotchas
+
+1. **PTT sample rate mismatch**: mic may capture at 48000 Hz while encoder runs at 44100 Hz.
+   Fixed via linear interpolation in `DspPttDuck::process()` when `mic_sample_rate_ != sample_rate_`.
+
+2. **per_encoder_metadata always written**: `profile_manager.cpp` always writes the
+   `per_encoder_metadata:` YAML section regardless of `use_global_metadata` flag — so settings
+   survive toggling between global and per-encoder modes.
+
+3. **Save-on-exit covers all paths**: `QApplication::aboutToQuit` → `saveSettings()` +
+   `saveAllEncoderProfiles()` covers tray-quit, Ctrl+Q, system shutdown. `closeEvent` covers
+   the X-button path. Both are needed; double-save on X-button close is harmless.
+
+4. **Single-instance enforcement**: `App::isAlreadyRunning()` uses `QLocalServer`/`QLocalSocket`.
+   Second launch sends "show" message, raises existing window, shows dialog, quits.
+
+5. **MSYS2 bash converts `nul` → `/dev/null`**: When writing ps1 files via bash heredoc or Python,
+   the Windows null device `nul` gets converted. Use the Edit tool to fix, or use `2>&1` without `>nul`.
+
+6. **vcpkg lib names**: `portaudio.lib`, `libmp3lame.lib`, `yaml.lib` (not `libyaml.lib`).
+   All at `C:\vcpkg\installed\x64-windows\`.
+
+7. **gai_strerror on Windows Unicode charset**: maps to `gai_strerrorW` (returns `wchar_t*`).
+   Fix: `#define gai_strerror gai_strerrorA` in `#ifdef _WIN32` block.
+
+8. **`SHUT_RDWR` undefined on Windows**: use `SD_BOTH`. Add `#define SHUT_RDWR SD_BOTH` in
+   `#ifdef _WIN32` in `stream_client.cpp`, `rtmp_client.cpp`, `stream_target_editor.cpp`.
 
 ---
 

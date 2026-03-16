@@ -13,6 +13,7 @@
 #include <QSystemTrayIcon>
 #include <memory>
 #include "config_types.h"
+#include "event_log.h"
 #include "video/camera_preview_window.h"
 #include "video/video_effects.h"
 #include "video/overlay_renderer.h"
@@ -25,6 +26,7 @@ class QComboBox;
 class QDragEnterEvent;
 class QDropEvent;
 class QLabel;
+class QListWidget;
 class QMenu;
 class QPushButton;
 class QSlider;
@@ -36,8 +38,10 @@ namespace mc1 {
 
 class BroadcastMonitorWindow;
 class CameraSource;
+class LiveVideoStudioDialog;
 class DnasStats;
 class OverlaySettingsDialog;
+class PreviewAudioStudio;
 class SystemAudioSource;
 class EncoderListModel;
 class LogViewerDialog;
@@ -62,6 +66,7 @@ protected:
 private slots:
     void onConnect();
     void onAddEncoder();
+    void onAppendEventLog(int level, const QString &tag, const QString &message);
     void onEditMetadata();
     void onAgcSettings();
     void onPreferences();
@@ -73,6 +78,7 @@ private slots:
     void onDbxVoice();
     void onPttPressed();
     void onPttReleased();
+    void onPreviewAudio();
     void onEncoderContextMenu(const QPoint &pos);
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
     void onDemoTick();
@@ -80,6 +86,7 @@ private slots:
     void onEffectsPanel();
     void onOverlaySettings();
     void showAbout();
+    void onMetadataPollTick();
 
 private:
     void createActions();
@@ -94,12 +101,19 @@ private:
     void stopCameraPreview();
     void saveSettings();
     void restoreSettings();
+    void updateGlobalDeviceFormats();
+    void startMetadataPoller();
+    void stopMetadataPoller();
 
     /* Phase M10: Config persistence */
     void loadSavedProfiles();
     void saveAllEncoderProfiles();
     void syncDspFromPipeline(EncoderConfig& cfg);
     void applyDspToSlot(int slot_id, const EncoderConfig& cfg);
+
+    /* Returns the PortAudio device index currently selected in cmb_device_,
+     * or -1 if the default input should be used. Returns -2 for WASAPI loopback. */
+    int selectedGlobalDeviceIndex() const;
 
     /* Toolbar / menu actions */
     QAction *act_connect_     = nullptr;
@@ -124,15 +138,22 @@ private:
     /* Central UI widgets */
     QLabel             *lbl_metadata_   = nullptr;
     VuMeterWidget      *vu_meter_       = nullptr;
-    QComboBox          *cmb_device_     = nullptr;
+    QComboBox          *cmb_device_            = nullptr;
+    QComboBox          *cmb_global_sample_rate_ = nullptr;
+    QComboBox          *cmb_global_channels_    = nullptr;
     QSlider            *sld_volume_     = nullptr;
     QLabel             *lbl_volume_     = nullptr;
     QPushButton        *btn_connect_    = nullptr;
     QPushButton        *btn_add_        = nullptr;
     QPushButton        *btn_edit_meta_  = nullptr;
     /* Phase M8: PTT */
-    QComboBox          *cmb_ptt_device_ = nullptr;
-    QPushButton        *btn_ptt_        = nullptr;
+    QComboBox          *cmb_ptt_device_      = nullptr;
+    QComboBox          *cmb_ptt_sample_rate_ = nullptr;
+    QComboBox          *cmb_ptt_channels_    = nullptr;
+    QPushButton        *btn_ptt_             = nullptr;
+    /* Preview Audio Studio */
+    QPushButton        *btn_preview_audio_ = nullptr;
+    PreviewAudioStudio *preview_studio_    = nullptr;
     /* Phase M7: Three-tab encoder list */
     QTabWidget         *tab_encoders_   = nullptr;
     QTableView         *tbl_radio_      = nullptr;
@@ -143,6 +164,8 @@ private:
     EncoderListModel   *model_video_    = nullptr;
     /* Phase M8.5: DSP Effects Rack tab */
     DspEffectsRack     *dsp_rack_       = nullptr;
+    /* Event Log tab */
+    QListWidget        *event_log_list_ = nullptr;
     /* Active model/table — follows current tab selection */
     EncoderListModel   *encoder_model_  = nullptr;
     QTableView         *tbl_encoders_   = nullptr; /* points to active tab's table */
@@ -155,6 +178,7 @@ private:
 
     /* Phase M6.5: Broadcast pipeline */
     BroadcastMonitorWindow *broadcast_win_    = nullptr;
+    LiveVideoStudioDialog  *live_studio_      = nullptr;
     VideoEffectsChain       effects_chain_;
     OverlayRenderer         overlay_renderer_;
     VideoEffectsPanel      *effects_panel_    = nullptr;
@@ -197,6 +221,9 @@ private:
 
     /* Metadata config (Phase M2) */
     MetadataConfig      metadata_cfg_;
+    QTimer             *meta_poller_timer_  = nullptr;
+    QString             last_global_meta_;
+    QMap<int, QString>  last_slot_meta_;     // slot_id → last pushed content
 
     /* Phase M11: Global config + DSP rack defaults */
     GlobalConfig        global_cfg_;
