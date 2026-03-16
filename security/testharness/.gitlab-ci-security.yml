@@ -1,0 +1,137 @@
+# =============================================================================
+# Mcaster1 Security Scan — GitLab CI/CD Pipeline
+# MCaster1 LLC / David St John <davestj@mcaster1.com>
+#
+# Include in your .gitlab-ci.yml:
+#   include:
+#     - local: 'security/testharness/.gitlab-ci-security.yml'
+#
+# Or copy contents into your existing .gitlab-ci.yml
+# GitLab instance: https://git.casterclub.local/
+# =============================================================================
+
+stages:
+  - sast
+  - dast
+  - report
+
+variables:
+  APP_ROOT: "${CI_PROJECT_DIR}"
+
+# ─── SAST Stage ─────────────────────────────────────────────────
+sast:sql-injection:
+  stage: sast
+  script:
+    - bash security/testharness/sast-sql-injection.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:xss:
+  stage: sast
+  script:
+    - bash security/testharness/sast-xss.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:auth-bypass:
+  stage: sast
+  script:
+    - bash security/testharness/sast-auth-bypass.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:csrf:
+  stage: sast
+  script:
+    - bash security/testharness/sast-csrf.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:secrets:
+  stage: sast
+  script:
+    - bash security/testharness/sast-secrets.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:command-injection:
+  stage: sast
+  script:
+    - bash security/testharness/sast-command-injection.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+sast:path-traversal:
+  stage: sast
+  script:
+    - bash security/testharness/sast-path-traversal.sh "$APP_ROOT"
+  allow_failure: true
+  tags:
+    - shell
+
+# ─── DAST Stage ─────────────────────────────────────────────────
+dast:headers:
+  stage: dast
+  script:
+    - bash security/testharness/dast-headers.sh "$APP_ROOT"
+  allow_failure: true
+  only:
+    - schedules
+    - main
+    - development
+  tags:
+    - shell
+
+dast:auth-enforcement:
+  stage: dast
+  script:
+    - bash security/testharness/dast-auth-required.sh "$APP_ROOT"
+  allow_failure: true
+  only:
+    - schedules
+    - main
+    - development
+  tags:
+    - shell
+
+dast:injection-probes:
+  stage: dast
+  script:
+    - bash security/testharness/dast-injection-probes.sh "$APP_ROOT"
+  allow_failure: true
+  only:
+    - schedules
+    - main
+    - development
+  tags:
+    - shell
+
+dast:directory-listing:
+  stage: dast
+  script:
+    - bash security/testharness/dast-directory-listing.sh "$APP_ROOT"
+  allow_failure: true
+  only:
+    - schedules
+    - main
+    - development
+  tags:
+    - shell
+
+# ─── Report Stage ───────────────────────────────────────────────
+security:full-suite:
+  stage: report
+  script:
+    - bash security/testharness/run-all.sh --ci
+  artifacts:
+    paths:
+      - security/testharness/results/
+    expire_in: 90 days
+  tags:
+    - shell

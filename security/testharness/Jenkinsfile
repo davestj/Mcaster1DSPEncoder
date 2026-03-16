@@ -1,0 +1,117 @@
+// =============================================================================
+// Mcaster1 Security Test Pipeline — Jenkinsfile
+// MCaster1 LLC / David St John <davestj@mcaster1.com>
+//
+// Usage: Create a Jenkins pipeline job pointing to this Jenkinsfile.
+// Runs SAST and DAST tests against the application.
+//
+// Environment variables:
+//   APP_ROOT   — path to application root (default: workspace)
+//   TEST_MODE  — 'all', 'sast-only', 'dast-only' (default: all)
+// =============================================================================
+
+pipeline {
+    agent any
+
+    environment {
+        APP_ROOT = "${env.WORKSPACE}"
+    }
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        timestamps()
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                echo "Security Test Harness — ${env.JOB_NAME}"
+                sh 'chmod +x security/testharness/*.sh'
+            }
+        }
+
+        stage('SAST — Static Analysis') {
+            parallel {
+                stage('SQL Injection') {
+                    steps {
+                        sh 'bash security/testharness/sast-sql-injection.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('XSS') {
+                    steps {
+                        sh 'bash security/testharness/sast-xss.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Auth Bypass') {
+                    steps {
+                        sh 'bash security/testharness/sast-auth-bypass.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('CSRF') {
+                    steps {
+                        sh 'bash security/testharness/sast-csrf.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Secrets') {
+                    steps {
+                        sh 'bash security/testharness/sast-secrets.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Command Injection') {
+                    steps {
+                        sh 'bash security/testharness/sast-command-injection.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Path Traversal') {
+                    steps {
+                        sh 'bash security/testharness/sast-path-traversal.sh "${APP_ROOT}" || true'
+                    }
+                }
+            }
+        }
+
+        stage('DAST — Dynamic Analysis') {
+            parallel {
+                stage('HTTP Headers') {
+                    steps {
+                        sh 'bash security/testharness/dast-headers.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Auth Enforcement') {
+                    steps {
+                        sh 'bash security/testharness/dast-auth-required.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Injection Probes') {
+                    steps {
+                        sh 'bash security/testharness/dast-injection-probes.sh "${APP_ROOT}" || true'
+                    }
+                }
+                stage('Directory Listing') {
+                    steps {
+                        sh 'bash security/testharness/dast-directory-listing.sh "${APP_ROOT}" || true'
+                    }
+                }
+            }
+        }
+
+        stage('Full Suite') {
+            steps {
+                sh 'bash security/testharness/run-all.sh --ci'
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'security/testharness/results/*.txt', allowEmptyArchive: true
+        }
+        failure {
+            echo 'Security tests detected vulnerabilities — review results.'
+        }
+        success {
+            echo 'All security tests passed.'
+        }
+    }
+}

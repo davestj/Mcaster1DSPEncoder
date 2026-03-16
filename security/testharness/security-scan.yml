@@ -1,0 +1,82 @@
+# =============================================================================
+# Mcaster1 Security Scan — GitHub Actions Workflow
+# MCaster1 LLC / David St John <davestj@mcaster1.com>
+#
+# Copy to .github/workflows/security-scan.yml in your repository.
+# Runs on push to main/development and weekly schedule.
+# =============================================================================
+
+name: Security Scan
+
+on:
+  push:
+    branches: [main, development, linux-dev]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6am UTC
+
+jobs:
+  sast:
+    name: SAST — Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SQL Injection Check
+        run: bash security/testharness/sast-sql-injection.sh "${{ github.workspace }}" || true
+
+      - name: XSS Check
+        run: bash security/testharness/sast-xss.sh "${{ github.workspace }}" || true
+
+      - name: Auth Bypass Check
+        run: bash security/testharness/sast-auth-bypass.sh "${{ github.workspace }}" || true
+
+      - name: CSRF Check
+        run: bash security/testharness/sast-csrf.sh "${{ github.workspace }}" || true
+
+      - name: Secrets Check
+        run: bash security/testharness/sast-secrets.sh "${{ github.workspace }}" || true
+
+      - name: Command Injection Check
+        run: bash security/testharness/sast-command-injection.sh "${{ github.workspace }}" || true
+
+      - name: Path Traversal Check
+        run: bash security/testharness/sast-path-traversal.sh "${{ github.workspace }}" || true
+
+  dast:
+    name: DAST — Dynamic Analysis
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'  # Only run DAST on schedule (needs live server)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: HTTP Headers Check
+        run: bash security/testharness/dast-headers.sh "${{ github.workspace }}" || true
+
+      - name: Auth Enforcement Check
+        run: bash security/testharness/dast-auth-required.sh "${{ github.workspace }}" || true
+
+      - name: Injection Probes
+        run: bash security/testharness/dast-injection-probes.sh "${{ github.workspace }}" || true
+
+      - name: Directory Listing Check
+        run: bash security/testharness/dast-directory-listing.sh "${{ github.workspace }}" || true
+
+  report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: [sast]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Full Suite
+        run: bash security/testharness/run-all.sh --sast-only --ci
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-results
+          path: security/testharness/results/
+          retention-days: 90
