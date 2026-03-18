@@ -49,9 +49,16 @@ mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE '%yp%';"
 | `mediaplayer.php` | Media | Embedded browser audio player with DB-backed queue |
 | `mediaplayerpro.php` | — | Standalone WMP-style 3-column popup player (opened from mediaplayer.php) |
 | `playlists.php` | Playlists | DB playlist CRUD + 4-step generation wizard (8 algorithms) |
-| `metrics.php` | Metrics | Chart.js listener analytics |
+| `metrics.php` | Metrics | 5-tab: System Health (gauges, disk, codecs, FPM, SSL), Encoder Slots, Servers, Analytics, Events |
 | `profile.php` | — | User profile (display_name, email, password change) |
 | `settings.php` | Settings | Server info + encoder config table + DB admin |
+| `crossfader.php` | Crossfader | 9-curve visualization + slot assignment + dual-deck launcher |
+| `effects-rack.php` | Effects Rack | Drag-drop modular effects chain + PTT with spacebar |
+| `encoder-effects-rack.php` | — | Per-encoder slot effects management (Global/Bypass/Custom) |
+| `jack.php` | JACK Audio | JACK daemon management + port connection matrix |
+| `schedule.php` | Schedule | 24-hour clockwheel grid + playlist assignment |
+| `dualdeck-player.php` | — | Standalone frameless popup: dual-deck A/B DJ player |
+| `compliance.php` | Compliance | Security reports + PDF/HTML export |
 
 ---
 
@@ -60,15 +67,17 @@ mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE '%yp%';"
 | File | Actions |
 |------|---------|
 | `auth.php` | `auto_login`, `whoami`, `login`, `logout` |
-| `tracks.php` | `list`, `search`, `add`, `update`, `delete`, `scan`, `playlist_files`, `browse`, `get_categories`, `create_category`, `delete_category`, `add_to_category`, `list_category_tracks`, `remove_from_category`, `get_artwork`, `set_artwork`, `fetch_artwork_musicbrainz` |
+| `tracks.php` | `list`, `search`, `add`, `update`, `delete`, `scan`, `playlist_files`, `browse`, `browse_folders`, `get_categories`, `create_category`, `update_category`, `delete_category`, `add_to_category`, `list_category_tracks`, `remove_from_category`, `get_artwork`, `set_artwork`, `fetch_artwork_musicbrainz` |
 | `playlists.php` | `list`, `get_tracks`, `create`, `delete`, `add_track`, `remove_track`, `load`, `get_categories`, `get_algorithms`, `get_rotation_rules`, `preview`, `generate`, `get_clock_templates`, `save_clock_template` |
 | `player.php` | `queue_add`, `queue_list`, `queue_remove`, `queue_clear`, `queue_move_top` |
 | `audio.php` | HTTP Range (206) audio streaming — no action param; uses `?id=N` or `?path=...` |
 | `artwork.php` | Cover art by hash — no action param; uses `?hash=...` |
 | `encoders.php` | `list_configs`, `get_config`, `save_config`, `delete_config`, `update_playlist`, `add_user`, `update_user`, `delete_user`, `toggle_user`, `reset_password`, `db_stats`, `get_token`, `generate_token` |
-| `metrics.php` | `summary`, `daily_stats`, `sessions`, `top_tracks` |
+| `metrics.php` | `summary`, `daily_stats`, `sessions`, `top_tracks`, `server_list`, `server_history`, `stream_events`, `track_plays`, `export_csv` |
+| `health.php` | `get_history`, `get_encoder`, `prune`, `aggregate`, `disk_usage`, `fpm_status`, `ssl_info`, `codec_check`, `swap_info` |
+| `schedule.php` | `get_schedule`, `save_assignment`, `delete_assignment`, `get_playlists` |
 | `servers.php` | `list`, `get`, `create`, `update`, `delete`, `test` |
-| `serverstats.php` | `live`, `history` |
+| `serverstats.php` | `get_stats`, `get_summary`, `get_history` |
 | `profile.php` | `get_profile`, `update_profile`, `change_password` |
 
 ---
@@ -217,11 +226,22 @@ li.innerHTML = '<div onclick="fn(' + id + ',' + esc(JSON.stringify(name)) + ')">
 
 ---
 
-## Pending Work
+## Phase Status (as of 2026-03-25)
 
-Phase L5.5 COMPLETE as of 2026-02-24. All Tasks #24–#26 also complete.
+All major phases through L9 + DJ automation are **COMPLETE**.
 
-Next planned work:
-- **L6**: Streaming Server Relay Monitor (`servers.php` + settings panel + polling)
-- **L7**: Metrics Dashboard full rewrite (5 tabs: System Health, Encoder Slots, Servers, Listener Analytics, Event Log)
-- **L8**: System Health (C++ `/proc/` sampler + `/api/v1/system/health` endpoint)
+| Phase | Status |
+|-------|--------|
+| L6 Streaming Server Monitor | **COMPLETE** |
+| L7 Listener Analytics + CSV Export | **COMPLETE** |
+| DJ-1 through DJ-6 (Crossfader, Effects, PTT, JACK, Dual-Deck) | **COMPLETE** |
+| L8-SPLIT Dual Binary Architecture | **COMPLETE** |
+| L9 Clockwheel Scheduler + Dead Air Detection | **COMPLETE** |
+| L-METRICS System Health Dashboard | **COMPLETE** |
+| L-MEDIA Folder Browser + Category Types/Weights | **COMPLETE** |
+
+### Remaining Work
+- **Reverb/Delay DSP units** — currently pass-through stubs, need real audio processing
+- **IPC Proxy migration** — move encoder API routes from admin's embedded pipeline to IPC proxy → encoder child (full separation of concerns)
+- **L10**: Podcast & Archive Management (planned)
+- **L11**: User Engagement & Social Integration (planned)

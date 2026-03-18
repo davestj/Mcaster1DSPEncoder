@@ -119,32 +119,49 @@ Flags in make_phase4.sh:
 
 The Linux source files (`encoder_slot.cpp`, `file_source.cpp`, etc.) use `#ifdef HAVE_LAME` etc. but do **NOT** include `config.h`. This means autotools `AC_DEFINE([HAVE_LAME])` alone is not enough. The Makefile.am must explicitly pass `-DHAVE_LAME` (and all other codec defines) via `AM_CPPFLAGS` inside each `if HAVE_LAME` conditional block. This is done in `src/linux/Makefile.am` already. Do not remove these.
 
-### Run (daemon mode)
+### Dual-Binary Architecture (v1.7.0+)
+
+Two binaries with fault isolation — codec crash in encoder doesn't kill the web UI:
+
+```
+mcaster1-dsp-encoder-admin  (35MB) — Web UI, FastCGI, auth, supervisor
+mcaster1-dsp-encoder        (27MB) — Audio pipeline, DSP, codecs, streaming
+```
+
+Admin supervises encoder child via fork/exec + watchdog. If encoder crashes (SIGSEGV from bad codec config), admin auto-restarts it within 5 seconds. Web UI stays accessible during restart.
+
+### Run (systemd — recommended)
 
 ```bash
-nohup ./build/mcaster1-encoder \
+sudo systemctl start mcaster1-dsp-encoder     # Start admin (auto-starts encoder child)
+sudo systemctl stop mcaster1-dsp-encoder      # Stop both
+sudo systemctl restart mcaster1-dsp-encoder   # Restart both
+sudo systemctl status mcaster1-dsp-encoder    # Shows both PIDs in CGroup
+sudo journalctl -u mcaster1-dsp-encoder -f    # Live logs
+```
+
+### Run (manual — legacy)
+
+```bash
+nohup ./build/mcaster1-dsp-encoder-admin \
   --config src/linux/config/mcaster1_rock_yolo.yaml \
   > /tmp/mc1enc.log 2>&1 & disown $!
 ```
 
-**IMPORTANT:** Always use `disown $!` — otherwise the shell sends SIGHUP when it exits and the encoder shuts down.
+The admin binary automatically forks the encoder child. Both processes visible in `ps aux`.
 
 ### Kill + Restart
 
 ```bash
 # List all encoder processes
-pgrep -a mcaster1-encoder
+pgrep -af mcaster1-dsp
 
-# Kill all (force if needed)
-pkill -9 -f 'build/mcaster1-encoder'
+# Stop via systemd (recommended)
+sudo systemctl restart mcaster1-dsp-encoder
+
+# Manual kill (both processes)
+pkill -9 -f 'mcaster1-dsp-encoder'
 sleep 2
-
-# Restart cleanly
-nohup ./build/mcaster1-encoder \
-  --config src/linux/config/mcaster1_rock_yolo.yaml \
-  > /tmp/mc1enc.log 2>&1 & disown $!
-
-echo "PID: $!"
 ```
 
 **Gotcha:** cpp-httplib uses `SO_REUSEPORT` — if an old instance is still running when you restart, BOTH bind successfully to the same ports. The new instance's sessions are not known to the old instance, causing 302 redirects to `/login`. Always kill all old instances before restarting.
@@ -665,7 +682,19 @@ Or generate self-signed:
 | L3 | v1.2.0 | Audio encoding + streaming + FastCGI + PHP | **COMPLETE** |
 | L4 | v1.3.0 | DSP chain (EQ/AGC/xfade) + ICY2 + DNAS stats | **COMPLETE** |
 | **L5** | **v1.4.0** | **Full PHP frontend overhaul + logging system** | **COMPLETE** |
-| L6 | v1.5.0 | Analytics, listener metrics, engagement platform | PLANNED |
+| L5.1-L5.5 | v1.4.1-v1.4.5 | Media library, player, editor, popup player, categories | **COMPLETE** |
+| L6 | v1.5.0 | Streaming Server Relay Monitor | **COMPLETE** |
+| L7 | v1.5.1 | Listener Analytics + CSV export + GeoIP | **COMPLETE** |
+| **DJ-1** | **v1.6.0** | **9-curve crossfader (ported from MC1AMP)** | **COMPLETE** |
+| DJ-2 | v1.6.0 | Modular effects rack (6 unit types, drag-drop) | **COMPLETE** |
+| DJ-3 | v1.6.0 | PTT ducking (sidechain compressor, spacebar) | **COMPLETE** |
+| DJ-4 | v1.6.0 | JACK audio (12 virtual cables, port matrix) | **COMPLETE** |
+| DJ-5 | v1.6.0 | Per-slot effects assignment (Global/Bypass/Custom) | **COMPLETE** |
+| DJ-6 | v1.6.0 | Dual-deck popup player (standalone A/B mixer) | **COMPLETE** |
+| **L8-SPLIT** | **v1.7.0** | **Dual binary: admin + encoder (fault isolation)** | **COMPLETE** |
+| L9 | v1.7.0 | Clockwheel scheduler + dead air detection | **COMPLETE** |
+| L-METRICS | v1.7.0 | System Health Dashboard (disk, codecs, FPM, SSL) | **COMPLETE** |
+| L-MEDIA | v1.7.0 | Folder browser, scan progress, category types/weights | **COMPLETE** |
 
 ---
 

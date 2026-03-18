@@ -3,7 +3,7 @@
 **Maintainer:** Dave St. John <davestj@gmail.com>
 **Source root:** `src/linux/` within `/var/www/mcaster1.com/Mcaster1DSPEncoder/`
 **Branch:** `linux-dev`
-**Phase:** L5.5 complete (v1.4.5), L6 (Streaming Server Relay Monitor) planned
+**Phase:** v1.7.0 — All phases through L9 + DJ automation COMPLETE. Dual-binary architecture.
 
 For mysql connection work from the command line, we use
 mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE %yp%";
@@ -315,7 +315,27 @@ Never make a curl request from PHP code to `127.0.0.1:8330` or `127.0.0.1:8344`.
 
 ---
 
-## Run the Encoder
+## Run the Encoder (systemd — preferred)
+
+```bash
+# Dev systemd unit: build/mcaster1-encoder.service
+# Installed at /etc/systemd/system/mcaster1-encoder.service
+
+sudo systemctl start mcaster1-encoder     # Start
+sudo systemctl stop mcaster1-encoder      # Stop (graceful)
+sudo systemctl restart mcaster1-encoder   # Restart
+sudo systemctl status mcaster1-encoder    # Status + last log lines
+sudo journalctl -u mcaster1-encoder -f    # Live log tail
+
+# The unit runs:
+#   build/mcaster1-encoder --config src/linux/config/mcaster1_rock_yolo.yaml
+# As user: mediacast1
+# Ports: 8330 (HTTP), 8344 (HTTPS)
+# Depends on: mysql, php8.2-fpm, mcaster1-dnas
+# Restart: on-failure with 10s delay
+```
+
+### Manual run (legacy, only if systemd is unavailable)
 
 ```bash
 # Kill any existing instance first (SO_REUSEPORT gotcha: two instances can bind the same port)
@@ -394,9 +414,15 @@ Credentials: `djpulse` / `hackme` for both C++ admin and MySQL.
 | L5.3 | v1.4.3 | Session fix, Content-Range fix (Firefox), 30-day cookie TTL | **COMPLETE** |
 | L5.4 | v1.4.4 | Encoder editor, playlist generator wizard, user profile | **COMPLETE** |
 | L5.5 | v1.4.5 | Standalone popup player, category UX overhaul, HTML quoting bug sweep | **COMPLETE** |
-| L6 | v1.5.0 | Streaming Server Relay Monitor (multi-DNAS/Icecast/Shoutcast) | PLANNED |
-| L7 | v1.6.0 | Listener Analytics & Full Metrics Dashboard | PLANNED |
-| L8 | v1.7.0 | System Health Monitoring (CPU/Mem/Net via /proc) | PLANNED |
+| L6 | v1.5.0 | Streaming Server Relay Monitor | **COMPLETE** |
+| L7 | v1.5.1 | Listener Analytics, GeoIP, CSV Export | **COMPLETE** |
+| **DJ** | **v1.6.0** | **9-curve crossfader, effects rack, PTT, JACK, dual-deck, per-slot FX** | **COMPLETE** |
+| **L8** | **v1.7.0** | **Dual binary (admin+encoder), fault isolation, process supervisor** | **COMPLETE** |
+| L9 | v1.7.0 | Clockwheel scheduler, dead air detection | **COMPLETE** |
+| L-METRICS | v1.7.0 | System Health Dashboard (disk, codecs, FPM, SSL, swap) | **COMPLETE** |
+| L-MEDIA | v1.7.0 | Folder browser, broadcast category types, weights | **COMPLETE** |
+| L10 | — | Podcast & Archive Management | PLANNED |
+| L11 | — | User Engagement & Social Integration | PLANNED |
 
 ---
 

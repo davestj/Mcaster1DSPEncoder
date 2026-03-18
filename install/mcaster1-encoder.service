@@ -1,0 +1,67 @@
+# =============================================================================
+# Mcaster1DSPEncoder — Linux Streaming Encoder (systemd unit)
+# MCaster1 LLC / David St John <davestj@mcaster1.com>
+#
+# DEV MODE — runs from /var/www/mcaster1.com/Mcaster1DSPEncoder/
+# Production will use /usr/local/mcaster1/mcaster1encoder/
+#
+# C++ audio encoder daemon: 12-slot multi-codec streaming to DNAS/Icecast
+# HTTP admin on port 8330, HTTPS admin on port 8344
+# PHP web UI served via FastCGI to php-fpm
+# DSP chain: EQ → AGC → Crossfader per slot
+#
+# Install:
+#   sudo cp build/mcaster1-encoder.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mcaster1-encoder
+#   sudo systemctl start mcaster1-encoder
+#
+# Check status:
+#   sudo systemctl status mcaster1-encoder
+#   curl -sk https://127.0.0.1:8344/api/health
+# =============================================================================
+
+[Unit]
+Description=Mcaster1DSPEncoder — Multi-Codec Streaming Encoder (dev)
+Documentation=https://mcaster1.com
+After=network-online.target mysql.service mariadb.service php8.2-fpm.service mcaster1-dnas.service
+Wants=network-online.target mysql.service php8.2-fpm.service
+Wants=mcaster1-dnas.service
+
+[Service]
+Type=simple
+User=mediacast1
+Group=mediacast1
+
+# Binary and config — DEV paths
+WorkingDirectory=/var/www/mcaster1.com/Mcaster1DSPEncoder
+ExecStart=/var/www/mcaster1.com/Mcaster1DSPEncoder/build/mcaster1-encoder \
+    --config /var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/config/mcaster1_rock_yolo.yaml
+
+# Graceful stop
+TimeoutStopSec=30
+
+# Restart policy — 'always' ensures restart after SIGHUP/clean exit too
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+Environment=HOME=/var/www/mcaster1.com/Mcaster1DSPEncoder
+
+# Resource limits — encoder opens codec libs + many outbound stream connections
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening (relaxed for dev)
+NoNewPrivileges=yes
+PrivateTmp=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcaster1-encoder
+
+[Install]
+WantedBy=multi-user.target
