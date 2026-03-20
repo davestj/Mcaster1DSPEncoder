@@ -814,6 +814,17 @@ static void setup_routes(httplib::Server& svr)
             });
         });
 
+    // ── GET /api/v1/effects/versions — full version registry for all effects ──
+    svr.Get("/api/v1/effects/versions",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json r; r["ok"] = true;
+                r["effects"] = mc1dsp::EffectsRack::all_effect_versions();
+                r["effect_count"] = mc1dsp::EFFECT_VERSION_COUNT;
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
     // ── GET /api/v1/crossfader/curves — list all 9 curve algorithms ──────────
     svr.Get("/api/v1/crossfader/curves",
         [](const httplib::Request& req, httplib::Response& res) {

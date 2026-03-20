@@ -31,7 +31,7 @@ enum class Curve : int {
     BroadcastBlend  = 5,  // EBU-style equal loudness across the blend
     TransformCut    = 6,  // Instant cut at center — battle/scratch DJ style
     HardCut         = 7,  // Sharp 10% overlap — live radio hand-off
-    PioneerStyle    = 8,  // Both decks open at extremes, fade only opposite deck
+    DualOpen        = 8,  // Both decks open at extremes, fade only opposite deck
 
     COUNT           = 9
 };
@@ -45,7 +45,7 @@ static const char* CURVE_NAMES[] = {
     "Broadcast Blend",
     "Transform Cut",
     "Hard Cut",
-    "Pioneer Style",
+    "Dual Open",
 };
 
 static const char* CURVE_DESCRIPTIONS[] = {
@@ -57,7 +57,7 @@ static const char* CURVE_DESCRIPTIONS[] = {
     "EBU broadcast blend — maintains equal loudness across the entire range.",
     "Instant cut at 50% — battle DJ and scratching. Both fully open until center.",
     "Sharp 10% overlap — clean live radio hand-off, no pop, no dropout.",
-    "Pioneer DJM style — both decks fully open, only fades the opposite deck.",
+    "Dual-open style — both decks fully open, only fades the opposite deck.",
 };
 
 /* ── Gain pair ──────────────────────────────────────────────────────────────── */
@@ -126,7 +126,7 @@ inline Gains computeGains(float pos, Curve curve)
                 : std::sin(((pos - lo) / overlap) * kPi2);
         } break;
 
-        case Curve::PioneerStyle:
+        case Curve::DualOpen:
             a = (pos < 0.5f) ? 1.0f : std::cos((pos - 0.5f) * kPi2 * 2.0f);
             b = (pos > 0.5f) ? 1.0f : std::cos((0.5f - pos) * kPi2 * 2.0f);
             break;

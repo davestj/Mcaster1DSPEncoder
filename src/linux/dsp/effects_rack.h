@@ -14,6 +14,7 @@
 
 #include "eq.h"
 #include "agc.h"
+#include "effect_versions.h"
 
 #include <vector>
 #include <memory>
@@ -42,6 +43,23 @@ public:
     virtual json get_params() const = 0;
     virtual void set_params(const json& j) = 0;
     virtual void reset() = 0;
+
+    /* We return version info from the central registry for this unit type */
+    const EffectVersionInfo* version_info() const {
+        return effect_version_by_type(type_name());
+    }
+
+    /* We return the branded display name, e.g. "Mcaster1 Compressor v1.1.0" */
+    const char* brand_name() const {
+        auto* vi = version_info();
+        return vi ? vi->brand_name : type_name();
+    }
+
+    /* We return the semantic version string, e.g. "1.1.0" */
+    const char* version() const {
+        auto* vi = version_info();
+        return vi ? vi->version : "0.0.0";
+    }
 };
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -223,8 +241,11 @@ public:
     /* We create a DspUnit by type name */
     static std::unique_ptr<DspUnit> create_unit(const std::string& type);
 
-    /* We return available unit types with default params */
+    /* We return available unit types with version info from registry */
     static json available_types();
+
+    /* We return the full version registry for all effects (rack + non-rack) */
+    static json all_effect_versions();
 
 private:
     struct Slot {

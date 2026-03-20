@@ -147,7 +147,7 @@ var CURVES = [
       var b=x>hi?1:x<lo?0:Math.sin(((x-lo)/ov)*kPi2);
       return {a:a, b:b};
     }},
-  { id:8, name:'Pioneer Style',    desc:'Pioneer DJM style — both decks fully open, only fades the opposite deck.',
+  { id:8, name:'Dual Open',        desc:'Dual-open style — both decks fully open, only fades the opposite deck.',
     fn: function(x){ return {a:x<0.5?1:Math.cos((x-0.5)*kPi2*2), b:x>0.5?1:Math.cos((0.5-x)*kPi2*2)}; } }
 ];
 

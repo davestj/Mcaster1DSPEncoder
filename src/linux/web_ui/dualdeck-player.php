@@ -186,7 +186,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
       <option value="5">Broadcast Blend</option>
       <option value="6">Transform Cut</option>
       <option value="7">Hard Cut</option>
-      <option value="8">Pioneer Style</option>
+      <option value="8">Dual Open</option>
     </select>
     <div class="xf-label" style="margin-top:8px;">Auto Crossfade</div>
     <div class="xf-auto">

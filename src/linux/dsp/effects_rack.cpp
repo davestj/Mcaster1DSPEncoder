@@ -258,10 +258,21 @@ json EffectsRack::to_json() const {
     json units = json::array();
     for (const auto& s : chain_) {
         json u;
-        u["id"]      = s.id;
-        u["type"]    = s.unit->type_name();
-        u["enabled"] = s.unit->is_enabled();
-        u["params"]  = s.unit->get_params();
+        u["id"]         = s.id;
+        u["type"]       = s.unit->type_name();
+        u["brand_name"] = s.unit->brand_name();
+        u["version"]    = s.unit->version();
+        u["enabled"]    = s.unit->is_enabled();
+        u["params"]     = s.unit->get_params();
+        /* We include full version metadata for traceability */
+        auto* vi = s.unit->version_info();
+        if (vi) {
+            u["version_info"] = {
+                {"version", vi->version},
+                {"release_date", vi->release_date},
+                {"is_stub", vi->is_stub}
+            };
+        }
         units.push_back(u);
     }
     j["units"] = units;
@@ -304,10 +315,19 @@ json EffectsRack::get_unit_info(int unit_id) const {
     std::lock_guard<std::mutex> lk(mtx_);
     for (const auto& s : chain_) {
         if (s.id == unit_id) {
-            return {
+            json j = {
                 {"id", s.id}, {"type", s.unit->type_name()},
+                {"brand_name", s.unit->brand_name()}, {"version", s.unit->version()},
                 {"enabled", s.unit->is_enabled()}, {"params", s.unit->get_params()}
             };
+            auto* vi = s.unit->version_info();
+            if (vi) {
+                j["version_info"] = {
+                    {"version", vi->version}, {"release_date", vi->release_date},
+                    {"changelog", vi->changelog}, {"is_stub", vi->is_stub}
+                };
+            }
+            return j;
         }
     }
     return {{"error", "Unit not found"}};
@@ -346,14 +366,46 @@ std::unique_ptr<DspUnit> EffectsRack::create_unit(const std::string& type) {
 }
 
 json EffectsRack::available_types() {
-    return json::array({
-        {{"type", "eq"},         {"name", "Parametric EQ"},       {"description", "10-band parametric EQ with RBJ biquad IIR filters"}},
-        {{"type", "compressor"}, {"name", "Compressor / AGC"},    {"description", "Feedforward peak compressor with soft-knee and hard limiter"}},
-        {{"type", "limiter"},    {"name", "Peak Limiter"},        {"description", "Brick-wall peak limiter with attack/release ballistics"}},
-        {{"type", "noise_gate"}, {"name", "Noise Gate"},          {"description", "Downward expander with threshold, hold, and range controls"}},
-        {{"type", "reverb"},     {"name", "Reverb"},              {"description", "Reverb effect (coming soon — pass-through stub)"}, {"stub", true}},
-        {{"type", "delay"},      {"name", "Delay"},               {"description", "Delay/echo effect (coming soon — pass-through stub)"}, {"stub", true}}
-    });
+    /* We build the types list from the version registry — single source of truth */
+    static const char* rack_types[] = {"eq", "compressor", "limiter", "noise_gate", "reverb", "delay"};
+    json arr = json::array();
+    for (const char* tid : rack_types) {
+        auto* vi = effect_version_by_type(tid);
+        if (!vi) continue;
+        json entry;
+        entry["type"]         = vi->type_id;
+        entry["name"]         = vi->brand_name;
+        entry["short_name"]   = vi->short_name;
+        entry["version"]      = vi->version;
+        entry["release_date"] = vi->release_date;
+        entry["description"]  = vi->description;
+        entry["changelog"]    = vi->changelog;
+        if (vi->is_stub) entry["stub"] = true;
+        arr.push_back(entry);
+    }
+    return arr;
+}
+
+json EffectsRack::all_effect_versions() {
+    /* We return the full version registry — all effects including non-rack units */
+    json arr = json::array();
+    for (int i = 0; i < EFFECT_VERSION_COUNT; ++i) {
+        const auto& vi = EFFECT_VERSIONS[i];
+        arr.push_back({
+            {"type",         vi.type_id},
+            {"brand_name",   vi.brand_name},
+            {"short_name",   vi.short_name},
+            {"version",      vi.version},
+            {"ver_major",    vi.ver_major},
+            {"ver_minor",    vi.ver_minor},
+            {"ver_patch",    vi.ver_patch},
+            {"release_date", vi.release_date},
+            {"description",  vi.description},
+            {"changelog",    vi.changelog},
+            {"is_stub",      vi.is_stub}
+        });
+    }
+    return arr;
 }
 
 } // namespace mc1dsp
