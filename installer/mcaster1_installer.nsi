@@ -167,6 +167,7 @@ Section "Main Application" SecMain
   ; ── Documentation ──
   SetOutPath "$INSTDIR\docs"
   File "${STAGING_DIR}\docs\index.html"
+  File /nonfatal "${STAGING_DIR}\docs\style.css"
   File /nonfatal "${STAGING_DIR}\docs\README.md"
   File /nonfatal "${STAGING_DIR}\docs\RELEASENOTES.md"
   File /nonfatal "${STAGING_DIR}\docs\FEATURES.md"
@@ -175,6 +176,10 @@ Section "Main Application" SecMain
   File /nonfatal "${STAGING_DIR}\docs\CREDITS.md"
   File /nonfatal "${STAGING_DIR}\docs\FORKS.md"
   File /nonfatal "${STAGING_DIR}\docs\LICENSE"
+
+  ; ── Documentation Screenshots ──
+  SetOutPath "$INSTDIR\docs\screenshots"
+  File /nonfatal "${STAGING_DIR}\docs\screenshots\*.png"
 
   ; ── Code Signing Certificate (if present) ──
   SetOutPath "$INSTDIR\certs"

@@ -45,6 +45,7 @@
 #include "encoder_slot.h"
 #include "global_config_manager.h"
 #include "preview_audio_studio.h"
+#include "help_browser.h"
 
 #include <QAction>
 #include <QApplication>
@@ -853,12 +854,9 @@ void MainWindow::createActions()
     act_docs_ = new QAction(QStringLiteral("Documentation"), this);
     act_docs_->setShortcut(QKeySequence::HelpContents);
     connect(act_docs_, &QAction::triggered, this, [this]() {
-        QString doc = QCoreApplication::applicationDirPath() +
-                      QStringLiteral("/docs/index.html");
-        if (QFile::exists(doc))
-            QDesktopServices::openUrl(QUrl::fromLocalFile(doc));
-        else
-            QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/encoder.php")));
+        auto *hb = new HelpBrowser(this);
+        hb->setAttribute(Qt::WA_DeleteOnClose);
+        hb->show();
     });
 
     act_theme_ = new QAction(QIcon(QStringLiteral(":/icons/theme.svg")),
