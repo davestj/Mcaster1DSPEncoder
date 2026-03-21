@@ -85,6 +85,8 @@
 #include <QResizeEvent>
 #include <algorithm>
 #include <QScreen>
+#include <QDesktopServices>
+#include <QUrl>
 
 #include <cmath>
 
@@ -832,6 +834,33 @@ void MainWindow::createActions()
                              QStringLiteral("About Mcaster1"), this);
     connect(act_about_, &QAction::triggered, this, &MainWindow::showAbout);
 
+    /* Help menu — external links */
+    act_website_ = new QAction(QStringLiteral("Encoder Product Page"), this);
+    connect(act_website_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/encoder.php")));
+    });
+
+    act_dnas_ = new QAction(QStringLiteral("Mcaster1 DNAS Server"), this);
+    connect(act_dnas_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/mcaster1_dnas.php")));
+    });
+
+    act_amp_ = new QAction(QStringLiteral("Mcaster1AMP Player"), this);
+    connect(act_amp_, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/mcaster1amp.php")));
+    });
+
+    act_docs_ = new QAction(QStringLiteral("Documentation"), this);
+    act_docs_->setShortcut(QKeySequence::HelpContents);
+    connect(act_docs_, &QAction::triggered, this, [this]() {
+        QString doc = QCoreApplication::applicationDirPath() +
+                      QStringLiteral("/docs/index.html");
+        if (QFile::exists(doc))
+            QDesktopServices::openUrl(QUrl::fromLocalFile(doc));
+        else
+            QDesktopServices::openUrl(QUrl(QStringLiteral("https://mcaster1.com/encoder.php")));
+    });
+
     act_theme_ = new QAction(QIcon(QStringLiteral(":/icons/theme.svg")),
                              QStringLiteral("Toggle Branded Theme"), this);
     connect(act_theme_, &QAction::triggered, this, []() {
@@ -935,6 +964,12 @@ void MainWindow::createMenus()
     view_menu->addAction(act_theme_);
 
     auto *help_menu = menuBar()->addMenu(QStringLiteral("&Help"));
+    help_menu->addAction(act_docs_);
+    help_menu->addSeparator();
+    help_menu->addAction(act_website_);
+    help_menu->addAction(act_dnas_);
+    help_menu->addAction(act_amp_);
+    help_menu->addSeparator();
     help_menu->addAction(act_about_);
 }
 
