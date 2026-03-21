@@ -218,6 +218,21 @@ Mcaster1DSPEncoder is part of the **Mcaster1** open-source internet radio/video 
 
 ---
 
+## Latest Release — Qt v1.3.0
+
+See **[RELEASENOTES.md](RELEASENOTES.md)** for the full v1.3.0 release notes.
+See **[FEATURES.md](FEATURES.md)** for a complete feature comparison (Qt 6 vs Legacy MFC).
+
+**Installer:** `Mcaster1DSPEncoderQT_Setup_1.3.0.exe` (user-space, no UAC required)
+**Install Path:** `C:\Users\USERNAME\Mcaster1\Mcaster1DSPEncoder\`
+
+Key additions in v1.3.0:
+- 12 broadcast-grade video transitions (gamma-correct blending, feathered edges)
+- WASAPI loopback audio capture (system audio, no virtual cables)
+- DXGI screen capture, MF H.264 encoder, MF video file decoder
+- Platform integration (taskbar badge, toast notifications)
+- NSIS installer with config preservation on upgrade
+
 ## Roadmap
 
 See **[ROADMAP.md](ROADMAP.md)** for the full development roadmap and feature matrix.

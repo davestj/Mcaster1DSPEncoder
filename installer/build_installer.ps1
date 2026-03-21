@@ -119,12 +119,49 @@ if (Test-Path $iconSrc) {
 # ── Copy documentation ───────────────────────────────────────
 $docsDir = Join-Path $StagingDir "docs"
 New-Item -ItemType Directory -Path $docsDir -Force | Out-Null
+
+# HTML docs
 $docsSrc = Join-Path $ProjectRoot "docs\index.html"
 if (Test-Path $docsSrc) {
     Copy-Item $docsSrc $docsDir
     Write-Host "[Stage] docs/index.html copied"
-} else {
-    Write-Host "[WARN] docs/index.html not found" -ForegroundColor Yellow
+}
+
+# Project documentation (Markdown files)
+$mdFiles = @("README.md", "RELEASENOTES.md", "FEATURES.md", "CHANGELOG.md",
+             "ROADMAP.md", "CREDITS.md", "FORKS.md", "LICENSE")
+foreach ($md in $mdFiles) {
+    $mdSrc = Join-Path $ProjectRoot $md
+    if (Test-Path $mdSrc) {
+        Copy-Item $mdSrc $docsDir
+        Write-Host "[Stage] docs/$md"
+    }
+}
+Write-Host "[Stage] Documentation bundled"
+
+# ── Ensure FFmpeg DLLs from build dir ────────────────────────
+$ffmpegDlls = @("avcodec-*.dll", "avformat-*.dll", "avutil-*.dll",
+                "swresample-*.dll", "swscale-*.dll")
+foreach ($pattern in $ffmpegDlls) {
+    Get-ChildItem "$BuildDir\$pattern" -ErrorAction SilentlyContinue | ForEach-Object {
+        if (-not (Test-Path "$StagingDir\$($_.Name)")) {
+            Copy-Item $_.FullName $StagingDir -Force
+            Write-Host "[Stage] FFmpeg: $($_.Name)"
+        }
+    }
+}
+
+# ── Ensure SSL DLLs ─────────────────────────────────────────
+$sslDlls = @("libcrypto-3-x64.dll", "libssl-3-x64.dll")
+foreach ($dll in $sslDlls) {
+    if (-not (Test-Path "$StagingDir\$dll")) {
+        $src = "$BuildDir\$dll"
+        if (-not (Test-Path $src)) { $src = "$VcpkgBin\$dll" }
+        if (Test-Path $src) {
+            Copy-Item $src $StagingDir -Force
+            Write-Host "[Stage] SSL: $dll"
+        }
+    }
 }
 
 # ── Copy code signing certificate (if present) ──────────────
@@ -325,14 +362,14 @@ Write-Host "[NSIS] Compiling installer..." -ForegroundColor Cyan
 
 $nsiScript = Join-Path $InstallerDir "mcaster1_installer.nsi"
 
-& $MakeNsis /DSTAGING_DIR="$StagingDir" /NOCD "$nsiScript"
+& $MakeNsis /DSTAGING_DIR="$StagingDir" /DOUTDIR="$InstallerDir" /NOCD "$nsiScript"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] NSIS compilation failed with exit code $LASTEXITCODE" -ForegroundColor Red
     exit $LASTEXITCODE
 }
 
-# Move output to installer directory
+# Verify output
 $outputExe = Join-Path $InstallerDir "Mcaster1DSPEncoderQT_Setup_$Version.exe"
 if (Test-Path $outputExe) {
     Write-Host ""
@@ -340,12 +377,8 @@ if (Test-Path $outputExe) {
     $size = (Get-Item $outputExe).Length / 1MB
     Write-Host "          Size: $([math]::Round($size, 1)) MB"
 } else {
-    # NSIS may output to current directory
-    $altOutput = "Mcaster1DSPEncoderQT_Setup_$Version.exe"
-    if (Test-Path $altOutput) {
-        Move-Item $altOutput $InstallerDir -Force
-        Write-Host "[SUCCESS] Installer built: $InstallerDir\$altOutput" -ForegroundColor Green
-    }
+    Write-Host "[ERROR] Installer exe not found at $outputExe" -ForegroundColor Red
+    exit 1
 }
 
 # ── Sign the installer (if signing keys available) ───────────
