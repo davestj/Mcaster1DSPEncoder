@@ -267,3 +267,16 @@ build/win-qt/
 # ---------------------------------------------------------------
 *.xcent
 CodeResources
+
+# ---------------------------------------------------------------
+# NSIS installer build artifacts (staging dir + output exe)
+# ---------------------------------------------------------------
+installer/staging/
+installer/*.exe
+
+# ---------------------------------------------------------------
+# Code signing keys (NEVER commit private keys or passwords)
+# ---------------------------------------------------------------
+*.pfx
+*.p12
+SIGNING-KEYS/
