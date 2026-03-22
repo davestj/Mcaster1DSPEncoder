@@ -1,0 +1,64 @@
+# =============================================================================
+# Mcaster1 VoicTune — Voice Analysis & Coaching Daemon (systemd unit)
+# MCaster1 LLC / David St John <davestj@mcaster1.com>
+#
+# DEV MODE — runs from /var/www/mcaster1.com/Mcaster1DSPEncoder/
+#
+# Voice analysis daemon: FFT, pitch detection, RMS/LUFS metering,
+# voice coaching, Ollama AI integration, USB/BT mic hot-plug.
+# HTTP admin on port 8350, HTTPS admin on port 8354, WebSocket on port 8355.
+#
+# Install:
+#   sudo cp install/mcaster1-voictune.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable mcaster1-voictune
+#   sudo systemctl start mcaster1-voictune
+#
+# Check status:
+#   sudo systemctl status mcaster1-voictune
+#   curl -s http://127.0.0.1:8350/api/v1/voictune/health | python3 -m json.tool
+# =============================================================================
+
+[Unit]
+Description=Mcaster1 VoicTune — Voice Analysis & Coaching Daemon v1.0.0
+Documentation=https://mcaster1.com
+After=network-online.target mysql.service mariadb.service
+Wants=network-online.target mysql.service
+
+[Service]
+Type=simple
+User=mediacast1
+Group=mediacast1
+
+# Binary and config — DEV paths
+WorkingDirectory=/var/www/mcaster1.com/Mcaster1DSPEncoder
+ExecStart=/var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/mcaster1-voictune \
+    --config /var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/config/mcaster1_voictune.yaml
+
+# Graceful stop
+TimeoutStopSec=15
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# Environment
+Environment=HOME=/var/www/mcaster1.com/Mcaster1DSPEncoder
+
+# Resource limits — audio capture + FFT worker threads + WebSocket connections
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mcaster1-voictune
+
+[Install]
+WantedBy=multi-user.target

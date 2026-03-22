@@ -9,7 +9,7 @@ dnl   --disable-encoder          Skip codec libs (HTTP-only test build)
 dnl   --disable-medialib         Skip TagLib/avformat metadata libs
 
 AC_PREREQ([2.69])
-AC_INIT([mcaster1-dsp-encoder], [1.5.0], [support@mcaster1.com])
+AC_INIT([mcaster1-dsp-encoder], [1.8.0], [support@mcaster1.com])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 AC_CONFIG_SRCDIR([src/linux/main_cli.cpp])
 AC_CONFIG_HEADERS([config.h])

@@ -9,7 +9,7 @@
 #   ./configure
 #   make -j$(nproc)
 
-bin_PROGRAMS = mcaster1-dsp-encoder-admin mcaster1-dsp-encoder
+bin_PROGRAMS = mcaster1-dsp-encoder-admin mcaster1-dsp-encoder mcaster1-voictune
 
 # ── Include paths ──────────────────────────────────────────────────────────────
 AM_CPPFLAGS = \
@@ -237,6 +237,34 @@ dist_appinc_webuiDATA = \
     web_ui/app/inc/logger.php \
     web_ui/app/inc/mc1_config.php \
     web_ui/app/inc/traits.db.class.php
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VOICTUNE BINARY — Voice Analysis & Coaching Daemon (Phase VT)
+# ══════════════════════════════════════════════════════════════════════════════
+
+mcaster1_voictune_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_VOICTUNE_BUILD
+mcaster1_voictune_SOURCES = \
+    voictune/main_voictune.cpp \
+    voictune/vt_http_api.cpp \
+    voictune/vt_config.cpp
+
+mcaster1_voictune_LDADD = \
+    $(OPENSSL_LIBS) \
+    $(LIBYAML_LIBS) \
+    $(MARIADB_LIBS) \
+    -lpthread \
+    -lcrypt \
+    -lm
+
+# VoicTune uses PortAudio for mic capture (optional — can run browser-mic-only mode)
+if HAVE_PORTAUDIO
+mcaster1_voictune_LDADD += $(PORTAUDIO_LIBS)
+endif
+
+# VoicTune uses JACK for advanced audio routing (optional)
+if HAVE_JACK
+mcaster1_voictune_LDADD += $(JACK_LIBS)
+endif
 
 # ── Extra dist ─────────────────────────────────────────────────────────────────
 EXTRA_DIST = \

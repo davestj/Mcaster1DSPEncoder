@@ -1,0 +1,57 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Mcaster1 VoicTune v1.0.0 — Voice Analysis & Coaching Daemon
+# Default configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+voictune:
+
+  http:
+    port: 8350
+    ssl-port: 8354
+    bind: "0.0.0.0"
+    # ssl-cert: "/etc/ssl/certs/encoder.mcaster1.com.pem"
+    # ssl-key:  "/etc/ssl/private/encoder.mcaster1.com.key"
+
+  auth:
+    username: "djpulse"
+    password: "hackme"
+    api-token: ""
+    session-timeout-sec: 3600
+
+  audio:
+    input-device-index: -1       # -1 = system default mic
+    output-device-index: -1      # -1 = system default output
+    sample-rate: 48000
+    channels: 1                  # Mono for voice analysis
+    buffer-frames: 1024
+    preferred-usb-id: ""         # Sticky USB VID:PID (e.g., "b58e:9e84")
+    preferred-bt-addr: ""        # Sticky Bluetooth MAC (e.g., "AA:BB:CC:DD:EE:FF")
+    hotplug-enabled: true        # Monitor for USB/BT device changes
+    hotplug-settle-ms: 500       # Wait after plug event before re-enumerate
+    monitor-output: false        # Route processed voice to output for monitoring
+
+  websocket:
+    port: 8355
+    max-clients: 4
+
+  analysis:
+    fft-size: 4096               # FFT window size (power of 2)
+    hop-size: 1024               # FFT hop (overlap = fft-size - hop-size)
+    lufs-window-ms: 400          # ITU-R BS.1770-4 momentary loudness window
+
+  ollama:
+    endpoint: "http://127.0.0.1:11434"
+    model: "llama3.2"
+    timeout-sec: 30
+
+  database:
+    host: "127.0.0.1"
+    port: 3306
+    # user and password loaded from ~/.my.cnf or set here
+    user: ""
+    password: ""
+    db_name: "mcaster1_voictune"
+
+  log:
+    dir: "/var/log/mcaster1"
+    level: 4                     # 1=CRIT, 2=ERR, 3=WARN, 4=INFO, 5=DEBUG
