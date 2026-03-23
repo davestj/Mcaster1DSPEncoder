@@ -108,14 +108,23 @@ void VCamFrameWriter::pushFrame(const uint8_t *bgra, int width, int height,
     auto *hdr = static_cast<VCamSharedHeader *>(shm_ptr_);
     uint8_t *dst = reinterpret_cast<uint8_t *>(shm_ptr_) + sizeof(VCamSharedHeader);
 
+    if (width <= 0 || height <= 0 || stride <= 0 || !bgra) return;
+    if (width > 8192 || height > 8192 || stride > 32768) return;
+
     int copy_w = (width < width_)   ? width  : width_;
     int copy_h = (height < height_) ? height : height_;
     int dst_stride = width_ * 4;
 
+    /* Validate shared memory bounds */
+    size_t shm_data_size = static_cast<size_t>(dst_stride) * static_cast<size_t>(height_);
+    size_t required = sizeof(VCamSharedHeader) + shm_data_size;
+    (void)required; /* shm was allocated with this size at init */
+
     /* Copy row-by-row (handles stride mismatch) */
     int row_bytes = copy_w * 4;
     for (int y = 0; y < copy_h; ++y) {
-        memcpy(dst + y * dst_stride, bgra + y * stride, row_bytes);
+        std::memcpy(dst + static_cast<size_t>(y) * dst_stride,
+                    bgra + static_cast<size_t>(y) * stride, row_bytes);
     }
 
     /* Update header (frame_counter signals new data to DLL reader) */

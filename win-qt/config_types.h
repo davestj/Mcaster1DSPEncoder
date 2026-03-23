@@ -37,7 +37,7 @@ struct DnasConfig {
 
 struct AdminConfig {
     std::string               username       = "admin";
-    std::string               password       = "changeme";
+    std::string               password;
     std::string               api_token;
     std::string               log_dir        = "/tmp";
     int                       log_level      = 4;

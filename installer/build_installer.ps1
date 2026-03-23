@@ -29,7 +29,7 @@ $BuildDir      = Join-Path $ProjectRoot "win-qt\build\win-qt\$Config"
 $StagingDir    = Join-Path $InstallerDir "staging"
 $VcpkgBin      = "C:\vcpkg\installed\x64-windows\bin"
 $SigningKeys   = "C:\Users\dstjohn\dev\00_mcaster1.com\SIGNING-KEYS"
-$Version       = "1.3.0"
+$Version       = (Get-Content (Join-Path $ProjectRoot "VERSION.txt") -First 1).Trim()
 
 # Locate NSIS
 $NsisPaths = @(
@@ -376,7 +376,7 @@ Write-Host "[NSIS] Compiling installer..." -ForegroundColor Cyan
 
 $nsiScript = Join-Path $InstallerDir "mcaster1_installer.nsi"
 
-& $MakeNsis /DSTAGING_DIR="$StagingDir" /DOUTDIR="$InstallerDir" /NOCD "$nsiScript"
+& $MakeNsis /DSTAGING_DIR="$StagingDir" /DOUTDIR="$InstallerDir" /DPRODUCT_VERSION="$Version" /NOCD "$nsiScript"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] NSIS compilation failed with exit code $LASTEXITCODE" -ForegroundColor Red

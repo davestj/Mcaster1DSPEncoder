@@ -199,14 +199,22 @@ bool VideoEncoder::encode(const VideoFrame& frame)
     if (!transform || !callback_) return false;
 
     /* Create input sample from BGRA frame data */
+    if (frame.stride <= 0 || frame.height <= 0 ||
+        frame.stride > 32768 || frame.height > 8192 || !frame.data) {
+        fprintf(stderr, "[MF-Enc] Invalid frame: stride=%d height=%d\n",
+                frame.stride, frame.height);
+        return false;
+    }
+
     IMFMediaBuffer *in_buf = nullptr;
-    DWORD buf_size = static_cast<DWORD>(frame.stride * frame.height);
+    DWORD buf_size = static_cast<DWORD>(
+        static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height));
     HRESULT hr = MFCreateMemoryBuffer(buf_size, &in_buf);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr) || !in_buf) return false;
 
     BYTE *buf_data = nullptr;
     hr = in_buf->Lock(&buf_data, nullptr, nullptr);
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr) && buf_data) {
         std::memcpy(buf_data, frame.data, buf_size);
         in_buf->Unlock();
         in_buf->SetCurrentLength(buf_size);
@@ -244,11 +252,15 @@ bool VideoEncoder::encode(const VideoFrame& frame)
         IMFSample *out_sample = nullptr;
         if (!(stream_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)) {
             MFCreateSample(&out_sample);
+            if (!out_sample) break;
             IMFMediaBuffer *out_buf = nullptr;
             DWORD alloc_size = stream_info.cbSize > 0 ? stream_info.cbSize : 1048576;
-            MFCreateMemoryBuffer(alloc_size, &out_buf);
-            if (out_sample && out_buf) out_sample->AddBuffer(out_buf);
-            if (out_buf) out_buf->Release();
+            if (FAILED(MFCreateMemoryBuffer(alloc_size, &out_buf)) || !out_buf) {
+                out_sample->Release();
+                break;
+            }
+            out_sample->AddBuffer(out_buf);
+            out_buf->Release();
             out_data.pSample = out_sample;
         }
 
@@ -349,11 +361,15 @@ void VideoEncoder::flush()
         IMFSample *out_sample = nullptr;
         if (!(stream_info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES)) {
             MFCreateSample(&out_sample);
+            if (!out_sample) break;
             IMFMediaBuffer *out_buf = nullptr;
             DWORD alloc_size = stream_info.cbSize > 0 ? stream_info.cbSize : 1048576;
-            MFCreateMemoryBuffer(alloc_size, &out_buf);
-            if (out_sample && out_buf) out_sample->AddBuffer(out_buf);
-            if (out_buf) out_buf->Release();
+            if (FAILED(MFCreateMemoryBuffer(alloc_size, &out_buf)) || !out_buf) {
+                out_sample->Release();
+                break;
+            }
+            out_sample->AddBuffer(out_buf);
+            out_buf->Release();
             out_data.pSample = out_sample;
         }
 

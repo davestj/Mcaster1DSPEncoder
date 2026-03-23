@@ -319,6 +319,12 @@ bool loadConfig(const QString &yaml_path,
         error_out = QStringLiteral("Cannot open config file: ") + yaml_path;
         return false;
     }
+    constexpr qint64 kMaxConfigSize = 10 * 1024 * 1024; /* 10 MB */
+    if (file.size() > kMaxConfigSize) {
+        error_out = QStringLiteral("Config file too large (max 10 MB): ") + yaml_path;
+        file.close();
+        return false;
+    }
     QByteArray data = file.readAll();
     file.close();
 
