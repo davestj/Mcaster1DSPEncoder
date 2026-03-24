@@ -601,6 +601,14 @@ typedef struct {
 
 	/* Mcaster1DNAS remote stats proxy target                                     */
 	mc1DnasConfig   dnas;
+
+	/* Ollama AI configuration (Phase AI-1)                                      */
+	struct {
+	    char endpoint[256];      /* Ollama API URL — default http://127.0.0.1:11434 */
+	    char model[64];          /* Default model — e.g. llama3.2                    */
+	    int  timeout_sec;        /* HTTP request timeout in seconds — default 60     */
+	    int  enabled;            /* 0 = bypass AI completely, 1 = active             */
+	} ollama;
 } mc1AdminConfig;
 
 /* Single global instance — defined in config_yaml.cpp,

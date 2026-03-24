@@ -41,10 +41,13 @@
 
 #include "mc1_logger.h"
 #include "mc1_db.h"
+#include "voictune/ollama_client.h"
+#include "voictune/ai_prompt_templates.h"
 
 #include <crypt.h>
 #include <string>
 #include <map>
+#include <unordered_map>
 #include <vector>
 #include <mutex>
 #include <thread>
@@ -70,6 +73,7 @@ using json = nlohmann::json;
 
 static std::string      g_webroot;
 static FastCgiClient*   g_fcgi = nullptr;
+static mc1vt::OllamaClient* g_ollama = nullptr;
 
 // Per-listener context — keeps server alive and joinable
 struct ListenerCtx {
@@ -78,6 +82,38 @@ struct ListenerCtx {
 };
 static std::vector<ListenerCtx> g_listeners;
 static std::mutex               g_listeners_mtx;
+
+/* ── Login rate limiter ───────────────────────────────────────────────────── */
+
+struct LoginAttempt { int count; time_t window_start; };
+static std::map<std::string, LoginAttempt> g_login_attempts;
+static std::mutex                          g_login_rate_mtx;
+static constexpr int    LOGIN_RATE_MAX_ATTEMPTS = 5;
+static constexpr int    LOGIN_RATE_WINDOW_SECS  = 60;
+
+static bool login_rate_check(const std::string& remote_addr)
+{
+    std::lock_guard<std::mutex> lk(g_login_rate_mtx);
+    auto now = time(nullptr);
+    auto it = g_login_attempts.find(remote_addr);
+    if (it == g_login_attempts.end()) {
+        g_login_attempts[remote_addr] = {1, now};
+        return true;
+    }
+    if (now - it->second.window_start >= LOGIN_RATE_WINDOW_SECS) {
+        it->second = {1, now};
+        return true;
+    }
+    if (it->second.count >= LOGIN_RATE_MAX_ATTEMPTS) return false;
+    it->second.count++;
+    return true;
+}
+
+static void login_rate_reset(const std::string& remote_addr)
+{
+    std::lock_guard<std::mutex> lk(g_login_rate_mtx);
+    g_login_attempts.erase(remote_addr);
+}
 
 /* ── Session store ────────────────────────────────────────────────────────── */
 
@@ -340,12 +376,27 @@ static void setup_routes(httplib::Server& svr)
     // ── Static assets (CSS/JS/fonts — no auth so login page can use them) ─
     svr.Get(R"(/(.+\.(css|js|mjs|ico|png|jpg|jpeg|gif|webp|svg|woff|woff2|ttf|otf)))",
         [](const httplib::Request& req, httplib::Response& res) {
-            serve_file(g_webroot + "/" + req.matches[1].str(), res);
+            // Security: reject path traversal attempts (../ in the URL)
+            std::string asset = req.matches[1].str();
+            if (asset.find("..") != std::string::npos) {
+                res.status = 400;
+                res.set_content("400 Bad Request", "text/plain");
+                return;
+            }
+            serve_file(g_webroot + "/" + asset, res);
         });
 
     // ── POST /api/v1/auth/login ────────────────────────────────────────────
     svr.Post("/api/v1/auth/login",
         [](const httplib::Request& req, httplib::Response& res) {
+            // Rate limiting: max 5 attempts per IP per 60 seconds
+            if (!login_rate_check(req.remote_addr)) {
+                MC1_WARN("auth: rate limited login from " + req.remote_addr);
+                res.status = 429;
+                res.set_content(R"({"error":"Too many login attempts. Try again later."})",
+                                "application/json");
+                return;
+            }
             json body;
             try { body = json::parse(req.body); }
             catch (...) {
@@ -357,12 +408,17 @@ static void setup_routes(httplib::Server& svr)
             std::string pass = body.value("password", "");
             std::string authed_user;
             if (try_login(user, pass, authed_user)) {
+                login_rate_reset(req.remote_addr);
                 std::string tok = session_create(authed_user);
                 int ttl = gAdminConfig.session_timeout_secs > 0
                               ? gAdminConfig.session_timeout_secs : 3600;
+                bool is_https = req.has_header("X-Forwarded-Proto")
+                    ? req.get_header_value("X-Forwarded-Proto") == "https"
+                    : (req.get_header_value("Host").find("8344") != std::string::npos);
                 std::string cookie = "mc1session=" + tok
-                    + "; Path=/; HttpOnly; SameSite=Strict; Max-Age="
+                    + "; Path=/; HttpOnly; SameSite=Lax; Max-Age="
                     + std::to_string(ttl);
+                if (is_https) cookie += "; Secure";
                 res.set_header("Set-Cookie", cookie);
                 MC1_INFO("auth: login ok user=" + authed_user);
                 json r; r["ok"] = true; r["redirect"] = "/dashboard";
@@ -1633,6 +1689,1435 @@ static void setup_routes(httplib::Server& svr)
         });
 #endif  // MC1_HTTP_TEST_BUILD
 
+    // ── GET /api/v1/effects/meters — live meter data from effects rack ──────
+    svr.Get("/api/v1/effects/meters",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                auto& rack = g_pipeline->global_effects_rack();
+                auto meters = rack.get_all_meters();
+                auto rack_json = rack.to_json();
+                json arr = json::array();
+                std::unordered_map<int, std::string> id_to_type;
+                if (rack_json.contains("units") && rack_json["units"].is_array()) {
+                    for (const auto& u : rack_json["units"]) {
+                        if (u.contains("id") && u.contains("type"))
+                            id_to_type[u["id"].get<int>()] = u["type"].get<std::string>();
+                    }
+                }
+                for (const auto& [uid, md] : meters) {
+                    json entry;
+                    entry["id"]       = uid;
+                    entry["type"]     = id_to_type.count(uid) ? id_to_type[uid] : "unknown";
+                    entry["input_db"]  = std::round(md.input_db * 10.0f) / 10.0f;
+                    entry["output_db"] = std::round(md.output_db * 10.0f) / 10.0f;
+                    if (md.gain_reduction_db != 0.0f)
+                        entry["gain_reduction_db"] = std::round(md.gain_reduction_db * 10.0f) / 10.0f;
+                    if (!md.gate_open)
+                        entry["gate_open"] = false;
+                    if (!md.eq_response.empty()) {
+                        json eq_arr = json::array();
+                        for (float v : md.eq_response) eq_arr.push_back(std::round(v * 10000.0f) / 10000.0f);
+                        entry["eq_response"] = eq_arr;
+                    }
+                    arr.push_back(entry);
+                }
+                res.set_content(arr.dump(), "application/json");
+#else
+                res.set_content("[]", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/effects/global/routing — get routing table ──────────────
+    svr.Get("/api/v1/effects/global/routing",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"Pipeline not running"})", "application/json");
+                    return;
+                }
+                auto routing = g_pipeline->global_effects_rack().get_routing();
+                json arr = json::array();
+                for (const auto& r : routing) {
+                    arr.push_back({
+                        {"from", r.from_unit}, {"to", r.to_unit},
+                        {"from_port", r.from_port}, {"to_port", r.to_port}
+                    });
+                }
+                json result; result["ok"] = true; result["routing"] = arr;
+                res.set_content(result.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":true,"routing":[]})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/effects/global/routing — set routing table ──────────────
+    svr.Put("/api/v1/effects/global/routing",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                if (!g_pipeline || !body.contains("routing") || !body["routing"].is_array()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"routing array required"})", "application/json");
+                    return;
+                }
+                std::vector<mc1dsp::RoutingEntry> routing;
+                for (const auto& r : body["routing"]) {
+                    mc1dsp::RoutingEntry entry;
+                    entry.from_unit = r.value("from", "");
+                    entry.to_unit   = r.value("to", "");
+                    entry.from_port = r.value("from_port", 0);
+                    entry.to_port   = r.value("to_port", 0);
+                    routing.push_back(entry);
+                }
+                g_pipeline->global_effects_rack().set_routing(routing);
+                auto result_routing = g_pipeline->global_effects_rack().get_routing();
+                json arr = json::array();
+                for (const auto& r : result_routing) {
+                    arr.push_back({
+                        {"from", r.from_unit}, {"to", r.to_unit},
+                        {"from_port", r.from_port}, {"to_port", r.to_port}
+                    });
+                }
+                json result; result["ok"] = true; result["routing"] = arr;
+                result["rack"] = g_pipeline->global_effects_rack().to_json();
+                res.set_content(result.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":true,"routing":[]})", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/effects/profiles — list all effects profiles ────────────
+    svr.Get("/api/v1/effects/profiles",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                auto& db = Mc1Db::instance();
+                std::string sql =
+                    "SELECT id, user_id, profile_name, description, category, "
+                    "effects_chain_json, is_public, use_count, created_at, updated_at "
+                    "FROM mcaster1_encoder.mixer_custom_units "
+                    "WHERE user_id=1 OR is_public=1";
+                std::string cat = req.get_param_value("category");
+                if (!cat.empty()) {
+                    sql += " AND category='" + db.escape(cat) + "'";
+                }
+                sql += " ORDER BY use_count DESC, profile_name ASC";
+                auto rows = db.query(sql);
+                json arr = json::array();
+                for (const auto& row : rows) {
+                    json p;
+                    p["id"]            = std::stoi(row.at("id"));
+                    p["user_id"]       = std::stoi(row.at("user_id"));
+                    p["profile_name"]  = row.at("profile_name");
+                    p["description"]   = row.at("description");
+                    p["category"]      = row.at("category");
+                    try { p["effects_chain_json"] = json::parse(row.at("effects_chain_json")); }
+                    catch (...) { p["effects_chain_json"] = json::array(); }
+                    p["is_public"]     = row.at("is_public") == "1";
+                    p["use_count"]     = std::stoi(row.at("use_count"));
+                    p["created_at"]    = row.at("created_at");
+                    p["updated_at"]    = row.at("updated_at");
+                    arr.push_back(p);
+                }
+                json r; r["ok"] = true; r["profiles"] = arr;
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/effects/profiles/{id} — get single profile ──────────────
+    svr.Get(R"(/api/v1/effects/profiles/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                auto& db = Mc1Db::instance();
+                auto rows = db.query(
+                    "SELECT id, user_id, profile_name, description, category, "
+                    "effects_chain_json, is_public, use_count, created_at, updated_at "
+                    "FROM mcaster1_encoder.mixer_custom_units WHERE id=" + std::to_string(pid));
+                if (rows.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Profile not found"})", "application/json");
+                    return;
+                }
+                const auto& row = rows[0];
+                json p;
+                p["id"]            = std::stoi(row.at("id"));
+                p["user_id"]       = std::stoi(row.at("user_id"));
+                p["profile_name"]  = row.at("profile_name");
+                p["description"]   = row.at("description");
+                p["category"]      = row.at("category");
+                try { p["effects_chain_json"] = json::parse(row.at("effects_chain_json")); }
+                catch (...) { p["effects_chain_json"] = json::array(); }
+                p["is_public"]     = row.at("is_public") == "1";
+                p["use_count"]     = std::stoi(row.at("use_count"));
+                p["created_at"]    = row.at("created_at");
+                p["updated_at"]    = row.at("updated_at");
+                json r; r["ok"] = true; r["profile"] = p;
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/effects/profiles — create new profile ──────────────────
+    svr.Post("/api/v1/effects/profiles",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                auto& db = Mc1Db::instance();
+                std::string name = body.value("profile_name", "");
+                std::string desc = body.value("description", "");
+                std::string cat  = body.value("category", "custom");
+                std::string chain_str = body.contains("effects_chain_json")
+                    ? body["effects_chain_json"].dump() : "[]";
+                if (name.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"profile_name required"})", "application/json");
+                    return;
+                }
+                bool ok = db.execf(
+                    "INSERT INTO mcaster1_encoder.mixer_custom_units "
+                    "(user_id, profile_name, description, category, effects_chain_json, is_public) "
+                    "VALUES (1, '%s', '%s', '%s', '%s', 0)",
+                    db.escape(name).c_str(),
+                    db.escape(desc).c_str(),
+                    db.escape(cat).c_str(),
+                    db.escape(chain_str).c_str());
+                json r; r["ok"] = ok;
+                if (!ok) r["error"] = "Insert failed (duplicate name?)";
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/effects/profiles/save-current — save current rack as profile
+    svr.Post("/api/v1/effects/profiles/save-current",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                std::string name = body.value("profile_name", "");
+                std::string desc = body.value("description", "");
+                std::string cat  = body.value("category", "custom");
+                if (name.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"profile_name required"})", "application/json");
+                    return;
+                }
+#ifndef MC1_HTTP_TEST_BUILD
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                auto rack_json = g_pipeline->global_effects_rack().to_json();
+                json chain = json::array();
+                if (rack_json.contains("units") && rack_json["units"].is_array()) {
+                    for (const auto& u : rack_json["units"]) {
+                        json entry;
+                        entry["type"] = u.value("type", "unknown");
+                        if (u.contains("params")) entry["params"] = u["params"];
+                        chain.push_back(entry);
+                    }
+                }
+                auto& db = Mc1Db::instance();
+                std::string chain_str = chain.dump();
+                bool ok = db.execf(
+                    "INSERT INTO mcaster1_encoder.mixer_custom_units "
+                    "(user_id, profile_name, description, category, effects_chain_json, is_public) "
+                    "VALUES (1, '%s', '%s', '%s', '%s', 0) "
+                    "ON DUPLICATE KEY UPDATE effects_chain_json='%s', description='%s', "
+                    "category='%s', updated_at=NOW()",
+                    db.escape(name).c_str(),
+                    db.escape(desc).c_str(),
+                    db.escape(cat).c_str(),
+                    db.escape(chain_str).c_str(),
+                    db.escape(chain_str).c_str(),
+                    db.escape(desc).c_str(),
+                    db.escape(cat).c_str());
+                json r; r["ok"] = ok;
+                r["effects_chain_json"] = chain;
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── POST /api/v1/effects/profiles/{id}/apply — apply a profile to the rack
+    svr.Post(R"(/api/v1/effects/profiles/(\d+)/apply)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                auto& db = Mc1Db::instance();
+                auto rows = db.query(
+                    "SELECT effects_chain_json FROM mcaster1_encoder.mixer_custom_units WHERE id=" + std::to_string(pid));
+                if (rows.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Profile not found"})", "application/json");
+                    return;
+                }
+#ifndef MC1_HTTP_TEST_BUILD
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                json chain;
+                try { chain = json::parse(rows[0].at("effects_chain_json")); }
+                catch (...) {
+                    res.status = 500;
+                    res.set_content(R"({"error":"Invalid chain JSON in DB"})", "application/json");
+                    return;
+                }
+                auto& rack = g_pipeline->global_effects_rack();
+                auto cur = rack.to_json();
+                if (cur.contains("units") && cur["units"].is_array()) {
+                    std::vector<int> ids;
+                    for (const auto& u : cur["units"]) {
+                        if (u.contains("id")) ids.push_back(u["id"].get<int>());
+                    }
+                    for (int uid : ids) rack.remove_unit(uid);
+                }
+                int added = 0;
+                for (const auto& unit : chain) {
+                    if (!unit.contains("type")) continue;
+                    std::string type = unit["type"].get<std::string>();
+                    auto new_unit = rack.create_unit(type);
+                    if (new_unit) {
+                        if (unit.contains("params")) {
+                            new_unit->set_params(unit["params"]);
+                        }
+                        rack.add_unit(std::move(new_unit));
+                        added++;
+                    }
+                }
+                db.execf("UPDATE mcaster1_encoder.mixer_custom_units SET use_count=use_count+1 WHERE id=%d", pid);
+                json r; r["ok"] = true; r["applied_count"] = added;
+                r["rack"] = rack.to_json();
+                res.set_content(r.dump(2), "application/json");
+#else
+                res.set_content(R"({"ok":false})", "application/json");
+#endif
+            });
+        });
+
+    // ── PUT /api/v1/effects/profiles/{id} — update a profile ────────────────
+    svr.Put(R"(/api/v1/effects/profiles/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                auto& db = Mc1Db::instance();
+                auto check = db.query(
+                    "SELECT user_id FROM mcaster1_encoder.mixer_custom_units WHERE id=" + std::to_string(pid));
+                if (check.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Profile not found"})", "application/json");
+                    return;
+                }
+                if (check[0].at("user_id") == "0") {
+                    res.status = 403;
+                    res.set_content(R"({"error":"Cannot modify built-in profiles"})", "application/json");
+                    return;
+                }
+                std::string sets;
+                if (body.contains("profile_name"))
+                    sets += "profile_name='" + db.escape(body["profile_name"].get<std::string>()) + "',";
+                if (body.contains("description"))
+                    sets += "description='" + db.escape(body["description"].get<std::string>()) + "',";
+                if (body.contains("category"))
+                    sets += "category='" + db.escape(body["category"].get<std::string>()) + "',";
+                if (body.contains("effects_chain_json"))
+                    sets += "effects_chain_json='" + db.escape(body["effects_chain_json"].dump()) + "',";
+                if (sets.empty()) {
+                    res.set_content(R"({"ok":true})", "application/json");
+                    return;
+                }
+                sets.pop_back();
+                bool ok = db.execf("UPDATE mcaster1_encoder.mixer_custom_units SET %s WHERE id=%d",
+                    sets.c_str(), pid);
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── DELETE /api/v1/effects/profiles/{id} — delete a profile ─────────────
+    svr.Delete(R"(/api/v1/effects/profiles/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                auto& db = Mc1Db::instance();
+                auto check = db.query(
+                    "SELECT user_id FROM mcaster1_encoder.mixer_custom_units WHERE id=" + std::to_string(pid));
+                if (check.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Profile not found"})", "application/json");
+                    return;
+                }
+                if (check[0].at("user_id") == "0") {
+                    res.status = 403;
+                    res.set_content(R"({"error":"Cannot delete built-in profiles"})", "application/json");
+                    return;
+                }
+                bool ok = db.execf("DELETE FROM mcaster1_encoder.mixer_custom_units WHERE id=%d AND user_id=1", pid);
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/pedalboard/layout — get pedalboard layout ───────────────
+    svr.Get("/api/v1/pedalboard/layout",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string slot_id_str = req.get_param_value("slot_id");
+                auto& db = Mc1Db::instance();
+                std::string sql = "SELECT layout_json, cable_json FROM mcaster1_encoder.pedalboard_layouts WHERE user_id=1";
+                if (!slot_id_str.empty() && slot_id_str != "null") {
+                    sql += " AND slot_id=" + db.escape(slot_id_str);
+                } else {
+                    sql += " AND slot_id IS NULL";
+                }
+                sql += " ORDER BY updated_at DESC LIMIT 1";
+                auto rows = db.query(sql);
+                json r; r["ok"] = true;
+                if (!rows.empty()) {
+                    try { r["layout_json"] = json::parse(rows[0].at("layout_json")); }
+                    catch (...) { r["layout_json"] = json::object(); }
+                    try { r["cable_json"] = json::parse(rows[0].at("cable_json")); }
+                    catch (...) { r["cable_json"] = json::array(); }
+                } else {
+                    r["layout_json"] = json::object();
+                    r["cable_json"] = json::array();
+                }
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/pedalboard/layout — save pedalboard layout ──────────────
+    svr.Put("/api/v1/pedalboard/layout",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                auto& db = Mc1Db::instance();
+                std::string layout_str = body.contains("layout_json") ? body["layout_json"].dump() : "{}";
+                std::string cable_str = body.contains("cable_json") ? body["cable_json"].dump() : "[]";
+                std::string slot_clause;
+                if (body.contains("slot_id") && !body["slot_id"].is_null()) {
+                    slot_clause = body["slot_id"].dump();
+                } else {
+                    slot_clause = "NULL";
+                }
+                std::string check_sql = "SELECT id FROM mcaster1_encoder.pedalboard_layouts WHERE user_id=1 AND ";
+                if (slot_clause == "NULL") {
+                    check_sql += "slot_id IS NULL";
+                } else {
+                    check_sql += "slot_id=" + db.escape(slot_clause);
+                }
+                check_sql += " LIMIT 1";
+                auto existing = db.query(check_sql);
+                bool ok;
+                if (!existing.empty()) {
+                    ok = db.execf("UPDATE mcaster1_encoder.pedalboard_layouts SET layout_json='%s', cable_json='%s', updated_at=NOW() WHERE id=%s",
+                        db.escape(layout_str).c_str(), db.escape(cable_str).c_str(), existing[0].at("id").c_str());
+                } else {
+                    ok = db.execf("INSERT INTO mcaster1_encoder.pedalboard_layouts (user_id, slot_id, layout_json, cable_json) VALUES (1, %s, '%s', '%s')",
+                        slot_clause.c_str(), db.escape(layout_str).c_str(), db.escape(cable_str).c_str());
+                }
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/mixer/config — get current mixer configuration ──────────
+    svr.Get("/api/v1/mixer/config",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                auto& db = Mc1Db::instance();
+                auto rows = db.query(
+                    "SELECT id, config_name, skin, channel_json, master_volume "
+                    "FROM mcaster1_encoder.mixer_configs "
+                    "WHERE user_id=1 ORDER BY updated_at DESC LIMIT 1");
+                json r; r["ok"] = true;
+                if (!rows.empty()) {
+                    r["config_id"]    = std::stoi(rows[0].at("id"));
+                    r["config_name"]  = rows[0].at("config_name");
+                    r["skin"]         = rows[0].at("skin");
+                    r["master_volume"] = std::stof(rows[0].at("master_volume"));
+                    try { r["channel_json"] = json::parse(rows[0].at("channel_json")); }
+                    catch (...) { r["channel_json"] = json::array(); }
+                } else {
+                    r["config_name"]   = "Default";
+                    r["skin"]          = "broadcast_dark";
+                    r["master_volume"] = 1.0;
+                    r["channel_json"]  = json::array();
+                }
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/mixer/config — save mixer configuration ─────────────────
+    svr.Put("/api/v1/mixer/config",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                auto& db = Mc1Db::instance();
+                std::string config_name  = body.value("config_name", "Default");
+                std::string skin         = body.value("skin", "broadcast_dark");
+                float master_vol         = body.value("master_volume", 1.0f);
+                std::string channel_str  = body.contains("channel_json") ? body["channel_json"].dump() : "[]";
+
+                auto existing = db.query(
+                    "SELECT id FROM mcaster1_encoder.mixer_configs WHERE user_id=1 LIMIT 1");
+                bool ok;
+                if (!existing.empty()) {
+                    ok = db.execf(
+                        "UPDATE mcaster1_encoder.mixer_configs SET "
+                        "config_name='%s', skin='%s', channel_json='%s', "
+                        "master_volume=%f, updated_at=NOW() WHERE id=%s",
+                        db.escape(config_name).c_str(),
+                        db.escape(skin).c_str(),
+                        db.escape(channel_str).c_str(),
+                        master_vol,
+                        existing[0].at("id").c_str());
+                } else {
+                    ok = db.execf(
+                        "INSERT INTO mcaster1_encoder.mixer_configs "
+                        "(user_id, config_name, skin, channel_json, master_volume) "
+                        "VALUES (1, '%s', '%s', '%s', %f)",
+                        db.escape(config_name).c_str(),
+                        db.escape(skin).c_str(),
+                        db.escape(channel_str).c_str(),
+                        master_vol);
+                }
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/mixer/presets — list all mixer presets ───────────────────
+    svr.Get("/api/v1/mixer/presets",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                auto& db = Mc1Db::instance();
+                auto rows = db.query(
+                    "SELECT id, config_name, skin, master_volume, created_at, updated_at "
+                    "FROM mcaster1_encoder.mixer_configs WHERE user_id=1 "
+                    "ORDER BY updated_at DESC");
+                json arr = json::array();
+                for (const auto& row : rows) {
+                    json p;
+                    p["id"]            = std::stoi(row.at("id"));
+                    p["config_name"]   = row.at("config_name");
+                    p["skin"]          = row.at("skin");
+                    p["master_volume"] = std::stof(row.at("master_volume"));
+                    p["created_at"]    = row.at("created_at");
+                    p["updated_at"]    = row.at("updated_at");
+                    arr.push_back(p);
+                }
+                json r; r["ok"] = true; r["presets"] = arr;
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/mixer/presets/{id} — get single mixer preset ────────────
+    svr.Get(R"(/api/v1/mixer/presets/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                auto& db = Mc1Db::instance();
+                auto rows = db.query(
+                    "SELECT id, config_name, skin, channel_json, master_volume "
+                    "FROM mcaster1_encoder.mixer_configs WHERE id=" + std::to_string(pid) + " AND user_id=1");
+                if (rows.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Preset not found"})", "application/json");
+                    return;
+                }
+                const auto& row = rows[0];
+                json r; r["ok"] = true;
+                r["config_id"]     = std::stoi(row.at("id"));
+                r["config_name"]   = row.at("config_name");
+                r["skin"]          = row.at("skin");
+                r["master_volume"] = std::stof(row.at("master_volume"));
+                try { r["channel_json"] = json::parse(row.at("channel_json")); }
+                catch (...) { r["channel_json"] = json::array(); }
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/mixer/presets — create new mixer preset ────────────────
+    svr.Post("/api/v1/mixer/presets",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                auto& db = Mc1Db::instance();
+                std::string config_name = body.value("config_name", "");
+                std::string skin        = body.value("skin", "broadcast_dark");
+                float master_vol        = body.value("master_volume", 1.0f);
+                std::string channel_str = body.contains("channel_json") ? body["channel_json"].dump() : "[]";
+                if (config_name.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"config_name required"})", "application/json");
+                    return;
+                }
+                bool ok = db.execf(
+                    "INSERT INTO mcaster1_encoder.mixer_configs "
+                    "(user_id, config_name, skin, channel_json, master_volume) "
+                    "VALUES (1, '%s', '%s', '%s', %f)",
+                    db.escape(config_name).c_str(),
+                    db.escape(skin).c_str(),
+                    db.escape(channel_str).c_str(),
+                    master_vol);
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── DELETE /api/v1/mixer/presets/{id} — delete a mixer preset ────────────
+    svr.Delete(R"(/api/v1/mixer/presets/(\d+))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int pid = std::stoi(req.matches[1].str());
+                auto& db = Mc1Db::instance();
+                bool ok = db.execf(
+                    "DELETE FROM mcaster1_encoder.mixer_configs WHERE id=%d AND user_id=1", pid);
+                json r; r["ok"] = ok;
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/ai/status — AI/Ollama availability ──────────────────────
+    svr.Get("/api/v1/ai/status",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json out;
+                out["ok"] = true;
+                out["ai_enabled"] = gAdminConfig.ollama.enabled ? true : false;
+                if (g_ollama) {
+                    bool avail = g_ollama->is_available();
+                    out["available"] = avail;
+                    out["endpoint"]  = g_ollama->endpoint();
+                    out["model"]     = g_ollama->model();
+                    out["timeout_sec"] = gAdminConfig.ollama.timeout_sec;
+                    if (avail) {
+                        auto models_resp = g_ollama->list_models();
+                        if (models_resp.contains("models"))
+                            out["models"] = models_resp["models"];
+                        else
+                            out["models"] = json::array();
+                    }
+                } else {
+                    out["available"] = false;
+                    if (!gAdminConfig.ollama.enabled)
+                        out["error"] = "AI is disabled in configuration";
+                    else
+                        out["error"] = "Ollama client not initialized";
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/ai/config — AI configuration ────────────────────────────
+    svr.Get("/api/v1/ai/config",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json out;
+                out["ok"]          = true;
+                out["enabled"]     = gAdminConfig.ollama.enabled ? true : false;
+                out["endpoint"]    = std::string(gAdminConfig.ollama.endpoint);
+                out["model"]       = std::string(gAdminConfig.ollama.model);
+                out["timeout_sec"] = gAdminConfig.ollama.timeout_sec;
+
+                json status;
+                if (g_ollama) {
+                    bool avail = g_ollama->is_available();
+                    status["reachable"] = avail;
+                    if (avail) {
+                        auto models_resp = g_ollama->list_models();
+                        if (models_resp.contains("models"))
+                            status["models"] = models_resp["models"];
+                        else
+                            status["models"] = json::array();
+                    }
+                } else {
+                    status["reachable"] = false;
+                }
+                out["status"] = status;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/ai/config — update AI configuration at runtime ──────────
+    svr.Put("/api/v1/ai/config",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                if (body.contains("endpoint") && body["endpoint"].is_string()) {
+                    std::string ep = body["endpoint"].get<std::string>();
+                    memset(gAdminConfig.ollama.endpoint, 0, sizeof(gAdminConfig.ollama.endpoint));
+                    strncpy(gAdminConfig.ollama.endpoint, ep.c_str(),
+                            sizeof(gAdminConfig.ollama.endpoint) - 1);
+                }
+                if (body.contains("model") && body["model"].is_string()) {
+                    std::string m = body["model"].get<std::string>();
+                    memset(gAdminConfig.ollama.model, 0, sizeof(gAdminConfig.ollama.model));
+                    strncpy(gAdminConfig.ollama.model, m.c_str(),
+                            sizeof(gAdminConfig.ollama.model) - 1);
+                }
+                if (body.contains("timeout_sec") && body["timeout_sec"].is_number())
+                    gAdminConfig.ollama.timeout_sec = body["timeout_sec"].get<int>();
+                if (body.contains("enabled") && body["enabled"].is_boolean())
+                    gAdminConfig.ollama.enabled = body["enabled"].get<bool>() ? 1 : 0;
+
+                if (gAdminConfig.ollama.enabled) {
+                    if (g_ollama) {
+                        g_ollama->set_endpoint(gAdminConfig.ollama.endpoint);
+                        g_ollama->set_model(gAdminConfig.ollama.model);
+                        g_ollama->set_timeout(gAdminConfig.ollama.timeout_sec);
+                    } else {
+                        g_ollama = new mc1vt::OllamaClient(
+                            gAdminConfig.ollama.endpoint,
+                            gAdminConfig.ollama.model,
+                            gAdminConfig.ollama.timeout_sec);
+                    }
+                    MC1_INFO("Ollama AI config updated — endpoint="
+                             + std::string(gAdminConfig.ollama.endpoint)
+                             + " model=" + std::string(gAdminConfig.ollama.model)
+                             + " timeout=" + std::to_string(gAdminConfig.ollama.timeout_sec) + "s");
+                } else {
+                    delete g_ollama;
+                    g_ollama = nullptr;
+                    MC1_INFO("Ollama AI disabled at runtime via PUT /api/v1/ai/config");
+                }
+
+                json out;
+                out["ok"]          = true;
+                out["enabled"]     = gAdminConfig.ollama.enabled ? true : false;
+                out["endpoint"]    = std::string(gAdminConfig.ollama.endpoint);
+                out["model"]       = std::string(gAdminConfig.ollama.model);
+                out["timeout_sec"] = gAdminConfig.ollama.timeout_sec;
+                if (g_ollama)
+                    out["reachable"] = g_ollama->is_available();
+                else
+                    out["reachable"] = false;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/ai/models — list available AI models ────────────────────
+    svr.Get("/api/v1/ai/models",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json out;
+                if (!gAdminConfig.ollama.enabled) {
+                    out["ok"]         = false;
+                    out["error"]      = "AI is disabled in configuration";
+                    out["ai_enabled"] = false;
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+                if (!g_ollama) {
+                    out["ok"]    = false;
+                    out["error"] = "Ollama client not initialized";
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+                if (!g_ollama->is_available()) {
+                    out["ok"]           = false;
+                    out["error"]        = "Ollama not reachable at " + g_ollama->endpoint();
+                    out["ai_available"] = false;
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+
+                auto models_resp = g_ollama->list_models();
+                out["ok"] = true;
+                if (models_resp.contains("models"))
+                    out["models"] = models_resp["models"];
+                else
+                    out["models"] = json::array();
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/test — test AI connectivity ─────────────────────────
+    svr.Post("/api/v1/ai/test",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json out;
+                out["ok"] = true;
+
+                if (!gAdminConfig.ollama.enabled) {
+                    out["ok"]         = false;
+                    out["error"]      = "AI is disabled in configuration";
+                    out["ai_enabled"] = false;
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+                if (!g_ollama) {
+                    out["ok"]         = false;
+                    out["error"]      = "Ollama client not initialized";
+                    out["ai_enabled"] = true;
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+
+                auto t0 = std::chrono::steady_clock::now();
+                bool reachable = g_ollama->is_available();
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                out["reachable"]   = reachable;
+                out["latency_ms"]  = latency_ms;
+                out["endpoint"]    = g_ollama->endpoint();
+
+                if (reachable) {
+                    auto models_resp = g_ollama->list_models();
+                    if (models_resp.contains("models"))
+                        out["models"] = models_resp["models"];
+                    else
+                        out["models"] = json::array();
+
+                    json body;
+                    try { body = json::parse(req.body); } catch (...) { body = json::object(); }
+                    bool run_test = body.value("run_test", false);
+                    if (run_test) {
+                        auto t2 = std::chrono::steady_clock::now();
+                        json test_result = g_ollama->generate("Say 'hello' in one word.");
+                        auto t3 = std::chrono::steady_clock::now();
+                        int test_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2).count();
+                        if (test_result.contains("error"))
+                            out["test_error"] = test_result["error"];
+                        else
+                            out["test_response"] = test_result.value("response", "");
+                        out["test_latency_ms"] = test_ms;
+                    }
+                } else {
+                    out["error"] = "Ollama not reachable at " + g_ollama->endpoint();
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/chat — chat with AI ─────────────────────────────────
+    svr.Post("/api/v1/ai/chat",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = !gAdminConfig.ollama.enabled
+                        ? "AI is disabled in configuration"
+                        : (!g_ollama ? "Ollama client not initialized" : "Ollama not reachable");
+                    _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                json messages = body.value("messages", json::array());
+                std::string model = body.value("model", "");
+                if (messages.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"messages array required"})", "application/json");
+                    return;
+                }
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages, model);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                } else {
+                    out["ok"]         = true;
+                    out["response"]   = result;
+                    out["model"]      = model.empty() ? g_ollama->model() : model;
+                    out["latency_ms"] = latency_ms;
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/suggest-chain — AI suggests effects chain ───────────
+    svr.Post("/api/v1/ai/suggest-chain",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = "AI not available"; _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                bool apply = body.value("apply", false);
+                json prompt_body = body;
+                prompt_body.erase("apply");
+                std::string user_prompt = "Audio profile:\n" + prompt_body.dump(2);
+                json messages = json::array();
+                messages.push_back({{"role", "system"}, {"content", mc1vt::ai_prompts::CHAIN_SUGGEST_SYSTEM}});
+                messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+
+                std::string ai_text = result.contains("message")
+                    ? result["message"].value("content", "") : "";
+                out["ok"]         = true;
+                out["response"]   = ai_text;
+                out["model"]      = g_ollama->model();
+                out["latency_ms"] = latency_ms;
+                out["applied"]    = false;
+
+                json chain_json;
+                bool chain_parsed = false;
+                try {
+                    chain_json = json::parse(ai_text);
+                    chain_parsed = true;
+                } catch (...) {
+                    auto j_start = ai_text.find('{');
+                    auto j_end   = ai_text.rfind('}');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            chain_json = json::parse(ai_text.substr(j_start, j_end - j_start + 1));
+                            chain_parsed = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (chain_parsed && chain_json.contains("chain")) {
+                    out["suggested_chain"] = chain_json;
+                    out["rationale"]       = chain_json.value("rationale", "");
+                }
+
+#ifndef MC1_HTTP_TEST_BUILD
+                if (apply && chain_parsed && chain_json.contains("chain") && g_pipeline) {
+                    auto& rack = g_pipeline->global_effects_rack();
+                    rack.from_json({{"bypass", false}, {"units", json::array()}});
+                    auto& chain_arr = chain_json["chain"];
+                    int applied_count = 0;
+                    for (auto& unit_j : chain_arr) {
+                        std::string type = unit_j.value("type", "");
+                        auto unit = mc1dsp::EffectsRack::create_unit(type);
+                        if (unit) {
+                            if (unit_j.contains("params"))
+                                unit->set_params(unit_j["params"]);
+                            unit->set_enabled(true);
+                            rack.add_unit(std::move(unit));
+                            applied_count++;
+                        }
+                    }
+                    out["applied"]       = true;
+                    out["applied_count"] = applied_count;
+                    MC1_INFO("AI suggest-chain: applied " + std::to_string(applied_count) + " units to global rack");
+                }
+#endif
+
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/natural-command — NLP command execution ─────────────
+    svr.Post("/api/v1/ai/natural-command",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = "AI not available"; _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                std::string command = body.value("command", "");
+                if (command.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"command field required"})", "application/json");
+                    return;
+                }
+
+                json messages = json::array();
+                messages.push_back({{"role", "system"}, {"content", mc1vt::ai_prompts::NLP_COMMAND_SYSTEM}});
+                messages.push_back({{"role", "user"}, {"content", command}});
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+
+                std::string ai_text = result.contains("message")
+                    ? result["message"].value("content", "") : "";
+                out["ok"]         = true;
+                out["raw"]        = ai_text;
+                out["model"]      = g_ollama->model();
+                out["latency_ms"] = latency_ms;
+
+                json parsed_action;
+                bool parsed = false;
+                try {
+                    parsed_action = json::parse(ai_text);
+                    parsed = true;
+                } catch (...) {
+                    auto j_start = ai_text.find('{');
+                    auto j_end   = ai_text.rfind('}');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            parsed_action = json::parse(ai_text.substr(j_start, j_end - j_start + 1));
+                            parsed = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (!parsed) {
+                    out["parsed_action"] = nullptr;
+                    out["executed"]      = false;
+                    out["result"]        = "Could not parse AI response as action JSON";
+                    res.set_content(out.dump(2), "application/json");
+                    return;
+                }
+
+                out["parsed_action"] = parsed_action;
+                std::string action = parsed_action.value("action", "");
+
+#ifndef MC1_HTTP_TEST_BUILD
+                bool executed = false;
+                std::string exec_result;
+
+                if (action == "eq_preset" || action == "set_eq_preset") {
+                    int slot = parsed_action.value("slot", 1);
+                    std::string preset = parsed_action.value("preset", "flat");
+                    EncoderConfig cfg;
+                    if (g_pipeline && g_pipeline->get_slot_config(slot, cfg)) {
+                        mc1dsp::DspChainConfig dsp_cfg;
+                        dsp_cfg.sample_rate        = cfg.sample_rate;
+                        dsp_cfg.channels           = cfg.channels;
+                        dsp_cfg.eq_enabled         = true;
+                        dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
+                        dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
+                        dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                        dsp_cfg.eq_preset          = preset;
+                        g_pipeline->reconfigure_dsp(slot, dsp_cfg);
+                        executed = true;
+                        exec_result = "EQ preset '" + preset + "' applied to slot " + std::to_string(slot);
+                    } else {
+                        exec_result = "Slot " + std::to_string(slot) + " not found";
+                    }
+                }
+                else if (action == "volume" || action == "set_volume") {
+                    int slot  = parsed_action.value("slot", -1);
+                    float vol = parsed_action.value("level", 1.0f);
+                    if (vol < 0.0f) vol = 0.0f;
+                    if (vol > 2.0f) vol = 2.0f;
+                    if (g_pipeline) {
+                        if (slot < 0)
+                            g_pipeline->set_master_volume(vol);
+                        else
+                            g_pipeline->set_volume(slot, vol);
+                        executed = true;
+                        exec_result = "Volume set to " + std::to_string(vol);
+                    } else {
+                        exec_result = "No pipeline available";
+                    }
+                }
+                else if (action == "start" || action == "start_encoder") {
+                    int slot = parsed_action.value("slot", 1);
+                    if (g_pipeline && g_pipeline->start_slot(slot)) {
+                        mc1log.encoder(slot, "START", "AI natural-command");
+                        executed = true;
+                        exec_result = "Encoder slot " + std::to_string(slot) + " started";
+                    } else {
+                        exec_result = "Failed to start slot " + std::to_string(slot);
+                    }
+                }
+                else if (action == "stop" || action == "stop_encoder") {
+                    int slot = parsed_action.value("slot", 1);
+                    if (g_pipeline) {
+                        g_pipeline->stop_slot(slot);
+                        mc1log.encoder(slot, "STOP", "AI natural-command");
+                        executed = true;
+                        exec_result = "Encoder slot " + std::to_string(slot) + " stopped";
+                    } else {
+                        exec_result = "No pipeline available";
+                    }
+                }
+                else if (action == "skip" || action == "skip_track") {
+                    int slot = parsed_action.value("slot", 1);
+                    if (g_pipeline) {
+                        g_pipeline->skip_track(slot);
+                        executed = true;
+                        exec_result = "Skipped to next track on slot " + std::to_string(slot);
+                    } else {
+                        exec_result = "No pipeline available";
+                    }
+                }
+                else if (action == "crossfade" || action == "set_crossfade") {
+                    int slot = parsed_action.value("slot", 1);
+                    EncoderConfig cfg;
+                    if (g_pipeline && g_pipeline->get_slot_config(slot, cfg)) {
+                        if (parsed_action.contains("duration_ms"))
+                            cfg.dsp_crossfade_duration = parsed_action["duration_ms"].get<float>();
+                        if (parsed_action.contains("curve"))
+                            cfg.dsp_crossfade_curve = std::clamp(parsed_action["curve"].get<int>(), 0, 8);
+                        cfg.dsp_crossfade_enabled = true;
+                        mc1dsp::DspChainConfig dsp_cfg;
+                        dsp_cfg.sample_rate        = cfg.sample_rate;
+                        dsp_cfg.channels           = cfg.channels;
+                        dsp_cfg.eq_enabled         = cfg.dsp_eq_enabled;
+                        dsp_cfg.agc_enabled        = cfg.dsp_agc_enabled;
+                        dsp_cfg.crossfader_enabled = cfg.dsp_crossfade_enabled;
+                        dsp_cfg.crossfade_duration = cfg.dsp_crossfade_duration;
+                        dsp_cfg.crossfade_curve    = cfg.dsp_crossfade_curve;
+                        dsp_cfg.eq_preset          = cfg.dsp_eq_preset;
+                        g_pipeline->reconfigure_dsp(slot, dsp_cfg);
+                        executed = true;
+                        exec_result = "Crossfade settings updated on slot " + std::to_string(slot);
+                    } else {
+                        exec_result = "Slot " + std::to_string(slot) + " not found";
+                    }
+                }
+                else if (action == "load_playlist") {
+                    int slot = parsed_action.value("slot", 1);
+                    std::string path = parsed_action.value("path", "");
+                    if (path.empty()) {
+                        exec_result = "No playlist path specified";
+                    } else if (g_pipeline && g_pipeline->load_playlist(slot, path)) {
+                        executed = true;
+                        exec_result = "Playlist loaded on slot " + std::to_string(slot);
+                    } else {
+                        exec_result = "Failed to load playlist";
+                    }
+                }
+                else if (action == "clarify") {
+                    executed = false;
+                    exec_result = parsed_action.value("message", "Please clarify your command.");
+                }
+                else {
+                    exec_result = "Unknown action: " + action;
+                }
+
+                out["executed"] = executed;
+                out["result"]   = exec_result;
+#else
+                out["executed"] = false;
+                out["result"]   = "Test build — no pipeline";
+#endif
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/troubleshoot — AI troubleshooting ───────────────────
+    svr.Post("/api/v1/ai/troubleshoot",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = "AI not available"; _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                std::string symptoms = body.value("symptoms", "");
+                if (symptoms.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"symptoms field required"})", "application/json");
+                    return;
+                }
+
+                std::string user_prompt = symptoms;
+                if (body.contains("system_state") && body["system_state"].is_object()) {
+                    user_prompt += "\n\nSystem state:\n" + body["system_state"].dump(2);
+                }
+
+                json messages = json::array();
+                messages.push_back({{"role", "system"}, {"content", mc1vt::ai_prompts::TROUBLESHOOT_SYSTEM}});
+                messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                } else {
+                    out["ok"]         = true;
+                    out["response"]   = result.contains("message")
+                        ? result["message"].value("content", "") : "";
+                    out["model"]      = g_ollama->model();
+                    out["latency_ms"] = latency_ms;
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/playlist/enhance — AI playlist reordering ───────────
+    svr.Post("/api/v1/ai/playlist/enhance",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = "AI not available"; _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                auto tracks = body.value("playlist_tracks", json::array());
+                std::string goal = body.value("goal", "energy_flow");
+                if (tracks.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"playlist_tracks array required"})", "application/json");
+                    return;
+                }
+
+                std::string user_prompt = "Goal: " + goal + "\n\nTrack list (" +
+                    std::to_string(tracks.size()) + " tracks):\n";
+                for (size_t i = 0; i < tracks.size(); ++i) {
+                    auto& t = tracks[i];
+                    user_prompt += "[" + std::to_string(i) + "] ";
+                    user_prompt += t.value("title", "Unknown") + " — " + t.value("artist", "Unknown");
+                    if (t.contains("genre") && !t["genre"].get<std::string>().empty())
+                        user_prompt += " | genre: " + t["genre"].get<std::string>();
+                    if (t.contains("bpm") && t["bpm"].is_number() && t["bpm"].get<double>() > 0)
+                        user_prompt += " | bpm: " + std::to_string((int)t["bpm"].get<double>());
+                    if (t.contains("energy") && t["energy"].is_number())
+                        user_prompt += " | energy: " + std::to_string(t["energy"].get<double>());
+                    if (t.contains("duration_ms") && t["duration_ms"].is_number())
+                        user_prompt += " | dur: " + std::to_string(t["duration_ms"].get<int>() / 1000) + "s";
+                    user_prompt += "\n";
+                }
+
+                json messages = json::array();
+                messages.push_back({{"role", "system"}, {"content", mc1vt::ai_prompts::PLAYLIST_ENHANCE_SYSTEM}});
+                messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                } else {
+                    std::string ai_text = result.contains("message")
+                        ? result["message"].value("content", "") : "";
+                    out["ok"]         = true;
+                    out["model"]      = g_ollama->model();
+                    out["latency_ms"] = latency_ms;
+
+                    json parsed;
+                    bool parsed_ok = false;
+                    try {
+                        parsed = json::parse(ai_text);
+                        parsed_ok = true;
+                    } catch (...) {
+                        auto j_start = ai_text.find('{');
+                        auto j_end   = ai_text.rfind('}');
+                        if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                            try {
+                                parsed = json::parse(ai_text.substr(j_start, j_end - j_start + 1));
+                                parsed_ok = true;
+                            } catch (...) {}
+                        }
+                    }
+
+                    if (parsed_ok && parsed.contains("reordered_indices")) {
+                        out["reordered_indices"] = parsed["reordered_indices"];
+                        out["rationale"]         = parsed.value("rationale", "");
+                    } else {
+                        out["reordered_indices"] = json::array();
+                        out["rationale"]         = ai_text;
+                    }
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/ai/predict-deadair — AI dead air prediction ────────────
+    svr.Post("/api/v1/ai/predict-deadair",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                if (!gAdminConfig.ollama.enabled || !g_ollama || !g_ollama->is_available()) {
+                    json _e; _e["error"] = "AI not available"; _e["available"] = false;
+                    res.set_content(_e.dump(), "application/json");
+                    return;
+                }
+
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                int slot_id = body.value("slot_id", 0);
+                auto events = body.value("recent_events", json::array());
+                if (events.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"recent_events array required"})", "application/json");
+                    return;
+                }
+
+                std::string user_prompt = "Encoder slot: " + std::to_string(slot_id) +
+                    "\n\nRecent events (" + std::to_string(events.size()) + "):\n" + events.dump(2);
+
+                json messages = json::array();
+                messages.push_back({{"role", "system"}, {"content", mc1vt::ai_prompts::DEADAIR_PREDICT_SYSTEM}});
+                messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+                auto t0 = std::chrono::steady_clock::now();
+                json result = g_ollama->chat(messages);
+                auto t1 = std::chrono::steady_clock::now();
+                int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+                json out;
+                if (result.contains("error")) {
+                    out["ok"]    = false;
+                    out["error"] = result["error"];
+                } else {
+                    std::string ai_text = result.contains("message")
+                        ? result["message"].value("content", "") : "";
+                    out["ok"]         = true;
+                    out["model"]      = g_ollama->model();
+                    out["latency_ms"] = latency_ms;
+
+                    json parsed;
+                    bool parsed_ok = false;
+                    try {
+                        parsed = json::parse(ai_text);
+                        parsed_ok = true;
+                    } catch (...) {
+                        auto j_start = ai_text.find('{');
+                        auto j_end   = ai_text.rfind('}');
+                        if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                            try {
+                                parsed = json::parse(ai_text.substr(j_start, j_end - j_start + 1));
+                                parsed_ok = true;
+                            } catch (...) {}
+                        }
+                    }
+
+                    if (parsed_ok) {
+                        out["risk_level"]       = parsed.value("risk_level", "unknown");
+                        out["prediction"]       = parsed.value("prediction", "");
+                        out["suggested_actions"] = parsed.value("suggested_actions", json::array());
+                    } else {
+                        out["risk_level"]       = "unknown";
+                        out["prediction"]       = ai_text;
+                        out["suggested_actions"] = json::array();
+                    }
+                }
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
     // ── PHP app routes — FastCGI bridge to php-fpm ─────────────────────────
     // Matches /app/foo.php and /app/api/foo.php but NOT /app/inc/*.php
     // Auth is enforced by with_auth(); php-fpm receives X-MC1-AUTHENTICATED:1
@@ -1641,6 +3126,13 @@ static void setup_routes(httplib::Server& svr)
             if (!g_fcgi) {
                 res.status = 503;
                 res.set_content("FastCGI client not available", "text/plain");
+                return;
+            }
+
+            // Security: reject path traversal in PHP script path
+            if (req.path.find("..") != std::string::npos) {
+                res.status = 400;
+                res.set_content("400 Bad Request", "text/plain");
                 return;
             }
 
@@ -1800,6 +3292,51 @@ static void setup_routes(httplib::Server& svr)
         });
     };
 
+    // ── Public podcast RSS feed — NO auth required ────────────────────────
+    // GET /podcast/{show_id}/feed.xml → forward to podcast_feed.php?show_id=N
+    svr.Get(R"(/podcast/(\d+)/feed\.xml)", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string show_id = req.matches[1];
+        std::string script_name     = "/podcast_feed.php";
+        std::string script_filename = g_webroot + script_name;
+        std::string query_string    = "show_id=" + show_id;
+        std::string request_uri     = script_name + "?" + query_string;
+
+        std::map<std::string, std::string> extra;
+        // Public endpoint — we still set X-MC1-AUTHENTICATED so the PHP
+        // file boots normally, but podcast_feed.php does not check auth
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "GET", script_filename, script_name,
+            query_string, request_uri,
+            "", "",
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "application/rss+xml; charset=UTF-8" : fr.content_type.c_str());
+    });
+
     // Block /app/inc/ — includes must never be served directly
     svr.Get(R"(/app/inc/.*)", [](const httplib::Request&, httplib::Response& res) {
         res.status = 403;
@@ -1854,6 +3391,20 @@ void http_api_start(const std::string& webroot)
     // Initialise FastCGI client (one instance, thread-safe per-request)
     if (!g_fcgi)
         g_fcgi = new FastCgiClient("/run/php/php8.2-fpm-mc1.sock");
+
+    // Initialise Ollama AI client (Phase AI-1) — use config values
+    if (!g_ollama && gAdminConfig.ollama.enabled) {
+        g_ollama = new mc1vt::OllamaClient(
+            gAdminConfig.ollama.endpoint,
+            gAdminConfig.ollama.model,
+            gAdminConfig.ollama.timeout_sec);
+        MC1_INFO("Ollama AI client initialized — endpoint="
+                 + std::string(gAdminConfig.ollama.endpoint)
+                 + " model=" + std::string(gAdminConfig.ollama.model)
+                 + " timeout=" + std::to_string(gAdminConfig.ollama.timeout_sec) + "s");
+    } else if (!gAdminConfig.ollama.enabled) {
+        MC1_INFO("Ollama AI disabled in configuration");
+    }
 
     if (!gAdminConfig.enabled || gAdminConfig.num_sockets == 0) {
         fprintf(stderr, "[http] Admin server disabled or no sockets configured.\n");
@@ -1934,6 +3485,9 @@ void http_api_stop()
 
     delete g_fcgi;
     g_fcgi = nullptr;
+
+    delete g_ollama;
+    g_ollama = nullptr;
 }
 
 /* ── SSL cert / CSR generation ────────────────────────────────────────────── */

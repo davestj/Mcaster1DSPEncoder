@@ -97,6 +97,19 @@ function mc1_log_exception(Throwable $e, string $ctx = ''): void
     mc1_log(MC1_LOG_ERROR, $e->getMessage(), $ctx, $e);
 }
 
+// ── Exception message sanitizer — strips internal paths/SQL from user output ──
+
+function mc1_safe_error(Throwable $e, string $fallback = 'An internal error occurred'): string
+{
+    // We log the real error for debugging, but never expose internals to the user
+    mc1_log_exception($e);
+    // In debug mode, return the real message (dev only, never production)
+    if (mc1_log_level() >= MC1_LOG_DEBUG) {
+        return $e->getMessage();
+    }
+    return $fallback;
+}
+
 // ── API response helper: log + echo JSON ─────────────────────────────────────
 
 function mc1_api_respond(array $data, int $http_status = 200): void

@@ -143,5 +143,5 @@ if (!$authed) {
     mc1_api_respond(['ok' => true, 'swap' => $swap]);
 
 } else {
-    mc1_api_respond(['ok' => false, 'error' => 'Unknown action: ' . $action], 400);
+    mc1_api_respond(['ok' => false, 'error' => 'Unknown action'], 400);
 }

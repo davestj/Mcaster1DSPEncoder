@@ -2,7 +2,7 @@
 
 **Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Last Updated:** 2026-02-24
+**Last Updated:** 2026-03-27
 
 This document captures all planned future phases. Reference it in CLAUDE.md for context.
 
@@ -22,106 +22,98 @@ This document captures all planned future phases. Reference it in CLAUDE.md for 
 | L5.3 | v1.4.3 | Session fix (30-day cookie), Content-Range fix for Firefox | COMPLETE |
 | L5.4 | v1.4.4 | User profile page, broadcast roles, per-user session TTL | COMPLETE |
 | L5.5 | v1.4.5 | Standalone popup player (mediaplayerpro.php), category UX overhaul, HTML attr quoting bug sweep | COMPLETE |
+| L6 | v1.5.0 | Streaming Server Relay Monitor (multi-server stats) | COMPLETE |
+| L7 | v1.5.1 | Listener Analytics + CSV export + GeoIP | COMPLETE |
+| DJ-1..6 | v1.6.0 | 9-curve crossfader, effects rack, PTT, JACK, dual-deck, per-slot FX | COMPLETE |
+| L8-SPLIT | v1.7.0 | Dual binary: admin + encoder (fault isolation) | COMPLETE |
+| L9 | v1.7.0 | Clockwheel scheduler + dead air detection | COMPLETE |
+| L-METRICS | v1.7.0 | System Health Dashboard (disk, codecs, FPM, SSL) | COMPLETE |
+| L-MEDIA | v1.7.0 | Folder browser, scan progress, category types/weights | COMPLETE |
+| **VT-1** | **v1.8.0** | **VoicTune daemon skeleton (HTTP, auth, FFT, pitch, meters, DB, WebSocket, USB hotplug, Ollama, coach)** | **COMPLETE** |
 
 ---
 
-## Planned Phases
+## v1.8.0 — VoicTune / Pedalboard / AI / Mixer (Active Development)
+
+**Full plan:** `~/.claude/plans/quiet-juggling-stallman.md`
+
+Four parallel tracks transforming Mcaster1 from broadcast encoder into full podcaster/broadcaster production studio.
+
+### Architecture
+
+```
+PB-1 ──→ PB-2 ──→ PB-3 ────────────────────────┐
+VT-1 ──→ VT-2 ──→ VT-3 ──→ VT-4 ───────────────┤
+AI-1 ──→ AI-2 ──→ AI-3 ──→ AI-4 ────────────────┤
+                                    MX-1 ──→ MX-2 ──→ MX-3
+```
+
+### Three Binaries
+
+| Binary | Size | Ports | Purpose |
+|--------|------|-------|---------|
+| `mcaster1-dsp-encoder-admin` | 36MB | 8330/8344 | Web UI, FastCGI, auth, supervisor |
+| `mcaster1-dsp-encoder` | 28MB | — | Audio pipeline, DSP, codecs, streaming |
+| `mcaster1-voictune` | 18MB | 8350/8354/8355 | Voice analysis, coaching, AI |
+
+### VoicTune Databases
+
+| Database | Tables |
+|----------|--------|
+| `mcaster1_voictune` | sessions, voice_profiles, analysis_snapshots, ai_interactions |
+
+### VoicTune Source Files (src/linux/voictune/)
+
+| File | Purpose | Status |
+|------|---------|--------|
+| main_voictune.cpp | Entry point, CLI, signal handling, subsystem init | Real |
+| vt_http_api.h/cpp | HTTP/HTTPS server, routes, session auth | Real (meters/spectrum stubs for VT-2) |
+| vt_config.h/cpp | YAML config loader (libyaml) | Real |
+| vt_logger.h | Logging singleton (voictune.log) | Real |
+| vt_db.h/cpp | MariaDB client (mcaster1_voictune) | Real |
+| vt_audio_capture.h/cpp | PortAudio mic capture wrapper | Real |
+| vt_usb_monitor.h/cpp | USB/BT hotplug (inotify on /dev/snd/) | Real |
+| vt_websocket.h/cpp | RFC 6455 WebSocket server (port 8355) | Real |
+| vt_fft.h/cpp | FFT analysis (kiss_fft, spectral features) | Real |
+| vt_meters.h/cpp | RMS, peak, LUFS metering | Real |
+| vt_pitch.h/cpp | Pitch detection (autocorrelation, note mapping) | Real |
+| vt_coach.h/cpp | Rule-based voice coaching engine | Real |
+| vt_worker_pool.h/cpp | Thread pool for parallel FFT analysis | Real |
+| ollama_client.h/cpp | Ollama REST API client | Real |
+| ai_prompt_templates.h | System prompts for AI use cases | Real |
+| vt_versions.h | Component version registry | Real |
+
+### Phase Status
+
+| Phase | Description | Status | Notes |
+|-------|-------------|--------|-------|
+| VT-1 | Daemon skeleton + all source files | **COMPLETE** | 17 files, 18MB binary, DB provisioned |
+| VT-2 | Audio capture pipeline + live analysis | NEXT | Wire PortAudio→FFT→meters→pitch→coach loop |
+| VT-3 | VoicTune web UI (oscilloscope, SA, pitch) | PLANNED | Canvas 2D visualizations |
+| VT-4 | Voice coaching (rule-based + AI tips) | PLANNED | |
+| PB-1 | Pedalboard infrastructure + SVG pedals | NEXT | Can parallel with VT-2 |
+| PB-2 | Cable routing + signal flow | PLANNED | |
+| PB-3 | Real-time meters + visual feedback | PLANNED | |
+| AI-1 | Ollama AI endpoints (coaching, EQ, chain) | NEXT | Can parallel with VT-2 |
+| AI-2 | NLP command parsing | PLANNED | |
+| AI-3 | Content analysis + show notes | PLANNED | |
+| AI-4 | Smart playlists + troubleshooting | PLANNED | |
+| MX-1 | Virtual mixer console | PLANNED | After PB-2 + VT-2 |
+| MX-2 | Mixer skins (6 Mcaster1-branded) | PLANNED | |
+| MX-3 | Custom user effect profiles | PLANNED | |
+
+### Key Decisions
+
+- Graphics: Canvas 2D primary + WebGL 2.0 for mixer + CSS 3D for knobs. No Three.js.
+- FFT: kiss_fft vendored (BSD-3, header-only). Needs kiss_fft_log.h stub.
+- AI: Ollama client (cpp-httplib to localhost:11434), graceful degradation if offline
+- Mixer skins: 6 Mcaster1-branded styles, NO actual brand names
+- WebSocket: Raw RFC 6455 implementation (no external lib)
+- USB hotplug: inotify on /dev/snd/ + 500ms settle delay + PortAudio re-enumeration
 
 ---
 
-### Phase L6 — Streaming Server Relay Monitor (v1.5.0)
-**SAM Broadcaster-style stat relay — priority: HIGH**
-
-The Settings → DNAS Connection panel becomes a full multi-server management UI.
-Operators add the streaming servers they send audio to — Icecast2, Shoutcast v1/v2,
-Steamcast, or Mcaster1DNAS — with per-mount-point credentials for stats polling.
-
-**Features:**
-- `streaming_servers` table in `mcaster1_encoder` DB
-- Per-server: name, type, host, port, mount point, stat credentials, SSL flag
-- Server types:
-  - **Icecast2** — poll `/admin/stats.xml` with admin:password, parse XML
-  - **Shoutcast v1** — poll `/admin.cgi?action=stats&pass=` XML or `/7.html`
-  - **Shoutcast v2** — poll `/admin/stats` XML with admin/password
-  - **Steamcast** — poll `/admin/stats.xml` (Icecast-compatible format)
-  - **Mcaster1DNAS** — poll `/admin/mcaster1stats` with JSON + XML hybrid
-- Live stats widget per server: listeners, max listeners, bitrate, stream title, uptime
-- Stats polling: client-side `setInterval` at 30s, no PHP cron needed
-- Color-coded badge: Online (green), Offline (red), Unknown (gray)
-- Assign encoder slot → server mount (slot 1 → /yolo-rock on server A)
-
-**Files:**
-- `settings.php` — multi-server panel replaces current single DNAS card
-- `app/api/servers.php` — CRUD for `streaming_servers` + live stat proxy
-- `streaming_servers` table (created in L5.4 phase DB migration)
-
----
-
-### Phase L7 — Listener Analytics & Metrics Dashboard (v1.6.0)
-**Full metrics overhaul — priority: HIGH**
-
-Replace the placeholder `metrics.php` with a real-time analytics dashboard.
-
-**Features:**
-- `listener_sessions` table in `mcaster1_metrics` DB (already exists)
-- Real-time listener count graph (Chart.js, 5-second polling)
-- Unique listeners today / this week / all-time
-- Geographic breakdown (GeoIP from MaxMind free DB)
-- Browser / client breakdown (parse User-Agent)
-- Top 10 tracks played (join metrics ↔ tracks)
-- Stream health: bitrate stability, reconnect events, buffer underruns
-- Export: CSV export of listener sessions, daily stats
-- Date range picker for historical reports
-
-**Files:**
-- `metrics.php` — full rewrite with Chart.js dashboards
-- `app/api/metrics.php` — enhanced with geographic, track, and session queries
-- `app/inc/geoip.php` — MaxMind GeoLite2 IP lookup helper
-
----
-
-### Phase L8 — System Health Monitoring (v1.7.0)
-**Server resource monitoring — priority: MEDIUM**
-
-Add a System Health tab to the dashboard (or dedicated `health.php` page).
-
-**Features:**
-- **CPU:** `/proc/loadavg` + `/proc/stat` polling → Chart.js sparklines
-- **Memory:** `/proc/meminfo` → used/free/cached bars
-- **Network:** `/proc/net/dev` → bytes in/out per interface, bandwidth gauge
-- **Disk:** `disk_free_space()` for audio root, archive dir, log dir
-- **Process:** encoder PID status, uptime, thread count
-- **FFmpeg/codec:** detect installed codecs (lame, opus, flac, vorbis, fdkaac)
-- **PHP-FPM:** `/run/php/php8.2-fpm-mc1.sock` status
-- **SSL cert expiry:** days-until-expiry badge with warning at <30 days
-- Refresh every 10 seconds with rAF animation for gauges
-
-**Files:**
-- `app/api/health.php` — reads `/proc/*` and `disk_free_space()`, returns JSON
-- `health.php` or new "System" tab in `settings.php`
-
----
-
-### Phase L9 — Advanced Automation & Scheduling (v1.8.0)
-**Clockwheel scheduling, smart playlists, rotation rules — priority: MEDIUM**
-
-**Features:**
-- **Clockwheel:** Hour-by-hour rotation clock (SAM Broadcaster `clock_hours` table)
-  - Visual drag-and-drop hour editor (24 slots, each slot = category or playlist)
-  - Categories: Jingle, Sweeper, Spot, Music, Station ID, News
-  - Rotation rules: play N songs from genre X, then 1 jingle, repeat
-- **Smart Playlists:** Rule-based queries (BPM range, energy level, year range, genre, mood tag)
-  - SQL query builder UI for playlist rules
-  - Preview: shows first 10 tracks matching rules
-- **AI Rotation:** (future) acoustID fingerprinting via `fpcalc`, auto-detect BPM/key
-- **Auto DJ:** Start the encoder automatically at scheduled time
-  - `cron` or internal scheduler in C++ using steady_clock
-- **Dead Air Detection:** Monitor silence longer than N seconds → skip track or play fallback
-
-**Files:**
-- `app/api/schedule.php` — clockwheel CRUD
-- `schedule.php` — visual clockwheel editor
-- C++ additions: internal scheduler thread, silence detector in DSP chain
+## Planned Phases (Post v1.8.0)
 
 ---
 
@@ -159,11 +151,12 @@ Add a System Health tab to the dashboard (or dedicated `health.php` page).
 
 ## Database Growth Plan
 
-| Database | Current Tables | Phase L6 Additions | Phase L7 Additions |
-|----------|---------------|-------------------|-------------------|
-| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers | — | — |
-| `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths | clock_hours, rotation_rules | — |
-| `mcaster1_metrics` | listener_sessions, daily_stats | server_stat_history | geographic_stats, track_plays |
+| Database | Current Tables | v1.8.0 Additions |
+|----------|---------------|-----------------|
+| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers | pedalboard_layouts, mixer_configs, mixer_custom_units |
+| `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths | — |
+| `mcaster1_metrics` | listener_sessions, daily_stats | — |
+| `mcaster1_voictune` | sessions, voice_profiles, analysis_snapshots, ai_interactions | (created in VT-1) |
 
 ---
 
@@ -175,3 +168,7 @@ Add a System Health tab to the dashboard (or dedicated `health.php` page).
 4. **Session storage:** C++ in-memory (`mc1session` cookie, 30-day TTL) + MySQL PHP sessions (`mc1app_session` cookie, TTL from `users.session_ttl_override`).
 5. **Multi-server stat polling:** Client-side polling (JS `setInterval`) — no PHP cron, no background PHP process. Keeps the architecture simple.
 6. **FastCGI audio streaming:** Full file passed through FastCGI memory before range slicing. Acceptable for preview (5-20MB MP3s). Not suitable for large FLAC archival streaming — use direct C++ audio route for that in L9.
+7. **VoicTune is a separate daemon:** Independent binary on ports 8350/8354/8355. Own systemd unit, own YAML config, own database. Shares auth cookies with encoder admin for cross-daemon SSO.
+8. **kiss_fft vendored:** BSD-3 header-only FFT library in `src/linux/external/include/`. Needs `kiss_fft_log.h` stub (created). No external FFT dependency.
+9. **WebSocket raw implementation:** No external lib — RFC 6455 handshake + frame parsing in `vt_websocket.cpp` using OpenSSL for SHA1/Base64.
+10. **USB hotplug via inotify:** Monitor `/dev/snd/` for ALSA device nodes. 500ms settle delay before PortAudio re-enumeration. BT via PulseAudio subscription (optional, `HAVE_PULSE`).

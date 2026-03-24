@@ -237,6 +237,9 @@ button { cursor:pointer; font-family:inherit; }
 }
 .pro-ctx-item:hover { background:var(--bg3); color:var(--text); }
 .pro-ctx-item i { width:14px; text-align:center; color:var(--teal); font-size:12px; }
+.pro-ctx-group-label { padding:6px 14px 3px; font-size:9px; font-weight:700; text-transform:uppercase;
+  letter-spacing:0.8px; color:var(--muted); pointer-events:none; user-select:none; }
+.pro-ctx-group-label i { font-size:9px; margin-right:3px; }
 
 /* ─── Right panel: Queue ──────────────────────────────────────────────── */
 .pro-queue {
@@ -529,6 +532,7 @@ function proReAuth() {
 
 <!-- Track context menu -->
 <div class="pro-ctx-menu" id="pro-ctx-menu">
+  <div class="pro-ctx-group-label"><i class="fa-solid fa-headphones"></i> Playback</div>
   <div class="pro-ctx-item" onclick="ctxPlayNow()">
     <i class="fa-solid fa-play"></i> Play Now
   </div>
@@ -536,6 +540,7 @@ function proReAuth() {
     <i class="fa-solid fa-list-ul"></i> Add to Queue
   </div>
   <hr class="pro-ctx-sep">
+  <div class="pro-ctx-group-label"><i class="fa-solid fa-pen-to-square"></i> Edit</div>
   <div class="pro-ctx-item" onclick="ctxEditTags()">
     <i class="fa-solid fa-pen-to-square"></i> Edit Tags
   </div>
@@ -543,6 +548,7 @@ function proReAuth() {
     <i class="fa-solid fa-image"></i> Fetch Album Art
   </div>
   <hr class="pro-ctx-sep">
+  <div class="pro-ctx-group-label"><i class="fa-solid fa-folder-plus"></i> Organize</div>
   <div class="pro-ctx-item" onclick="ctxAddToPlaylist()">
     <i class="fa-solid fa-list-music"></i> Add to Playlist
   </div>
@@ -553,6 +559,7 @@ function proReAuth() {
     <i class="fa-solid fa-tag"></i> Add to Category
   </div>
   <hr class="pro-ctx-sep">
+  <div class="pro-ctx-group-label"><i class="fa-solid fa-magnifying-glass"></i> Lookup</div>
   <div class="pro-ctx-item" onclick="ctxLookupMusicBrainz()">
     <i class="fa-solid fa-magnifying-glass"></i> MusicBrainz
   </div>

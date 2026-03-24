@@ -55,7 +55,8 @@ mcaster1_dsp_encoder_admin_SOURCES = \
     dsp/dsp_chain.cpp \
     dsp/effects_rack.cpp \
     dsp/sidechain_ducker.cpp \
-    dsp/dead_air_detector.cpp
+    dsp/dead_air_detector.cpp \
+    voictune/ollama_client.cpp
 
 # Admin needs these shared DSP headers for static curve data / effects type listing
 # but does NOT need the audio processing source files.
@@ -246,7 +247,17 @@ mcaster1_voictune_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_VOICTUNE_BUILD
 mcaster1_voictune_SOURCES = \
     voictune/main_voictune.cpp \
     voictune/vt_http_api.cpp \
-    voictune/vt_config.cpp
+    voictune/vt_config.cpp \
+    voictune/vt_db.cpp \
+    voictune/vt_audio_capture.cpp \
+    voictune/vt_websocket.cpp \
+    voictune/vt_usb_monitor.cpp \
+    voictune/vt_fft.cpp \
+    voictune/vt_meters.cpp \
+    voictune/vt_pitch.cpp \
+    voictune/vt_coach.cpp \
+    voictune/vt_worker_pool.cpp \
+    voictune/ollama_client.cpp
 
 mcaster1_voictune_LDADD = \
     $(OPENSSL_LIBS) \

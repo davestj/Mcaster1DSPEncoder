@@ -336,13 +336,31 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <a class="nav-item <?= $active_nav === 'effects' ? 'active' : '' ?>" href="/effects-rack.php">
     <i class="fa-solid fa-sliders fa-fw"></i> Effects Rack
   </a>
+  <a class="nav-item <?= $active_nav === 'mixer' ? 'active' : '' ?>" href="/mixer.php">
+    <i class="fa-solid fa-sliders fa-fw" style="transform:rotate(90deg)"></i> Mixer
+  </a>
   <a class="nav-item <?= $active_nav === 'jack' ? 'active' : '' ?>" href="/jack.php">
     <i class="fa-solid fa-plug fa-fw"></i> JACK Audio
+  </a>
+
+  <div class="nav-section">Voice Tools</div>
+  <a class="nav-item <?= $active_nav === 'voictune' ? 'active' : '' ?>" href="/voictune.php">
+    <i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune
+  </a>
+
+  <div class="nav-section">Publish</div>
+  <a class="nav-item <?= $active_nav === 'podcast' ? 'active' : '' ?>" href="/podcast.php">
+    <i class="fa-solid fa-podcast fa-fw"></i> Podcast
   </a>
 
   <div class="nav-section">Automation</div>
   <a class="nav-item <?= $active_nav === 'schedule' ? 'active' : '' ?>" href="/schedule.php">
     <i class="fa-solid fa-clock fa-fw"></i> Schedule
+  </a>
+
+  <div class="nav-section">Engagement</div>
+  <a class="nav-item <?= $active_nav === 'requests' ? 'active' : '' ?>" href="/requests.php">
+    <i class="fa-solid fa-hand fa-fw"></i> Requests
   </a>
 
   <div class="nav-section">Analytics</div>

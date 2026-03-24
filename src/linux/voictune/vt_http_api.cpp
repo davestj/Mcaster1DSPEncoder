@@ -15,6 +15,14 @@
 
 #include "vt_http_api.h"
 #include "vt_logger.h"
+#include "vt_audio_capture.h"
+#include "vt_usb_monitor.h"
+#include "vt_websocket.h"
+#include "vt_db.h"
+#include "vt_coach.h"
+#include "vt_analysis_state.h"
+#include "ollama_client.h"
+#include "ai_prompt_templates.h"
 #include "../external/include/httplib.h"
 #include "../external/include/nlohmann/json.hpp"
 
@@ -23,8 +31,10 @@
 #include <mutex>
 #include <map>
 #include <atomic>
+#include <algorithm>
 #include <ctime>
 #include <cstdlib>
+#include <chrono>
 #include <openssl/rand.h>
 
 using json = nlohmann::json;
@@ -43,6 +53,12 @@ struct VtSession {
 static std::map<std::string, VtSession> g_sessions;
 static std::mutex g_session_mtx;
 static VtConfig   g_vtcfg;
+static VtSubsystems g_sub;
+static std::chrono::steady_clock::time_point g_start_time;
+
+void vt_set_subsystems(const VtSubsystems& sub) {
+    g_sub = sub;
+}
 
 static std::string gen_token() {
     unsigned char buf[32];
@@ -112,11 +128,13 @@ static void setup_routes(httplib::Server& svr)
 {
     /* ── Health check (no auth) ──────────────────────────────────────────── */
     svr.Get("/api/v1/voictune/health", [](const httplib::Request&, httplib::Response& res) {
+        auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - g_start_time).count();
         json r;
-        r["ok"]      = true;
-        r["service"] = "mcaster1-voictune";
-        r["version"] = "1.0.0";
-        r["uptime_sec"] = 0; /* TODO: track startup time */
+        r["ok"]         = true;
+        r["service"]    = "mcaster1-voictune";
+        r["version"]    = "1.0.0";
+        r["uptime_sec"] = uptime;
         res.set_content(r.dump(), "application/json");
     });
 
@@ -164,7 +182,7 @@ static void setup_routes(httplib::Server& svr)
             json r;
             r["ok"]      = true;
             r["service"] = "mcaster1-voictune";
-            r["version"] = "1.0.0";
+            r["version"] = "1.8.0-beta.1";
             r["audio"]   = {
                 {"input_device_index", g_vtcfg.audio.input_device_index},
                 {"sample_rate", g_vtcfg.audio.sample_rate},
@@ -177,55 +195,1321 @@ static void setup_routes(httplib::Server& svr)
         });
     });
 
-    /* ── Device enumeration (placeholder — VT-2 fills in PortAudio) ──── */
+    /* ── Device enumeration ──────────────────────────────────────────── */
     svr.Get("/api/v1/voictune/devices", [](const httplib::Request& req, httplib::Response& res) {
         with_auth(req, res, [&]() {
             json r;
-            r["ok"]      = true;
-            r["inputs"]  = json::array();
-            r["outputs"] = json::array();
-            r["message"] = "Device enumeration available after VT-2 phase (PortAudio integration)";
+            r["ok"] = true;
+
+            if (g_sub.audio_capture) {
+                auto devs = g_sub.audio_capture->list_devices();
+                json inputs = json::array(), outputs = json::array();
+                for (const auto& d : devs) {
+                    json dj;
+                    dj["index"]        = d.index;
+                    dj["name"]         = d.name;
+                    dj["sample_rate"]  = d.default_sample_rate;
+                    if (d.max_input_ch > 0) {
+                        dj["channels"]       = d.max_input_ch;
+                        dj["is_default"]     = d.is_default_input;
+                        dj["is_usb"]         = false;
+                        dj["is_bluetooth"]   = false;
+                        inputs.push_back(dj);
+                    }
+                    if (d.max_output_ch > 0) {
+                        json oj = dj;
+                        oj["channels"]     = d.max_output_ch;
+                        oj["is_default"]   = d.is_default_output;
+                        outputs.push_back(oj);
+                    }
+                }
+
+                /* Enrich with USB/BT flags from usb_monitor */
+                if (g_sub.usb_monitor) {
+                    auto usb_devs = g_sub.usb_monitor->list_usb_devices();
+                    for (auto& indev : inputs) {
+                        int idx = indev["index"].get<int>();
+                        for (const auto& ud : usb_devs) {
+                            if (ud.pa_device_index == idx) {
+                                indev["is_usb"]       = ud.is_usb;
+                                indev["is_bluetooth"]  = ud.is_bluetooth;
+                                if (!ud.usb_id.empty())
+                                    indev["usb_id"] = ud.usb_id;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                r["inputs"]  = inputs;
+                r["outputs"] = outputs;
+            } else {
+                r["inputs"]  = json::array();
+                r["outputs"] = json::array();
+                r["message"] = "PortAudio not initialized — start audio capture first";
+            }
+
+            r["capturing"]    = g_sub.audio_capture ? g_sub.audio_capture->is_capturing() : false;
+            r["active_device"] = g_sub.audio_capture ? g_sub.audio_capture->active_device() : -1;
+            r["ws_clients"]    = g_sub.websocket ? g_sub.websocket->client_count() : 0;
+
             res.set_content(r.dump(2), "application/json");
         });
     });
 
-    /* ── Meters (placeholder — VT-2 fills in FFT/RMS) ────────────────── */
+    /* ── Meters (live — reads atomics from AnalysisState) ──────────── */
     svr.Get("/api/v1/voictune/meters", [](const httplib::Request& req, httplib::Response& res) {
         with_auth(req, res, [&]() {
             json r;
-            r["ok"]      = true;
-            r["rms_db"]  = -96.0;
-            r["peak_db"] = -96.0;
-            r["lufs"]    = -96.0;
-            r["pitch_hz"]= 0.0;
-            r["note"]    = "";
-            r["cents"]   = 0.0;
-            r["message"] = "Live meters available after VT-2 phase (FFT analysis)";
+            r["ok"] = true;
+            if (g_sub.analysis) {
+                r["rms_db"]       = g_sub.analysis->rms_db();
+                r["peak_db"]      = g_sub.analysis->peak_db();
+                r["lufs"]         = g_sub.analysis->lufs();
+                r["peak_hold_db"] = g_sub.analysis->peak_hold_db();
+                r["pitch_hz"]     = g_sub.analysis->pitch_hz();
+                r["note"]         = g_sub.analysis->note_name();
+                r["midi_note"]    = g_sub.analysis->midi_note();
+                r["cents"]        = g_sub.analysis->cents_off();
+                r["confidence"]   = g_sub.analysis->pitch_confidence();
+                r["spectral_centroid_hz"] = g_sub.analysis->spectral_centroid();
+                r["peak_frequency_hz"]    = g_sub.analysis->peak_frequency();
+                r["analyzing"]    = g_sub.analysis->analyzing();
+                r["chunks"]       = g_sub.analysis->chunk_count();
+            } else {
+                r["rms_db"]  = -96.0;
+                r["peak_db"] = -96.0;
+                r["lufs"]    = -96.0;
+                r["pitch_hz"]= 0.0;
+                r["note"]    = "";
+                r["cents"]   = 0.0;
+                r["message"] = "Analysis state not initialized";
+            }
             res.set_content(r.dump(2), "application/json");
         });
     });
 
-    /* ── Spectrum (placeholder) ──────────────────────────────────────── */
+    /* ── Spectrum (live — mutex lock, copy magnitude array) ─────────── */
     svr.Get("/api/v1/voictune/spectrum", [](const httplib::Request& req, httplib::Response& res) {
         with_auth(req, res, [&]() {
             json r;
-            r["ok"]   = true;
-            r["bins"]  = json::array();
-            r["message"] = "Spectrum data available after VT-2 phase";
+            r["ok"] = true;
+            if (g_sub.analysis) {
+                auto bins = g_sub.analysis->spectrum();
+                r["bins"]  = bins;
+                r["count"] = (int)bins.size();
+                r["peak_frequency_hz"]    = g_sub.analysis->peak_frequency();
+                r["spectral_centroid_hz"] = g_sub.analysis->spectral_centroid();
+            } else {
+                r["bins"]  = json::array();
+                r["count"] = 0;
+                r["message"] = "Analysis state not initialized";
+            }
             res.set_content(r.dump(), "application/json");
         });
     });
 
-    /* ── AI status (placeholder — AI-1 fills in Ollama) ──────────────── */
+    /* ── Waveform (live — mutex lock, ring buffer copy) ──────────── */
+    svr.Get("/api/v1/voictune/waveform", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json r;
+            r["ok"] = true;
+            if (g_sub.analysis) {
+                auto wf = g_sub.analysis->waveform();
+                /* Downsample to ~256 points for efficient JSON transport */
+                int src_size = (int)wf.size();
+                int target = 256;
+                int step = std::max(1, src_size / target);
+                json arr = json::array();
+                for (int i = 0; i < src_size; i += step) {
+                    arr.push_back(wf[i]);
+                }
+                r["samples"] = arr;
+                r["count"]   = (int)arr.size();
+                r["full_size"] = src_size;
+            } else {
+                r["samples"] = json::array();
+                r["count"]   = 0;
+                r["message"] = "Analysis state not initialized";
+            }
+            res.set_content(r.dump(), "application/json");
+        });
+    });
+
+    /* ── Device switch (PUT) ─────────────────────────────────────────── */
+    svr.Put("/api/v1/voictune/device", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+            int dev_index  = body.value("device_index", -1);
+            int sr         = body.value("sample_rate", g_vtcfg.audio.sample_rate);
+            int ch         = body.value("channels", g_vtcfg.audio.channels);
+            int buf_frames = body.value("buffer_frames", g_vtcfg.audio.buffer_frames);
+
+            if (!g_sub.audio_capture) {
+                res.status = 503;
+                res.set_content(R"({"error":"Audio capture not initialized"})", "application/json");
+                return;
+            }
+
+            /* Stop current capture */
+            g_sub.audio_capture->stop();
+            VT_INFO("Device switch requested: index=" + std::to_string(dev_index));
+
+            /* Re-enumerate in case of hotplug */
+            g_sub.audio_capture->re_enumerate();
+
+            /* The callback is wired in main — we store the current callback
+             * by re-starting with the same callback the system was using.
+             * main_voictune sets the callback before HTTP starts, so we just
+             * need to restart capture. The callback_ member persists. */
+            /* Note: We cannot access the internal callback from here.
+             * Instead, we update the config and let main handle restart.
+             * For now, we just flag the device index change. */
+            g_vtcfg.audio.input_device_index = dev_index;
+            g_vtcfg.audio.sample_rate = sr;
+            g_vtcfg.audio.channels = ch;
+            g_vtcfg.audio.buffer_frames = buf_frames;
+
+            json r;
+            r["ok"] = true;
+            r["message"] = "Device stopped. Reconfigure and restart capture via /session/start";
+            r["device_index"] = dev_index;
+            res.set_content(r.dump(2), "application/json");
+        });
+    });
+
+    /* ── Session start ───────────────────────────────────────────────── */
+    svr.Post("/api/v1/voictune/session/start", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                body = json::object();
+            }
+            std::string session_name = body.value("name", "VoicTune Session");
+
+            if (!g_sub.analysis) {
+                res.status = 503;
+                res.set_content(R"({"error":"Analysis state not initialized"})", "application/json");
+                return;
+            }
+
+            if (g_sub.analysis->session_active()) {
+                res.status = 409;
+                json r;
+                r["error"] = "Session already active";
+                r["session_id"] = g_sub.analysis->session_id();
+                res.set_content(r.dump(), "application/json");
+                return;
+            }
+
+            int session_id = 0;
+            if (g_sub.db && g_sub.db->is_connected()) {
+                session_id = g_sub.db->create_session(1 /* user_id */, session_name);
+            }
+
+            g_sub.analysis->set_session_id(session_id);
+            g_sub.analysis->set_session_active(true);
+
+            /* Reset coach state for new session */
+            if (g_sub.coach) g_sub.coach->reset();
+
+            json r;
+            r["ok"]         = true;
+            r["session_id"] = session_id;
+            r["name"]       = session_name;
+            VT_INFO("Session started: id=" + std::to_string(session_id) + " name=" + session_name);
+            res.set_content(r.dump(2), "application/json");
+        });
+    });
+
+    /* ── Session stop ────────────────────────────────────────────────── */
+    svr.Post("/api/v1/voictune/session/stop", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.analysis) {
+                res.status = 503;
+                res.set_content(R"({"error":"Analysis state not initialized"})", "application/json");
+                return;
+            }
+
+            int sid = g_sub.analysis->session_id();
+            g_sub.analysis->set_session_active(false);
+            g_sub.analysis->set_session_id(0);
+
+            if (g_sub.db && g_sub.db->is_connected() && sid > 0) {
+                g_sub.db->end_session(sid);
+            }
+
+            json r;
+            r["ok"]         = true;
+            r["session_id"] = sid;
+            r["message"]    = "Session ended";
+            VT_INFO("Session stopped: id=" + std::to_string(sid));
+            res.set_content(r.dump(2), "application/json");
+        });
+    });
+
+    /* ── Coaching tips ───────────────────────────────────────────────── */
+    svr.Get("/api/v1/voictune/coaching/tips", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json r;
+            r["ok"] = true;
+            if (g_sub.analysis) {
+                auto tips = g_sub.analysis->tips();
+                json arr = json::array();
+                for (const auto& t : tips) {
+                    json tj;
+                    tj["severity"]   = (t.severity == CoachSeverity::INFO) ? "info" :
+                                       (t.severity == CoachSeverity::SUGGESTION) ? "suggestion" :
+                                       (t.severity == CoachSeverity::WARNING) ? "warning" : "critical";
+                    tj["category"]   = t.category;
+                    tj["message"]    = t.message;
+                    tj["suggestion"] = t.suggestion;
+                    tj["confidence"] = t.confidence;
+                    arr.push_back(tj);
+                }
+                r["tips"]  = arr;
+                r["count"] = (int)arr.size();
+            } else {
+                r["tips"]  = json::array();
+                r["count"] = 0;
+                r["message"] = "Analysis state not initialized";
+            }
+            res.set_content(r.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI status (live Ollama availability check) ──────────────────── */
     svr.Get("/api/v1/ai/status", [](const httplib::Request& req, httplib::Response& res) {
         with_auth(req, res, [&]() {
             json r;
-            r["ok"]        = true;
-            r["available"] = false;
-            r["endpoint"]  = g_vtcfg.ollama.endpoint;
-            r["model"]     = g_vtcfg.ollama.model;
-            r["message"]   = "Ollama integration available after AI-1 phase";
+            r["ok"]       = true;
+            r["endpoint"] = g_vtcfg.ollama.endpoint;
+            r["model"]    = g_vtcfg.ollama.model;
+
+            if (g_sub.ollama) {
+                bool avail = g_sub.ollama->is_available();
+                r["available"] = avail;
+                if (avail) {
+                    auto models_resp = g_sub.ollama->list_models();
+                    if (models_resp.contains("models"))
+                        r["models"] = models_resp["models"];
+                    else
+                        r["models"] = json::array();
+                }
+            } else {
+                r["available"] = false;
+                r["message"]   = "Ollama client not initialized";
+            }
+
             res.set_content(r.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI chat — generic pass-through to Ollama ──────────────────────── */
+    svr.Post("/api/v1/ai/chat", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            json messages = body.value("messages", json::array());
+            std::string model = body.value("model", "");
+            if (messages.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"messages array required"})", "application/json");
+                return;
+            }
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages, model);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB if available */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "chat";
+                ai.prompt_text   = messages.back().value("content", "");
+                ai.model_used    = model.empty() ? g_sub.ollama->model() : model;
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                out["ok"]         = true;
+                out["response"]   = result;
+                out["model"]      = model.empty() ? g_sub.ollama->model() : model;
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI coaching — voice analysis with system prompt ─────────────── */
+    svr.Post("/api/v1/ai/coaching", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string user_message = body.value("message", "");
+            if (user_message.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"message field required"})", "application/json");
+                return;
+            }
+
+            /* Inject voice_data into the user message context */
+            std::string context_str = user_message;
+            if (body.contains("voice_data") && body["voice_data"].is_object()) {
+                context_str += "\n\nCurrent voice metrics:\n" + body["voice_data"].dump(2);
+            }
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::COACHING_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", context_str}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "coaching";
+                ai.prompt_text   = context_str;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                out["ok"]         = true;
+                out["response"]   = result.contains("message") ? result["message"]["content"] : "";
+                out["model"]      = g_sub.ollama->model();
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI suggest-eq — EQ settings from voice analysis ────────────── */
+    svr.Post("/api/v1/ai/suggest-eq", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            /* Build user prompt from voice data */
+            std::string user_prompt = "Voice analysis data:\n" + body.dump(2);
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::EQ_SUGGEST_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "eq_suggest";
+                ai.prompt_text   = user_prompt;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                out["ok"]         = true;
+                out["response"]   = result.contains("message") ? result["message"]["content"] : "";
+                out["model"]      = g_sub.ollama->model();
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI suggest-chain — effects chain recommendation ────────────── */
+    svr.Post("/api/v1/ai/suggest-chain", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string user_prompt = "Voice/use-case profile:\n" + body.dump(2);
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::CHAIN_SUGGEST_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "chain_suggest";
+                ai.prompt_text   = user_prompt;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                out["ok"]         = true;
+                out["response"]   = result.contains("message") ? result["message"]["content"] : "";
+                out["model"]      = g_sub.ollama->model();
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI history — query past AI interactions from DB ─────────────── */
+    svr.Get("/api/v1/ai/history", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.db) {
+                res.set_content(R"({"error":"Database not available"})", "application/json");
+                return;
+            }
+
+            std::string context;
+            int limit = 20;
+            if (req.has_param("context"))
+                context = req.get_param_value("context");
+            if (req.has_param("limit")) {
+                try { limit = std::stoi(req.get_param_value("limit")); } catch (...) {}
+                if (limit < 1) limit = 1;
+                if (limit > 100) limit = 100;
+            }
+
+            auto history = g_sub.db->get_ai_history(1, context, limit);
+            json arr = json::array();
+            for (const auto& h : history) {
+                json item;
+                item["id"]            = h.id;
+                item["user_id"]       = h.user_id;
+                item["context"]       = h.context;
+                item["prompt_text"]   = h.prompt_text;
+                item["response_text"] = h.response_text;
+                item["model_used"]    = h.model_used;
+                item["latency_ms"]    = h.latency_ms;
+                arr.push_back(item);
+            }
+
+            json out;
+            out["ok"]      = true;
+            out["history"] = arr;
+            out["count"]   = (int)arr.size();
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Phase AI-2: Advanced AI Coaching Endpoints
+     * ══════════════════════════════════════════════════════════════════════ */
+
+    /* Helper: build a metrics context string from AnalysisState */
+    auto build_metrics_context = []() -> std::string {
+        if (!g_sub.analysis) return "(no analysis data available)";
+        std::string ctx;
+        ctx += "- RMS: " + std::to_string(g_sub.analysis->rms_db()) + " dB\n";
+        ctx += "- Peak: " + std::to_string(g_sub.analysis->peak_db()) + " dB\n";
+        ctx += "- LUFS: " + std::to_string(g_sub.analysis->lufs()) + " (target: -16)\n";
+        ctx += "- Pitch: " + std::to_string(g_sub.analysis->pitch_hz()) + " Hz";
+        std::string note = g_sub.analysis->note_name();
+        if (!note.empty())
+            ctx += " (" + note + ", " + std::to_string(g_sub.analysis->cents_off()) + " cents off)";
+        ctx += "\n";
+        ctx += "- Spectral centroid: " + std::to_string(g_sub.analysis->spectral_centroid()) + " Hz\n";
+        ctx += "- Peak frequency: " + std::to_string(g_sub.analysis->peak_frequency()) + " Hz\n";
+        ctx += "- Pitch confidence: " + std::to_string(g_sub.analysis->pitch_confidence()) + "\n";
+        return ctx;
+    };
+
+    /* Helper: classify voice type from fundamental frequency */
+    auto classify_voice_type = [](float fundamental_hz) -> std::string {
+        if (fundamental_hz <= 0.0f) return "unknown";
+        if (fundamental_hz < 130.0f) return "bass";
+        if (fundamental_hz < 185.0f) return "baritone";
+        if (fundamental_hz < 265.0f) return "tenor";
+        if (fundamental_hz < 375.0f) return "alto";
+        return "soprano";
+    };
+
+    /* Helper: get coaching tips as comma-separated string */
+    auto tips_string = []() -> std::string {
+        if (!g_sub.analysis) return "";
+        auto tips = g_sub.analysis->tips();
+        std::string result;
+        for (size_t i = 0; i < tips.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += tips[i].message;
+        }
+        return result;
+    };
+
+    /* ── AI analyze — deep voice analysis with live metrics ────────────── */
+    svr.Post("/api/v1/voictune/ai/analyze", [build_metrics_context, classify_voice_type, tips_string](
+        const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            /* Gather all available data */
+            std::string metrics_ctx = build_metrics_context();
+            std::string active_tips = tips_string();
+            float fundamental = g_sub.analysis ? g_sub.analysis->pitch_hz() : 0.0f;
+            std::string voice_type = classify_voice_type(fundamental);
+
+            /* Check for voice profile in DB */
+            std::string profile_info;
+            if (g_sub.db && g_sub.db->is_connected()) {
+                auto prof = g_sub.db->get_profile(1, "Default");
+                if (prof.id > 0) {
+                    profile_info = "Voice profile: " + prof.profile_name +
+                                   " (type: " + prof.voice_type +
+                                   ", fundamental: " + std::to_string(prof.fundamental_hz) + " Hz" +
+                                   ", avg LUFS: " + std::to_string(prof.avg_lufs) + ")";
+                }
+            }
+
+            /* Build the detailed analysis prompt */
+            std::string user_prompt = "Perform a deep voice analysis based on the following live data.\n\n";
+            user_prompt += "Current voice metrics:\n" + metrics_ctx + "\n";
+            if (!active_tips.empty())
+                user_prompt += "Active coaching issues: " + active_tips + "\n\n";
+            if (!profile_info.empty())
+                user_prompt += profile_info + "\n\n";
+            user_prompt += "Voice classification: " + voice_type + "\n\n";
+            user_prompt += "Please provide:\n"
+                           "1. A detailed analysis of the voice characteristics\n"
+                           "2. Specific suggestions for improvement (as a JSON array of strings)\n"
+                           "3. A voice classification summary\n"
+                           "Format your response as JSON: {\"analysis\": \"...\", \"suggestions\": [...], \"voice_classification\": \"...\"}";
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::COACHING_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "coaching";
+                ai.prompt_text   = user_prompt;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+                out["voice_classification"] = voice_type;
+
+                /* Try to parse structured JSON from AI response */
+                try {
+                    json parsed = json::parse(response_text);
+                    out["analysis"]    = parsed.value("analysis", response_text);
+                    out["suggestions"] = parsed.value("suggestions", json::array());
+                    if (parsed.contains("voice_classification"))
+                        out["voice_classification"] = parsed["voice_classification"];
+                } catch (...) {
+                    /* AI returned free text — wrap it */
+                    out["analysis"]    = response_text;
+                    out["suggestions"] = json::array();
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI coach — interactive chat with conversation memory ─────────── */
+    svr.Post("/api/v1/voictune/ai/coach", [build_metrics_context, classify_voice_type, tips_string](
+        const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string user_message = body.value("message", "");
+            if (user_message.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"message field required"})", "application/json");
+                return;
+            }
+
+            /* Build system prompt with injected live metrics */
+            std::string metrics_ctx = build_metrics_context();
+            float fundamental = g_sub.analysis ? g_sub.analysis->pitch_hz() : 0.0f;
+            std::string voice_type = classify_voice_type(fundamental);
+            std::string active_tips = tips_string();
+
+            std::string system_prompt = std::string(ai_prompts::COACHING_SYSTEM) +
+                "\n\nCurrent voice metrics:\n" + metrics_ctx +
+                "- Voice type: " + voice_type + "\n";
+            if (!active_tips.empty())
+                system_prompt += "- Active issues: " + active_tips + "\n";
+
+            /* Build messages array: system + conversation history + user message */
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", system_prompt}});
+
+            /* Load last 5 AI interactions for conversation context */
+            if (g_sub.db && g_sub.db->is_connected()) {
+                auto history = g_sub.db->get_ai_history(1, "coaching_chat", 5);
+                /* History comes newest-first; reverse for chronological order */
+                for (int i = (int)history.size() - 1; i >= 0; --i) {
+                    const auto& h = history[i];
+                    if (!h.prompt_text.empty())
+                        messages.push_back({{"role", "user"}, {"content", h.prompt_text}});
+                    if (!h.response_text.empty())
+                        messages.push_back({{"role", "assistant"}, {"content", h.response_text}});
+                }
+            }
+
+            messages.push_back({{"role", "user"}, {"content", user_message}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "coaching_chat";
+                ai.prompt_text   = user_message;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                out["ok"]         = true;
+                out["response"]   = result.contains("message") && result["message"].contains("content")
+                                    ? result["message"]["content"].get<std::string>() : "";
+                out["model"]      = g_sub.ollama->model();
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── AI suggest-eq — smart EQ with live analysis data ─────────────── */
+    svr.Post("/api/v1/voictune/ai/suggest-eq", [build_metrics_context, classify_voice_type](
+        const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            /* Build prompt from live analysis data + optional voice profile */
+            std::string user_prompt = "Voice analysis snapshot:\n" + build_metrics_context();
+            float fundamental = g_sub.analysis ? g_sub.analysis->pitch_hz() : 0.0f;
+            user_prompt += "Voice type: " + classify_voice_type(fundamental) + "\n";
+
+            /* Inject voice profile if available */
+            if (g_sub.db && g_sub.db->is_connected()) {
+                auto prof = g_sub.db->get_profile(1, "Default");
+                if (prof.id > 0) {
+                    user_prompt += "Calibrated fundamental: " + std::to_string(prof.fundamental_hz) + " Hz\n";
+                    user_prompt += "Average LUFS: " + std::to_string(prof.avg_lufs) + "\n";
+                    user_prompt += "Average RMS: " + std::to_string(prof.avg_rms_db) + " dB\n";
+                }
+            }
+
+            user_prompt += "\nPlease suggest a 10-band parametric EQ preset optimized for this voice.";
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::EQ_SUGGEST_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "eq_suggest";
+                ai.prompt_text   = user_prompt;
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+
+                /* Try to parse structured EQ JSON from AI response */
+                try {
+                    json parsed = json::parse(response_text);
+                    out["bands"]     = parsed.value("bands", json::array());
+                    out["rationale"] = parsed.value("rationale", "");
+                } catch (...) {
+                    /* AI returned free text — wrap it */
+                    out["bands"]     = json::array();
+                    out["rationale"] = response_text;
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/ai/content/analyze — content analysis for show notes */
+    svr.Post("/api/v1/ai/content/analyze", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string transcript = body.value("transcript", "");
+            int session_id = body.value("session_id", 0);
+
+            /* Build user prompt from transcript or DB session data */
+            std::string user_prompt;
+            if (!transcript.empty()) {
+                user_prompt = "Analyze this broadcast/podcast transcript:\n\n" + transcript;
+            } else if (session_id > 0 && g_sub.db && g_sub.db->is_connected()) {
+                /* Pull analysis snapshots from DB for the session */
+                auto snapshots = g_sub.db->get_snapshots(session_id);
+
+                if (snapshots.empty()) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"No analysis data found for session"})", "application/json");
+                    return;
+                }
+
+                /* Compute speech stats from snapshots */
+                float total_rms = 0, total_pitch = 0, total_lufs = 0;
+                int speech_count = 0, silence_count = 0;
+                float min_pitch = 9999, max_pitch = 0;
+                for (auto& snap : snapshots) {
+                    if (snap.rms_db > -60.0f) {
+                        speech_count++;
+                        total_rms += snap.rms_db;
+                        total_lufs += snap.lufs;
+                        if (snap.pitch_hz > 50.0f) {
+                            total_pitch += snap.pitch_hz;
+                            if (snap.pitch_hz < min_pitch) min_pitch = snap.pitch_hz;
+                            if (snap.pitch_hz > max_pitch) max_pitch = snap.pitch_hz;
+                        }
+                    } else {
+                        silence_count++;
+                    }
+                }
+
+                int total = (int)snapshots.size();
+                float avg_rms = speech_count > 0 ? total_rms / speech_count : -96.0f;
+                float avg_pitch = speech_count > 0 ? total_pitch / speech_count : 0.0f;
+                float avg_lufs = speech_count > 0 ? total_lufs / speech_count : -96.0f;
+                float silence_ratio = total > 0 ? (float)silence_count / total : 0.0f;
+                float pitch_variance = max_pitch > 0 ? max_pitch - min_pitch : 0.0f;
+
+                user_prompt = "Analyze this broadcast session (session_id=" + std::to_string(session_id) + ").\n\n";
+                user_prompt += "Speech statistics from " + std::to_string(total) + " analysis snapshots:\n";
+                user_prompt += "- Speech frames: " + std::to_string(speech_count) + "/" + std::to_string(total) + "\n";
+                user_prompt += "- Silence ratio: " + std::to_string(silence_ratio * 100.0f) + "%\n";
+                user_prompt += "- Average RMS: " + std::to_string(avg_rms) + " dB\n";
+                user_prompt += "- Average LUFS: " + std::to_string(avg_lufs) + "\n";
+                user_prompt += "- Average pitch: " + std::to_string(avg_pitch) + " Hz\n";
+                user_prompt += "- Pitch range: " + std::to_string(min_pitch) + " - " + std::to_string(max_pitch) + " Hz\n";
+                user_prompt += "- Pitch variance: " + std::to_string(pitch_variance) + " Hz\n";
+                user_prompt += "\nProvide a content analysis summary based on these vocal characteristics.";
+            } else {
+                res.status = 400;
+                res.set_content(R"({"error":"transcript or session_id required"})", "application/json");
+                return;
+            }
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::CONTENT_ANALYSIS_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "content";
+                ai.prompt_text   = user_prompt.substr(0, 512);
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+
+                /* Try to parse structured JSON from AI response */
+                json parsed;
+                bool parsed_ok = false;
+                try {
+                    parsed = json::parse(response_text);
+                    parsed_ok = true;
+                } catch (...) {
+                    auto j_start = response_text.find('{');
+                    auto j_end   = response_text.rfind('}');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            parsed = json::parse(response_text.substr(j_start, j_end - j_start + 1));
+                            parsed_ok = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (parsed_ok) {
+                    out["summary"]          = parsed.value("summary", "");
+                    out["topics"]           = parsed.value("topics", json::array());
+                    out["tags"]             = parsed.value("tags", json::array());
+                    out["title_suggestion"] = parsed.value("title_suggestion", "");
+                    out["filler_words"]     = parsed.value("filler_words", json::object());
+                    out["pace_analysis"]    = parsed.value("pace_analysis", json::object());
+                } else {
+                    out["summary"]          = response_text;
+                    out["topics"]           = json::array();
+                    out["tags"]             = json::array();
+                    out["title_suggestion"] = "";
+                    out["filler_words"]     = json::object();
+                    out["pace_analysis"]    = json::object();
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── Coaching summary — session broadcast quality score (VT-4) ────── */
+    svr.Get("/api/v1/voictune/coaching/summary", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json out;
+            out["ok"] = true;
+
+            if (!g_sub.coach || !g_sub.analysis) {
+                res.status = 503;
+                res.set_content(R"({"error":"Coaching subsystem not initialized"})", "application/json");
+                return;
+            }
+
+            auto& coach = *g_sub.coach;
+            auto counts = coach.tip_counts();
+            int total_f = coach.total_frames();
+            int speech_f = coach.speech_frames();
+
+            /* Session duration: frames / ~10Hz analysis rate */
+            float session_sec = (total_f > 0) ? (float)total_f / 10.0f : 0.0f;
+            float speech_ratio = (total_f > 0) ? (float)speech_f / (float)total_f : 0.0f;
+            float avg_lufs_val = coach.avg_lufs();
+            float avg_rms = g_sub.analysis->rms_db();
+            float avg_dr = coach.avg_dynamic_range();
+            int est_wpm = coach.estimated_wpm();
+
+            out["session_duration_sec"] = (int)session_sec;
+            out["avg_lufs"] = avg_lufs_val;
+            out["avg_rms_db"] = avg_rms;
+            out["dynamic_range_db"] = avg_dr;
+            out["speech_ratio"] = speech_ratio;
+            out["estimated_wpm"] = est_wpm;
+
+            json tc;
+            tc["level"]         = counts.level;
+            tc["pitch"]         = counts.pitch;
+            tc["sibilance"]     = counts.sibilance;
+            tc["plosive"]       = counts.plosive;
+            tc["room_noise"]    = counts.room_noise;
+            tc["dynamic_range"] = counts.dynamic_range;
+            tc["wpm"]           = counts.wpm;
+            tc["proximity"]     = counts.proximity;
+            tc["pacing"]        = counts.pacing;
+            out["tip_counts"] = tc;
+
+            /* Calculate overall broadcast quality score (0-100) */
+            int score = 0;
+
+            /* LUFS within target range: 30 points
+             * Full 30 if within +/-3 dB of -16 LUFS, scaled down beyond that */
+            {
+                float target = -16.0f;
+                float diff = std::abs(avg_lufs_val - target);
+                if (diff <= 3.0f) {
+                    score += 30;
+                } else if (diff <= 9.0f) {
+                    score += (int)(30.0f * (1.0f - (diff - 3.0f) / 6.0f));
+                }
+                /* else 0 points */
+            }
+
+            /* No clipping: 20 points
+             * Full 20 if no level warnings with severity WARNING/CRITICAL about clipping */
+            {
+                float peak_hold = g_sub.analysis->peak_hold_db();
+                if (peak_hold < -1.0f) {
+                    score += 20;
+                } else if (peak_hold < 0.0f) {
+                    score += 10;
+                }
+                /* else clipping occurred, 0 points */
+            }
+
+            /* Good dynamic range (6-20 dB): 15 points */
+            {
+                if (avg_dr >= 6.0f && avg_dr <= 20.0f) {
+                    score += 15;
+                } else if (avg_dr > 3.0f && avg_dr < 6.0f) {
+                    score += (int)(15.0f * (avg_dr - 3.0f) / 3.0f);
+                } else if (avg_dr > 20.0f && avg_dr < 30.0f) {
+                    score += (int)(15.0f * (1.0f - (avg_dr - 20.0f) / 10.0f));
+                }
+            }
+
+            /* No plosives: 10 points */
+            {
+                if (counts.plosive == 0) {
+                    score += 10;
+                } else if (counts.plosive <= 2) {
+                    score += 5;
+                }
+            }
+
+            /* No sibilance: 10 points */
+            {
+                if (counts.sibilance == 0) {
+                    score += 10;
+                } else if (counts.sibilance <= 2) {
+                    score += 5;
+                }
+            }
+
+            /* Good pacing (140-170 WPM): 15 points */
+            {
+                if (est_wpm >= 140 && est_wpm <= 170) {
+                    score += 15;
+                } else if (est_wpm > 0) {
+                    int wpm_diff = 0;
+                    if (est_wpm < 140) wpm_diff = 140 - est_wpm;
+                    else wpm_diff = est_wpm - 170;
+                    int wpm_score = std::max(0, 15 - wpm_diff / 2);
+                    score += wpm_score;
+                }
+                /* est_wpm == 0 means insufficient data, give 0 */
+            }
+
+            score = std::clamp(score, 0, 100);
+            out["overall_score"] = score;
+
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── Coaching profile — voice type classification ─────────────────── */
+    svr.Get("/api/v1/voictune/coaching/profile", [classify_voice_type](
+        const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json out;
+            out["ok"] = true;
+
+            float fundamental = g_sub.analysis ? g_sub.analysis->pitch_hz() : 0.0f;
+            float lufs_val    = g_sub.analysis ? g_sub.analysis->lufs() : -96.0f;
+            float rms_val     = g_sub.analysis ? g_sub.analysis->rms_db() : -96.0f;
+            float peak_val    = g_sub.analysis ? g_sub.analysis->peak_db() : -96.0f;
+            float dynamic_range = peak_val - rms_val;
+
+            out["fundamental_hz"]   = fundamental;
+            out["voice_type"]       = classify_voice_type(fundamental);
+            out["avg_lufs"]         = lufs_val;
+            out["avg_rms_db"]       = rms_val;
+            out["dynamic_range_db"] = dynamic_range;
+
+            /* Try to load saved profile from DB */
+            std::string profile_name = "Default";
+            if (g_sub.db && g_sub.db->is_connected()) {
+                auto prof = g_sub.db->get_profile(1, "Default");
+                if (prof.id > 0) {
+                    profile_name = prof.profile_name;
+                    /* Return saved values alongside live values */
+                    out["saved_fundamental_hz"] = prof.fundamental_hz;
+                    out["saved_voice_type"]     = prof.voice_type;
+                    out["saved_avg_lufs"]       = prof.avg_lufs;
+                    out["saved_avg_rms_db"]     = prof.avg_rms_db;
+                } else {
+                    /* Create default profile */
+                    int pid = g_sub.db->create_profile(1, "Default");
+                    if (pid > 0) {
+                        DbVoiceProfile p;
+                        p.id             = pid;
+                        p.user_id        = 1;
+                        p.profile_name   = "Default";
+                        p.fundamental_hz = fundamental;
+                        p.voice_type     = classify_voice_type(fundamental);
+                        p.avg_lufs       = lufs_val;
+                        p.avg_rms_db     = rms_val;
+                        g_sub.db->update_profile(p);
+                    }
+                }
+            }
+            out["profile_name"] = profile_name;
+
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── Coaching calibrate — snapshot current metrics into voice profile ── */
+    svr.Post("/api/v1/voictune/coaching/calibrate", [classify_voice_type](
+        const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.analysis) {
+                res.status = 503;
+                res.set_content(R"({"error":"Analysis state not initialized"})", "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                body = json::object();
+            }
+            std::string profile_name = body.value("profile_name", "Default");
+
+            /* Read current analysis state (represents recent running averages) */
+            float fundamental = g_sub.analysis->pitch_hz();
+            float lufs_val    = g_sub.analysis->lufs();
+            float rms_val     = g_sub.analysis->rms_db();
+            float centroid    = g_sub.analysis->spectral_centroid();
+            std::string voice_type = classify_voice_type(fundamental);
+
+            json profile_json;
+            profile_json["ok"]             = true;
+            profile_json["voice_type"]     = voice_type;
+            profile_json["fundamental_hz"] = fundamental;
+            profile_json["avg_lufs"]       = lufs_val;
+            profile_json["avg_rms_db"]     = rms_val;
+            profile_json["spectral_centroid_hz"] = centroid;
+            profile_json["profile_name"]   = profile_name;
+
+            /* Save to DB */
+            if (g_sub.db && g_sub.db->is_connected()) {
+                auto existing = g_sub.db->get_profile(1, profile_name);
+                DbVoiceProfile p;
+                if (existing.id > 0) {
+                    p.id = existing.id;
+                } else {
+                    p.id = g_sub.db->create_profile(1, profile_name);
+                }
+                p.user_id        = 1;
+                p.profile_name   = profile_name;
+                p.fundamental_hz = fundamental;
+                p.voice_type     = voice_type;
+                p.avg_lufs       = lufs_val;
+                p.avg_rms_db     = rms_val;
+                p.analysis_json  = json({
+                    {"spectral_centroid_hz", centroid},
+                    {"peak_frequency_hz", g_sub.analysis->peak_frequency()},
+                    {"pitch_confidence", g_sub.analysis->pitch_confidence()},
+                    {"calibrated_at", std::time(nullptr)}
+                }).dump();
+                g_sub.db->update_profile(p);
+
+                profile_json["profile_id"] = p.id;
+                profile_json["saved"]      = true;
+            } else {
+                profile_json["saved"]   = false;
+                profile_json["message"] = "Database not available — profile not persisted";
+            }
+
+            VT_INFO("Voice calibration: " + profile_name + " type=" + voice_type +
+                     " fundamental=" + std::to_string(fundamental) + "Hz" +
+                     " LUFS=" + std::to_string(lufs_val));
+
+            json out;
+            out["ok"]      = true;
+            out["profile"] = profile_json;
+            res.set_content(out.dump(2), "application/json");
         });
     });
 
@@ -245,8 +1529,9 @@ static std::atomic<bool> g_running{false};
 
 void vt_http_start(const VtConfig& cfg)
 {
-    g_vtcfg  = cfg;
-    g_running = true;
+    g_vtcfg      = cfg;
+    g_running    = true;
+    g_start_time = std::chrono::steady_clock::now();
 
     auto& log = VtLogger::instance();
     log.set_log_dir(cfg.log.dir);

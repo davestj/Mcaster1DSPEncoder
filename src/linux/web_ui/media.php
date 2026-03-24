@@ -142,6 +142,8 @@ td.td-album      { max-width:160px; overflow:hidden; text-overflow:ellipsis; whi
 .ctx-item .ci-icon { width:16px; text-align:center; }
 .ctx-item.danger { color:var(--red, #ef4444); }
 hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0; }
+.ctx-group-label { padding:6px 16px 3px; font-size:10px; font-weight:700; text-transform:uppercase;
+                   letter-spacing:0.8px; color:var(--muted); pointer-events:none; user-select:none; }
 
 /* ── Modals ───────────────────────────────────────────────────────────── */
 .mc1-modal-bg    { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:8000;
@@ -692,9 +694,12 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
 
 <!-- ══════════════════════ RIGHT-CLICK CONTEXT MENU ═══════════════════════ -->
 <div id="ctx-menu">
+  <div class="ctx-group-label"><i class="fa-solid fa-headphones"></i> Playback</div>
   <div class="ctx-item" onclick="ctxPlayTrack()">
     <span class="ci-icon"><i class="fa-solid fa-play"></i></span> Play Track
   </div>
+  <hr class="ctx-sep">
+  <div class="ctx-group-label"><i class="fa-solid fa-pen-to-square"></i> Edit</div>
   <div class="ctx-item" onclick="ctxEditTags()">
     <span class="ci-icon"><i class="fa-solid fa-pen-to-square"></i></span> Edit Tags
   </div>
@@ -702,6 +707,7 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
     <span class="ci-icon"><i class="fa-solid fa-image"></i></span> Fetch Album Art
   </div>
   <hr class="ctx-sep">
+  <div class="ctx-group-label"><i class="fa-solid fa-folder-plus"></i> Organize</div>
   <div class="ctx-item" onclick="ctxAddToPlaylist()">
     <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Add to Playlist
   </div>
@@ -719,21 +725,23 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
 
 <!-- ══════════════ CATEGORY RIGHT-CLICK CONTEXT MENU ═══════════════════ -->
 <div id="cat-ctx-menu">
+  <div class="ctx-group-label"><i class="fa-solid fa-headphones"></i> Playback</div>
   <div class="ctx-item" onclick="catCtxQueue()">
     <span class="ci-icon"><i class="fa-solid fa-headphones"></i></span> Queue in Player
   </div>
   <div class="ctx-item" onclick="catCtxAddToPlaylist()">
-    <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Add to Playlist…
+    <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Add to Playlist
   </div>
   <hr class="ctx-sep">
+  <div class="ctx-group-label"><i class="fa-solid fa-gear"></i> Manage</div>
   <div class="ctx-item" onclick="catCtxRename()">
     <span class="ci-icon"><i class="fa-solid fa-pen"></i></span> Rename Category
   </div>
   <div class="ctx-item" onclick="catCtxSetWeight()">
-    <span class="ci-icon"><i class="fa-solid fa-weight-hanging"></i></span> Set Weight…
+    <span class="ci-icon"><i class="fa-solid fa-weight-hanging"></i></span> Set Weight
   </div>
   <div class="ctx-item" onclick="catCtxNewCategory()">
-    <span class="ci-icon"><i class="fa-solid fa-plus"></i></span> New Category…
+    <span class="ci-icon"><i class="fa-solid fa-plus"></i></span> New Category
   </div>
   <hr class="ctx-sep">
   <div class="ctx-item danger" onclick="catCtxDelete()">
@@ -743,12 +751,15 @@ hr.ctx-sep       { border:none; border-top:1px solid var(--border); margin:4px 0
 
 <!-- ═══════════════ FOLDER RIGHT-CLICK CONTEXT MENU ════════════════════ -->
 <div id="folder-ctx-menu">
+  <div class="ctx-group-label"><i class="fa-solid fa-folder"></i> Folder Actions</div>
   <div class="ctx-item" onclick="folderCtxScan()">
-    <span class="ci-icon"><i class="fa-solid fa-folder-open"></i></span> Scan Folder into Library
+    <span class="ci-icon"><i class="fa-solid fa-folder-open"></i></span> Scan into Library
   </div>
   <div class="ctx-item" onclick="folderCtxQueue()">
     <span class="ci-icon"><i class="fa-solid fa-headphones"></i></span> Queue in Player
   </div>
+  <hr class="ctx-sep">
+  <div class="ctx-group-label"><i class="fa-solid fa-folder-plus"></i> Organize</div>
   <div class="ctx-item" onclick="folderCtxPlaylist()">
     <span class="ci-icon"><i class="fa-solid fa-list-music"></i></span> Create Playlist from Folder
   </div>

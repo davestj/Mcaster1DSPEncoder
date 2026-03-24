@@ -1,0 +1,456 @@
+/* mixer.css — Virtual Mixer Console styles
+ * Mcaster1 DSP Encoder — Phase MX-1 / MX-2
+ * Professional broadcast console aesthetic
+ *
+ * All skinnable properties use --mx-* CSS custom properties.
+ * Default values match the broadcast_dark skin.
+ * Skin overrides are in mixer-skins.css via [data-mixer-skin="..."].
+ */
+
+/* ── Console Surface ─────────────────────────────────── */
+.mixer-surface {
+  /* Default variable values (broadcast_dark) */
+  --mx-surface:         linear-gradient(180deg, #0a0f1e 0%, #0d1424 40%, #0a0f1e 100%);
+  --mx-surface-border:  #1a2540;
+  --mx-surface-overlay: repeating-linear-gradient(90deg, transparent 0, transparent 1px, rgba(255,255,255,.008) 1px, rgba(255,255,255,.008) 2px),
+                        linear-gradient(180deg, rgba(255,255,255,.02) 0%, transparent 30%, transparent 70%, rgba(255,255,255,.015) 100%);
+  --mx-strip-bg:        linear-gradient(180deg, #111827 0%, #0f1626 100%);
+  --mx-strip-border:    #1e2d4a;
+  --mx-master-bg:       linear-gradient(180deg, #131b2e 0%, #101828 100%);
+  --mx-master-border:   #263350;
+  --mx-master-sep:      #263350;
+  --mx-fader-cap:       linear-gradient(180deg, #5a6a80 0%, #3d4e65 40%, #2a3a50 100%);
+  --mx-fader-cap-border:#6a7a90;
+  --mx-fader-cap-line1: rgba(255,255,255,.2);
+  --mx-fader-cap-line2: rgba(255,255,255,.12);
+  --mx-fader-track:     linear-gradient(180deg, #0d1424 0%, #182035 50%, #0d1424 100%);
+  --mx-fader-track-bdr: #1e2d4a;
+  --mx-fader-fill:      linear-gradient(180deg, var(--teal), rgba(20,184,166,.3));
+  --mx-vu-bg:           #080c14;
+  --mx-vu-border:       #1a2540;
+  --mx-accent:          var(--teal);
+  --mx-accent-glow:     rgba(20,184,166,.25);
+  --mx-live-border:     rgba(20,184,166,.45);
+  --mx-live-glow:       rgba(20,184,166,.08);
+  --mx-mute-bg:         #151e30;
+  --mx-mute-border:     #2a3a50;
+  --mx-mute-active-bg:  rgba(239,68,68,.2);
+  --mx-mute-active-clr: var(--red);
+  --mx-solo-active-bg:  rgba(245,158,11,.2);
+  --mx-solo-active-clr: #f59e0b;
+  --mx-knob-bg:         radial-gradient(circle at 40% 35%, #4a5568, #2d3748 70%);
+  --mx-knob-border:     #5a6a80;
+  --mx-knob-indicator:  var(--teal);
+  --mx-unity-color:     rgba(20,184,166,.35);
+  --mx-label-font:      inherit;
+  --mx-text:            var(--text);
+  --mx-text-dim:        var(--muted);
+  --mx-status-idle-bg:  rgba(100,116,139,.2);
+  --mx-status-idle-clr: var(--muted);
+  --mx-status-live-bg:  rgba(20,184,166,.2);
+  --mx-status-live-clr: var(--teal);
+  --mx-dimmed-opacity:  0.35;
+
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-surface-border);
+  border-radius: var(--radius);
+  padding: 16px 12px 12px;
+  min-height: 520px;
+  position: relative;
+  overflow: hidden;
+}
+.mixer-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--mx-surface-overlay);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ── Channel Strip Container ─────────────────────────── */
+.mixer-channels {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+/* ── Individual Channel Strip ────────────────────────── */
+.ch-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 76px;
+  max-width: 90px;
+  flex-shrink: 0;
+  background: var(--mx-strip-bg);
+  border: 1px solid var(--mx-strip-border);
+  border-radius: 6px;
+  padding: 10px 6px 8px;
+  gap: 6px;
+  position: relative;
+  transition: border-color .3s, opacity .3s;
+}
+.ch-strip.dimmed {
+  opacity: var(--mx-dimmed-opacity);
+  border-color: var(--mx-strip-border);
+}
+.ch-strip.muted-strip {
+  border-color: var(--mx-mute-active-clr);
+}
+.ch-strip.live-strip {
+  border-color: var(--mx-live-border);
+  box-shadow: 0 0 12px var(--mx-live-glow);
+}
+
+/* ── Master Channel ──────────────────────────────────── */
+.ch-strip.ch-master {
+  min-width: 90px;
+  max-width: 100px;
+  background: var(--mx-master-bg);
+  border-color: var(--mx-master-border);
+  margin-left: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.ch-strip.ch-master::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 10%;
+  bottom: 10%;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, var(--mx-master-sep), transparent);
+}
+
+/* ── Channel Label ───────────────────────────────────── */
+.ch-label {
+  text-align: center;
+  width: 100%;
+}
+.ch-label-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--mx-text);
+  font-family: var(--mx-label-font);
+  letter-spacing: .03em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+}
+.ch-label-mount {
+  font-size: 9px;
+  color: var(--mx-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  margin-top: 1px;
+}
+
+/* ── VU Meter ────────────────────────────────────────── */
+.ch-vu {
+  width: 24px;
+  height: 100px;
+  position: relative;
+  background: var(--mx-vu-bg);
+  border: 1px solid var(--mx-vu-border);
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ch-vu canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── Fader Track ─────────────────────────────────────── */
+.ch-fader-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  height: 150px;
+  flex-shrink: 0;
+}
+.ch-fader-track {
+  width: 4px;
+  height: 140px;
+  background: var(--mx-fader-track);
+  border: 1px solid var(--mx-fader-track-bdr);
+  border-radius: 2px;
+  position: relative;
+  margin: 5px 0;
+}
+.ch-fader-fill {
+  position: absolute;
+  bottom: 0;
+  left: -1px;
+  right: -1px;
+  background: var(--mx-fader-fill);
+  border-radius: 0 0 2px 2px;
+  transition: height 50ms linear;
+  pointer-events: none;
+}
+.ch-fader-cap {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 28px;
+  height: 14px;
+  background: var(--mx-fader-cap);
+  border: 1px solid var(--mx-fader-cap-border);
+  border-radius: 3px;
+  cursor: grab;
+  z-index: 10;
+  box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  transition: box-shadow .15s;
+}
+.ch-fader-cap:hover {
+  box-shadow: 0 1px 8px var(--mx-accent-glow);
+  border-color: var(--mx-accent);
+}
+.ch-fader-cap.dragging {
+  cursor: grabbing;
+  box-shadow: 0 0 12px var(--mx-accent-glow);
+  border-color: var(--mx-accent);
+}
+.ch-fader-cap::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 5px;
+  height: 1px;
+  background: var(--mx-fader-cap-line1);
+}
+.ch-fader-cap::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 8px;
+  height: 1px;
+  background: var(--mx-fader-cap-line2);
+}
+/* Unity mark (0 dB / 1.0x) */
+.ch-fader-unity {
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+  background: var(--mx-unity-color);
+  pointer-events: none;
+}
+.ch-fader-val {
+  font-size: 10px;
+  color: var(--mx-text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+  text-align: center;
+  min-width: 30px;
+}
+
+/* ── Pan Knob ────────────────────────────────────────── */
+.ch-pan-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.ch-pan-label {
+  font-size: 8px;
+  color: var(--mx-text-dim);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.ch-pan-knob {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--mx-knob-bg);
+  border: 1px solid var(--mx-knob-border);
+  cursor: pointer;
+  position: relative;
+  transition: border-color .15s;
+}
+.ch-pan-knob:hover {
+  border-color: var(--mx-accent);
+}
+.ch-pan-indicator {
+  position: absolute;
+  width: 2px;
+  height: 7px;
+  background: var(--mx-knob-indicator);
+  border-radius: 1px;
+  top: 2px;
+  left: 50%;
+  transform-origin: center 9px;
+  transform: translateX(-50%) rotate(0deg);
+  pointer-events: none;
+}
+
+/* ── Mute / Solo Buttons ─────────────────────────────── */
+.ch-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.ch-btn-mute, .ch-btn-solo {
+  width: 30px;
+  height: 22px;
+  border: 1px solid var(--mx-mute-border);
+  border-radius: 3px;
+  background: var(--mx-mute-bg);
+  color: var(--mx-text-dim);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all .15s;
+  text-transform: uppercase;
+  user-select: none;
+}
+.ch-btn-mute:hover {
+  border-color: var(--mx-mute-active-clr);
+  color: var(--mx-mute-active-clr);
+}
+.ch-btn-solo:hover {
+  border-color: var(--mx-solo-active-clr);
+  color: var(--mx-solo-active-clr);
+}
+.ch-btn-mute.active {
+  background: var(--mx-mute-active-bg);
+  border-color: var(--mx-mute-active-clr);
+  color: var(--mx-mute-active-clr);
+  box-shadow: 0 0 8px var(--mx-mute-active-bg);
+}
+.ch-btn-solo.active {
+  background: var(--mx-solo-active-bg);
+  border-color: var(--mx-solo-active-clr);
+  color: var(--mx-solo-active-clr);
+  box-shadow: 0 0 8px var(--mx-solo-active-bg);
+}
+
+/* ── Status Badge ────────────────────────────────────── */
+.ch-status {
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.ch-status.idle    { background: var(--mx-status-idle-bg); color: var(--mx-status-idle-clr); }
+.ch-status.live    { background: var(--mx-status-live-bg); color: var(--mx-status-live-clr); }
+.ch-status.sleep   { background: rgba(251,146,60,.18); color: #fb923c; }
+.ch-status.error   { background: rgba(239,68,68,.18); color: var(--red); }
+.ch-status.connecting { background: rgba(234,179,8,.18); color: var(--yellow); }
+
+/* ── Toolbar ─────────────────────────────────────────── */
+.mixer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.mixer-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mixer-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mixer-skin-select {
+  padding: 5px 10px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.mixer-skin-select option {
+  background: #1e293b;
+  color: var(--text);
+}
+
+/* ── Config Name / Save ──────────────────────────────── */
+.mixer-config-name {
+  padding: 5px 10px;
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  width: 160px;
+}
+.mixer-config-name:focus {
+  border-color: var(--teal);
+  outline: none;
+}
+
+/* ── Skin Swatch (dropdown option preview) ───────────── */
+.skin-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border: 1px solid rgba(255,255,255,.15);
+}
+
+/* ── Responsive ──────────────────────────────────────── */
+@media (max-width: 860px) {
+  .mixer-channels {
+    gap: 1px;
+  }
+  .ch-strip {
+    min-width: 64px;
+    padding: 8px 4px 6px;
+  }
+  .ch-vu {
+    height: 70px;
+  }
+  .ch-fader-wrap {
+    height: 120px;
+  }
+  .ch-fader-track {
+    height: 110px;
+  }
+}
+@media (max-width: 580px) {
+  .ch-strip {
+    min-width: 56px;
+    padding: 6px 3px 5px;
+  }
+  .ch-pan-wrap {
+    display: none;
+  }
+  .ch-vu {
+    height: 50px;
+  }
+  .ch-fader-wrap {
+    height: 100px;
+  }
+  .ch-fader-track {
+    height: 90px;
+  }
+}

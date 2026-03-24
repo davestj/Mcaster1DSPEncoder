@@ -1793,8 +1793,9 @@ if ($action === 'browse_folders') {
         return;
     }
 
-    /* We block system pseudo-filesystems — operators should never browse these */
-    $blocked_prefixes = ['/proc', '/sys', '/dev', '/run/systemd', '/snap'];
+    /* We block system and sensitive directories — operators should never browse these */
+    $blocked_prefixes = ['/proc', '/sys', '/dev', '/run', '/snap', '/boot',
+                         '/etc', '/root', '/var/log', '/var/run', '/tmp'];
     foreach ($blocked_prefixes as $bp) {
         if ($real === $bp || strncmp($real, $bp . '/', strlen($bp) + 1) === 0) {
             mc1_api_respond(['error' => 'Access to system directories is not allowed'], 403);

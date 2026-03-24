@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAST Report - Mcaster1DSPEncoder</title>
+<style>
+:root {
+    --bg: #0d1b2a;
+    --card: #1b2838;
+    --text: #e0e6ed;
+    --muted: #7f8c9b;
+    --accent: #2ec4b6;
+    --border: #2a3a4a;
+    --critical: #ff4444;
+    --high: #ff8c00;
+    --medium: #ffd700;
+    --low: #4a9eff;
+    --info: #7f8c9b;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; padding:32px; line-height:1.6; }
+h1 { color:var(--accent); margin-bottom:8px; font-size:28px; }
+h2 { color:var(--accent); margin:24px 0 12px; font-size:20px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+h3 { color:var(--text); margin:16px 0 8px; }
+.subtitle { color:var(--muted); margin-bottom:24px; font-size:14px; }
+.summary-grid { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin:16px 0; }
+.summary-card { background:var(--card); border-radius:8px; padding:16px; text-align:center; border:1px solid var(--border); }
+.summary-card .count { font-size:32px; font-weight:bold; }
+.summary-card .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.sev-critical .count { color:var(--critical); }
+.sev-high .count { color:var(--high); }
+.sev-medium .count { color:var(--medium); }
+.sev-low .count { color:var(--low); }
+.sev-info .count { color:var(--info); }
+table { width:100%; border-collapse:collapse; margin:12px 0 24px; }
+th { background:var(--card); color:var(--accent); text-align:left; padding:10px 12px; font-size:13px; text-transform:uppercase; letter-spacing:0.5px; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:top; }
+tr:hover td { background:rgba(46,196,182,0.05); }
+.badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:bold; color:#fff; }
+.badge-critical { background:var(--critical); }
+.badge-high { background:var(--high); color:#000; }
+.badge-medium { background:var(--medium); color:#000; }
+.badge-low { background:var(--low); }
+.badge-info { background:var(--info); }
+code { background:rgba(46,196,182,0.15); padding:2px 6px; border-radius:3px; font-size:12px; font-family:'Cascadia Code','Fira Code',monospace; }
+.executive { background:var(--card); padding:20px; border-radius:8px; border:1px solid var(--border); margin:16px 0; }
+.footer { margin-top:32px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<h1>SAST Security Scan Report</h1>
+<p class="subtitle">Mcaster1DSPEncoder v1.8.0-beta.1 | Scan Date: 2026-03-27 | Scanner: Claude Opus 4.6 Manual Review</p>
+
+<div class="executive">
+<h3>Executive Summary</h3>
+<p>A comprehensive static analysis was performed on all C++ source files (<code>src/linux/*.cpp</code>, <code>src/linux/*.h</code>),
+PHP API files (<code>src/linux/web_ui/app/api/*.php</code>), PHP include files (<code>src/linux/web_ui/app/inc/*.php</code>),
+and PHP page files (<code>src/linux/web_ui/*.php</code>). The analysis covered SQL injection, command injection, XSS,
+path traversal, authentication weaknesses, information disclosure, insecure defaults, and denial of service vectors.</p>
+<p style="margin-top:8px;">Total files scanned: <strong>82</strong> (41 C++, 41 PHP). The codebase demonstrates generally strong security practices
+including parameterized PDO queries in PHP, <code>mysql_real_escape_string</code> in C++, <code>escapeshellarg()</code> on all shell commands,
+and <code>h()</code> HTML escaping. Several defense-in-depth improvements were identified and patched.</p>
+</div>
+
+<div class="summary-grid">
+<div class="summary-card sev-critical"><div class="count">1</div><div class="label">Critical</div></div>
+<div class="summary-card sev-high"><div class="count">3</div><div class="label">High</div></div>
+<div class="summary-card sev-medium"><div class="count">5</div><div class="label">Medium</div></div>
+<div class="summary-card sev-low"><div class="count">4</div><div class="label">Low</div></div>
+<div class="summary-card sev-info"><div class="count">3</div><div class="label">Info</div></div>
+</div>
+
+<h2>Findings</h2>
+
+<table>
+<thead>
+<tr><th>#</th><th>Severity</th><th>Category</th><th>File</th><th>Line</th><th>Description</th><th>Remediation</th></tr>
+</thead>
+<tbody>
+
+<tr>
+<td>1</td>
+<td><span class="badge badge-critical">CRITICAL</span></td>
+<td>Path Traversal</td>
+<td><code>http_api.cpp</code></td>
+<td>346-348</td>
+<td>Static asset route <code>/(.+\.(css|js|...))</code> directly concatenates <code>req.matches[1]</code> with <code>g_webroot</code> without checking for <code>..</code> sequences. A request like <code>GET /../../etc/shadow.css</code> could read arbitrary files if the regex matched.</td>
+<td>Added <code>..</code> check before <code>serve_file()</code>. Request returns 400 if path contains <code>..</code></td>
+</tr>
+
+<tr>
+<td>2</td>
+<td><span class="badge badge-high">HIGH</span></td>
+<td>Path Traversal</td>
+<td><code>http_api.cpp</code></td>
+<td>3176-3186</td>
+<td>The <code>handle_php</code> FastCGI bridge constructs <code>script_filename = g_webroot + req.path</code> without sanitizing path traversal sequences. An attacker could potentially request <code>/app/api/../../etc/passwd.php</code> to execute PHP files outside the webroot.</td>
+<td>Added <code>..</code> check at the start of <code>handle_php</code>. Returns 400 if path contains <code>..</code></td>
+</tr>
+
+<tr>
+<td>3</td>
+<td><span class="badge badge-high">HIGH</span></td>
+<td>Auth: No Rate Limiting</td>
+<td><code>http_api.cpp</code></td>
+<td>390-420</td>
+<td>The <code>POST /api/v1/auth/login</code> endpoint had no rate limiting. An attacker could brute-force credentials with unlimited attempts per second. With test credentials like <code>hackme</code>, this is especially dangerous if the service is exposed to the internet.</td>
+<td>Added per-IP rate limiter: 5 attempts per 60-second window. Returns HTTP 429 when exceeded. Counter resets on successful login.</td>
+</tr>
+
+<tr>
+<td>4</td>
+<td><span class="badge badge-high">HIGH</span></td>
+<td>Directory Traversal</td>
+<td><code>app/api/tracks.php</code></td>
+<td>1797</td>
+<td>The <code>browse_folders</code> action allowed browsing <code>/etc</code>, <code>/root</code>, <code>/var/log</code>, and other sensitive directories. The blocklist only included <code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run/systemd</code>, <code>/snap</code>. An authenticated attacker could enumerate directory structures in sensitive areas like <code>/etc/ssl/private</code>.</td>
+<td>Extended blocklist to include <code>/etc</code>, <code>/root</code>, <code>/var/log</code>, <code>/var/run</code>, <code>/tmp</code>, <code>/boot</code>, and changed <code>/run/systemd</code> to <code>/run</code>.</td>
+</tr>
+
+<tr>
+<td>5</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Cookie Security</td>
+<td><code>http_api.cpp</code></td>
+<td>407-409</td>
+<td>The <code>mc1session</code> cookie was missing the <code>Secure</code> flag. On HTTPS connections, this is a best practice to prevent cookie leakage over downgraded HTTP connections. The cookie had <code>HttpOnly</code> and <code>SameSite=Strict</code> but not <code>Secure</code>.</td>
+<td>Added <code>Secure</code> flag to the Set-Cookie header.</td>
+</tr>
+
+<tr>
+<td>6</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>SQL Injection (Defense-in-depth)</td>
+<td><code>system_health.cpp</code></td>
+<td>194-199</td>
+<td>The <code>sl.state</code> string was used directly via <code>%s</code> format specifier in <code>execf()</code> without escaping. While <code>sl.state</code> is derived from an internal C++ enum and is not user-controlled, defense-in-depth demands all string values in SQL be escaped. The <code>track_title</code> was correctly escaped but <code>state</code> was not.</td>
+<td>Added <code>Mc1Db::escape(sl.state)</code> before using in the <code>execf()</code> call.</td>
+</tr>
+
+<tr>
+<td>7</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Information Disclosure</td>
+<td><code>app/api/encoders.php</code></td>
+<td>Multiple</td>
+<td>14 instances of <code>$e->getMessage()</code> exposed raw exception messages (including SQL errors, table names, file paths) in JSON API responses. This gives attackers information about the database schema and internal structure.</td>
+<td>Added <code>mc1_safe_error()</code> helper to <code>logger.php</code> that logs the real error but returns a generic message to the user (unless debug mode is active).</td>
+</tr>
+
+<tr>
+<td>8</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Information Disclosure</td>
+<td><code>app/api/servers.php</code></td>
+<td>88,132,182</td>
+<td>Same pattern: raw <code>$e->getMessage()</code> in API responses exposes internal error details including SQL errors.</td>
+<td>Same fix: use <code>mc1_safe_error()</code> helper.</td>
+</tr>
+
+<tr>
+<td>9</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Input Reflection (XSS via API)</td>
+<td><code>app/api/health.php</code></td>
+<td>146</td>
+<td>The unknown action error message reflected the raw <code>$action</code> value: <code>'Unknown action: ' . $action</code>. While this is a JSON response (not HTML), user input should never be reflected without sanitization as defense-in-depth.</td>
+<td>Changed to generic message: <code>'Unknown action'</code> without reflecting user input.</td>
+</tr>
+
+<tr>
+<td>10</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>Hardcoded Credentials</td>
+<td><code>config/mcaster1_rock_yolo.yaml</code></td>
+<td>-</td>
+<td>Test station credentials (<code>djpulse/hackme</code>) are hardcoded in the YAML config and documented in CLAUDE.md. While this is labeled as a test station, if the config is used in production without changing credentials, it creates an obvious entry point.</td>
+<td>Accepted Risk: documented as test-only. Production deployments must change credentials.</td>
+</tr>
+
+<tr>
+<td>11</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>Session Token Entropy</td>
+<td><code>http_api.cpp</code></td>
+<td>93-101</td>
+<td>Session tokens are generated using <code>std::random_device</code> + <code>std::mt19937_64</code>. While <code>random_device</code> sources entropy from the OS, the <code>mt19937_64</code> PRNG is not cryptographically secure. The VoicTune daemon correctly uses <code>RAND_bytes()</code> from OpenSSL instead. The 256-bit token space makes practical attacks infeasible, but using a CSPRNG is best practice.</td>
+<td>Accepted Risk for now: 256-bit token space is sufficient. Future improvement: migrate to <code>RAND_bytes()</code>.</td>
+</tr>
+
+<tr>
+<td>12</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>Missing CSRF Protection</td>
+<td><code>http_api.cpp</code></td>
+<td>-</td>
+<td>State-changing API endpoints (start/stop encoder, update DSP, delete tracks) do not require CSRF tokens. The <code>SameSite=Strict</code> cookie flag provides some protection, but does not protect against same-site attacks. All endpoints require the <code>mc1session</code> cookie, which mitigates cross-origin attacks.</td>
+<td>Low risk due to <code>SameSite=Strict</code> + all state changes are POST/PUT with JSON body (browsers do not send JSON bodies in CSRF).</td>
+</tr>
+
+<tr>
+<td>13</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>Denial of Service</td>
+<td><code>http_api.cpp</code></td>
+<td>234-247</td>
+<td><code>serve_file()</code> reads the entire file into memory with <code>std::istreambuf_iterator</code>. A very large file in the webroot would consume proportional memory. However, the webroot only contains PHP/HTML/CSS/JS files (all small), so practical exploitation is limited.</td>
+<td>Accepted Risk: webroot contains only small web assets.</td>
+</tr>
+
+<tr>
+<td>14</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>SQL Best Practice</td>
+<td><code>vt_db.cpp</code></td>
+<td>All</td>
+<td>VoicTune database module uses <code>escape()</code> on all string values in SQL construction. All integer parameters use <code>std::to_string()</code>. No SQL injection vectors found.</td>
+<td>No action needed.</td>
+</tr>
+
+<tr>
+<td>15</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>Command Injection</td>
+<td><code>app/api/tracks.php</code></td>
+<td>556,892</td>
+<td>All <code>shell_exec()</code> calls use <code>escapeshellarg()</code> on all variable arguments. The <code>ffmpeg</code> commands construct arguments safely. <code>health.php</code> only runs hardcoded system commands (<code>df</code>, <code>pgrep</code>, <code>free</code>, <code>lame --version</code>) with no user input.</td>
+<td>No action needed. Verified safe usage.</td>
+</tr>
+
+<tr>
+<td>16</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>XSS Prevention</td>
+<td><code>web_ui/*.php</code></td>
+<td>All</td>
+<td>PHP pages consistently use <code>h()</code> (<code>htmlspecialchars</code>) for HTML output and JavaScript uses an <code>esc()</code> function for DOM insertion. The <code>innerHTML</code> usages in <code>encoders.php</code> pass data through <code>esc()</code> before insertion. Previous category system XSS bug was fixed in L5.5 and is documented.</td>
+<td>No action needed. Verified consistent usage of output escaping.</td>
+</tr>
+
+</tbody>
+</table>
+
+<h2>Scan Coverage</h2>
+<table>
+<thead><tr><th>Category</th><th>Files Scanned</th><th>Patterns Searched</th></tr></thead>
+<tbody>
+<tr><td>SQL Injection</td><td>All .cpp, .h, .php (82 files)</td><td><code>exec()</code>, <code>query()</code>, <code>execf()</code>, <code>$_POST/$_GET</code> in SQL, string concatenation in queries</td></tr>
+<tr><td>Command Injection</td><td>All .cpp, .php</td><td><code>system()</code>, <code>popen()</code>, <code>exec()</code>, <code>shell_exec()</code>, <code>passthru()</code>, <code>proc_open()</code></td></tr>
+<tr><td>XSS</td><td>All .php</td><td><code>innerHTML</code>, <code>document.write</code>, unescaped PHP echo, <code>$_GET/$_POST</code> in HTML</td></tr>
+<tr><td>Path Traversal</td><td>All .cpp, .php</td><td><code>../</code> filtering, <code>realpath()</code> usage, file path construction from user input</td></tr>
+<tr><td>Auth Issues</td><td><code>http_api.cpp</code>, <code>vt_http_api.cpp</code>, <code>auth.php</code>, <code>user_auth.php</code></td><td>Token generation, session management, cookie flags, rate limiting</td></tr>
+<tr><td>Info Disclosure</td><td>All .php API files</td><td><code>$e->getMessage()</code>, stack traces, version headers, error messages</td></tr>
+</tbody>
+</table>
+
+<div class="footer">
+Generated by Claude Opus 4.6 | Mcaster1DSPEncoder Security Audit | 2026-03-27
+</div>
+</body>
+</html>

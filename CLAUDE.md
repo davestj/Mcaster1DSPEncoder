@@ -11,11 +11,17 @@ mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE %yp%";
 
 ## Planning & Roadmap
 
-**See `PLANNING.md`** at the project root for the full future phase roadmap:
-- Phase L6: Streaming Server Relay Monitor (multi-DNAS/Icecast/Shoutcast SAM-style)
-- Phase L7: Listener Analytics & Metrics Dashboard
-- Phase L8: System Health Monitoring (CPU/memory/network)
-- Phase L9: Advanced Automation & Clockwheel Scheduling
+**See `PLANNING.md`** at the project root for the full future phase roadmap.
+**See `~/.claude/plans/quiet-juggling-stallman.md`** for the v1.8.0 master plan (VT/PB/AI/MX).
+
+### Active Development (v1.8.0)
+- **VT-1: VoicTune daemon skeleton** — COMPLETE (2026-03-27)
+- VT-2: Audio capture pipeline + live analysis — NEXT
+- PB-1: Pedalboard infrastructure + SVG pedals — NEXT (can parallel with VT-2)
+- AI-1: Ollama AI integration — NEXT (can parallel with VT-2)
+- MX-1: Virtual mixer console — after PB-2 + VT-2
+
+### Future Phases
 - Phase L10: Podcast & Archive Management
 - Phase L11: User Engagement & Social Integration
 
@@ -27,6 +33,7 @@ DB growth plan, and architectural decisions recorded there.
 ## Project Overview
 
 Mcaster1DSPEncoder is a dual-platform (Windows + Linux) broadcast audio encoder with:
+- VoicTune voice analysis daemon (FFT, pitch, LUFS metering, AI coaching via Ollama)
 - Embedded HTTP/HTTPS admin server (cpp-httplib v0.18)
 - Full PHP web UI (FastCGI → php-fpm)
 - DSP chain (10-band EQ, AGC/limiter, equal-power crossfader)
@@ -119,16 +126,19 @@ Flags in make_phase4.sh:
 
 The Linux source files (`encoder_slot.cpp`, `file_source.cpp`, etc.) use `#ifdef HAVE_LAME` etc. but do **NOT** include `config.h`. This means autotools `AC_DEFINE([HAVE_LAME])` alone is not enough. The Makefile.am must explicitly pass `-DHAVE_LAME` (and all other codec defines) via `AM_CPPFLAGS` inside each `if HAVE_LAME` conditional block. This is done in `src/linux/Makefile.am` already. Do not remove these.
 
-### Dual-Binary Architecture (v1.7.0+)
+### Triple-Binary Architecture (v1.8.0+)
 
-Two binaries with fault isolation — codec crash in encoder doesn't kill the web UI:
+Three binaries with fault isolation:
 
 ```
-mcaster1-dsp-encoder-admin  (35MB) — Web UI, FastCGI, auth, supervisor
-mcaster1-dsp-encoder        (27MB) — Audio pipeline, DSP, codecs, streaming
+mcaster1-dsp-encoder-admin  (36MB) — Web UI, FastCGI, auth, supervisor
+mcaster1-dsp-encoder        (28MB) — Audio pipeline, DSP, codecs, streaming
+mcaster1-voictune           (18MB) — Voice analysis, FFT, pitch, coaching, Ollama AI
 ```
 
 Admin supervises encoder child via fork/exec + watchdog. If encoder crashes (SIGSEGV from bad codec config), admin auto-restarts it within 5 seconds. Web UI stays accessible during restart.
+
+VoicTune runs independently on ports 8350/8354/8355 (HTTP/HTTPS/WebSocket). It has its own systemd unit, YAML config, and database (`mcaster1_voictune`).
 
 ### Run (systemd — recommended)
 
@@ -191,8 +201,26 @@ Mcaster1DSPEncoder/
 │   │   │   ├── agc.h/cpp               ← AGC / compressor / hard limiter
 │   │   │   ├── crossfader.h/cpp        ← Equal-power crossfader
 │   │   │   └── dsp_chain.h/cpp         ← EQ → AGC orchestrator
+│   │   ├── voictune/                    ← VoicTune daemon (Phase VT, v1.8.0)
+│   │   │   ├── main_voictune.cpp        ← Entry point, CLI, signal handling, subsystem init
+│   │   │   ├── vt_http_api.h/cpp        ← HTTP/HTTPS server, routes, session auth
+│   │   │   ├── vt_config.h/cpp          ← YAML config loader
+│   │   │   ├── vt_logger.h              ← Logging singleton (→ voictune.log)
+│   │   │   ├── vt_db.h/cpp              ← MariaDB client (mcaster1_voictune DB)
+│   │   │   ├── vt_audio_capture.h/cpp   ← PortAudio mic capture wrapper
+│   │   │   ├── vt_usb_monitor.h/cpp     ← USB/BT audio hotplug (inotify)
+│   │   │   ├── vt_websocket.h/cpp       ← RFC 6455 WebSocket (browser mic, port 8355)
+│   │   │   ├── vt_fft.h/cpp             ← FFT analysis (kiss_fft, spectral features)
+│   │   │   ├── vt_meters.h/cpp          ← RMS, peak, LUFS (ITU-R BS.1770-4)
+│   │   │   ├── vt_pitch.h/cpp           ← Pitch detection (autocorrelation, note mapping)
+│   │   │   ├── vt_coach.h/cpp           ← Rule-based voice coaching engine
+│   │   │   ├── vt_worker_pool.h/cpp     ← Thread pool for parallel FFT analysis
+│   │   │   ├── vt_versions.h            ← VoicTune component version registry
+│   │   │   ├── ollama_client.h/cpp      ← Ollama REST API client (cpp-httplib)
+│   │   │   └── ai_prompt_templates.h    ← System prompts for AI coaching/EQ/NLP
 │   │   ├── config/
-│   │   │   └── mcaster1_rock_yolo.yaml ← Test station: 3 slots to dnas.mcaster1.com
+│   │   │   ├── mcaster1_rock_yolo.yaml  ← Test station: 3 slots to dnas.mcaster1.com
+│   │   │   └── mcaster1_voictune.yaml   ← VoicTune daemon config (ports, audio, Ollama)
 │   │   ├── web_ui/                     ← PHP frontend (served by FastCGI)
 │   │   │   ├── login.html              ← Pre-auth login page (plain HTML, no PHP)
 │   │   │   ├── style.css               ← Dark navy/teal theme
@@ -491,6 +519,21 @@ POST /app/api/auth.php        actions: login, logout, auto_login, whoami
 This causes a thread pool deadlock — C++ thread blocked in FastCGI waiting for PHP, PHP curl waiting for C++.
 Browser JS must call `/api/v1/encoders/{slot}/start` directly (it has the `mc1session` cookie already).
 
+### VoicTune API (ports 8350/8354)
+
+All endpoints require `mc1vt_session` cookie or `X-API-Token` header (except `/health`).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/voictune/health` | Health check (no auth) — version, uptime |
+| POST | `/api/v1/voictune/auth/login` | Login → Set-Cookie: mc1vt_session |
+| POST | `/api/v1/voictune/auth/logout` | Logout |
+| GET | `/api/v1/voictune/status` | Config, audio device, WebSocket port, Ollama endpoint |
+| GET | `/api/v1/voictune/devices` | PortAudio input/output devices with USB/BT flags |
+| GET | `/api/v1/voictune/meters` | RMS, peak, LUFS, pitch_hz, note, cents (stub until VT-2) |
+| GET | `/api/v1/voictune/spectrum` | FFT magnitude bins (stub until VT-2) |
+| GET | `/api/v1/ai/status` | Ollama availability, model list |
+
 ---
 
 ## Database Reference
@@ -502,6 +545,7 @@ MySQL connection via `~/.my.cnf` (never inline credentials).
 | `mcaster1_encoder` | Users, roles, user_sessions, encoder config |
 | `mcaster1_media` | tracks, playlists, playlist_tracks |
 | `mcaster1_metrics` | listener_sessions, daily_stats |
+| `mcaster1_voictune` | VoicTune sessions, voice_profiles, analysis_snapshots, ai_interactions |
 
 ### Key Tables
 
@@ -521,6 +565,19 @@ id, playlist_id, track_id, position, added_at
 
 -- mcaster1_metrics.listener_sessions
 id, client_ip, user_agent, stream_mount, connected_at, disconnected_at, duration_sec, bytes_sent
+
+-- mcaster1_voictune.sessions
+id, session_name, user_id, started_at, ended_at, duration_sec, notes
+
+-- mcaster1_voictune.voice_profiles
+id, user_id, profile_name, fundamental_hz, voice_type, avg_lufs, avg_rms_db,
+eq_preset_json, effects_chain_json, analysis_json
+
+-- mcaster1_voictune.analysis_snapshots
+id, session_id, timestamp_ms, rms_db, peak_db, lufs, pitch_hz, note_name, cents_off, spectrum_json
+
+-- mcaster1_voictune.ai_interactions
+id, user_id, context, prompt_text, response_text, model_used, latency_ms
 ```
 
 ---
@@ -695,6 +752,20 @@ Or generate self-signed:
 | L9 | v1.7.0 | Clockwheel scheduler + dead air detection | **COMPLETE** |
 | L-METRICS | v1.7.0 | System Health Dashboard (disk, codecs, FPM, SSL) | **COMPLETE** |
 | L-MEDIA | v1.7.0 | Folder browser, scan progress, category types/weights | **COMPLETE** |
+| **VT-1** | **v1.8.0** | **VoicTune daemon skeleton — HTTP API, auth, config, systemd, FFT, pitch, meters, coach, DB, WebSocket, USB hotplug, Ollama client** | **COMPLETE** |
+| VT-2 | v1.8.0 | VoicTune audio capture pipeline + live analysis | PLANNED |
+| VT-3 | v1.8.0 | VoicTune web UI (oscilloscope, SA, pitch, meters) | PLANNED |
+| VT-4 | v1.8.0 | Voice coaching (rule-based + AI tips) | PLANNED |
+| PB-1 | v1.8.0 | Pedalboard infrastructure + SVG broadcast pedals | PLANNED |
+| PB-2 | v1.8.0 | Cable routing + signal flow visualization | PLANNED |
+| PB-3 | v1.8.0 | Real-time meters + visual feedback on pedals | PLANNED |
+| AI-1 | v1.8.0 | Ollama AI integration — coaching, EQ/chain suggestions | PLANNED |
+| AI-2 | v1.8.0 | NLP command parsing (natural language → API actions) | PLANNED |
+| AI-3 | v1.8.0 | Content analysis + show notes generation | PLANNED |
+| AI-4 | v1.8.0 | Smart playlist generation + troubleshooting | PLANNED |
+| MX-1 | v1.8.0 | Virtual mixer console — channel strips, faders | PLANNED |
+| MX-2 | v1.8.0 | Mixer skins (6 Mcaster1-branded styles) | PLANNED |
+| MX-3 | v1.8.0 | Custom user effect profiles + mixer presets | PLANNED |
 
 ---
 

@@ -191,12 +191,13 @@ void SystemHealth::write_to_db(const HealthSnapshot& snap)
     // Per-slot
     for (const auto& sl : snap.slots) {
         std::string title_esc = Mc1Db::instance().escape(sl.track_title);
+        std::string state_esc = Mc1Db::instance().escape(sl.state);
         Mc1Db::instance().execf(
             "INSERT INTO mcaster1_metrics.encoder_health_snapshots "
             "(slot_id,sampled_at,state,bytes_out,out_kbps,track_title,listeners) "
             "VALUES (%d,FROM_UNIXTIME(%ld),'%s',%lld,%d,'%s',%d)",
             sl.slot_id, (long)snap.sampled_at,
-            sl.state.c_str(),
+            state_esc.c_str(),
             (long long)sl.bytes_out,
             sl.out_kbps,
             title_esc.c_str(),

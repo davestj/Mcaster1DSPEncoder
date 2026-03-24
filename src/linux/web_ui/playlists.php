@@ -279,6 +279,35 @@ require_once __DIR__ . '/app/inc/header.php';
       <!-- Step 4: Preview -->
       <div id="wpage-4" class="wizard-page">
         <div id="preview-summary" style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap"></div>
+        <div id="ai-enhance-bar" style="display:none;margin-bottom:12px;padding:10px 14px;border:1px solid rgba(139,92,246,.3);background:rgba(139,92,246,.08);border-radius:6px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+              <i class="fa-solid fa-wand-magic-sparkles" style="color:#a78bfa;font-size:14px;flex-shrink:0"></i>
+              <div>
+                <div style="font-size:12px;font-weight:600;color:var(--text)">AI Playlist Enhance</div>
+                <div id="ai-enhance-status" style="font-size:11px;color:var(--muted)">Use AI to reorder tracks for optimal flow</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:6px;flex-shrink:0">
+              <select class="form-select" id="ai-enhance-goal" style="width:auto;padding:4px 8px;font-size:11px">
+                <option value="energy_flow">Energy Flow</option>
+                <option value="mood_journey">Mood Journey</option>
+                <option value="genre_variety">Genre Variety</option>
+                <option value="smooth_transitions">Smooth Transitions</option>
+              </select>
+              <button class="btn btn-sm" id="ai-enhance-btn" onclick="aiEnhancePlaylist()" style="background:rgba(139,92,246,.2);color:#a78bfa;border:1px solid rgba(139,92,246,.35)">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Enhance
+              </button>
+              <button class="btn btn-sm btn-success" id="ai-apply-btn" onclick="aiApplyReorder()" style="display:none">
+                <i class="fa-solid fa-check"></i> Apply
+              </button>
+              <button class="btn btn-sm btn-secondary" id="ai-revert-btn" onclick="aiRevertReorder()" style="display:none">
+                <i class="fa-solid fa-undo"></i> Revert
+              </button>
+            </div>
+          </div>
+          <div id="ai-enhance-rationale" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(139,92,246,.2);font-size:12px;color:var(--text-dim)"></div>
+        </div>
         <div id="preview-body">
           <div class="empty"><div class="spinner"></div><p style="margin-top:8px">Loading preview…</p></div>
         </div>
@@ -721,24 +750,17 @@ function wLoadPreview() {
             body.innerHTML = '<div class="empty"><p>No tracks matched — try relaxing the filters</p></div>';
             return;
         }
-        var rows = d.tracks.map(function (t, i) {
-            var flags = '';
-            if (t.is_jingle)  flags = '<span class="jingle-badge">JINGLE</span>';
-            if (t.is_sweeper) flags = '<span class="jingle-badge" style="background:rgba(239,68,68,.2);color:#f87171">SWEEP</span>';
-            return '<div class="preview-track">'
-                + '<div class="pnum">'+(i+1)+'</div>'
-                + '<div><span style="color:var(--text)">'+esc(t.title||'\u2014')+'</span>'+flags
-                + '<div class="preview-artist">'+esc(t.artist||'\u2014')+'</div></div>'
-                + '<div style="color:var(--muted);font-size:11px">'+esc(t.album||'')+'</div>'
-                + '<div style="color:var(--muted)">'+esc(t.duration||'\u2014')+'</div>'
-                + '<div style="color:var(--muted)">'+(t.bpm?t.bpm+' bpm':'')+'</div>'
-                + '</div>';
-        }).join('');
-        body.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Showing first '+d.tracks.length+' tracks of the estimated playlist:</div>'
-            + '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">'
-            + '<div style="display:grid;grid-template-columns:28px 1fr 120px 60px 40px;gap:8px;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border)">'
-            + '<div>#</div><div>Title / Artist</div><div>Album</div><div>Dur</div><div>BPM</div></div>'
-            + rows + '</div>';
+
+        /* Store tracks for AI enhance */
+        _previewTracks  = d.tracks;
+        _originalTracks = [];
+        document.getElementById('ai-enhance-bar').style.display = '';
+        document.getElementById('ai-apply-btn').style.display = 'none';
+        document.getElementById('ai-revert-btn').style.display = 'none';
+        document.getElementById('ai-enhance-rationale').style.display = 'none';
+        document.getElementById('ai-enhance-status').textContent = 'Use AI to reorder tracks for optimal flow';
+
+        wRenderPreviewTracks(d.tracks);
     }).catch(function (e) {
         body.innerHTML = '<div class="alert alert-error">Preview request failed</div>';
     });
@@ -780,6 +802,144 @@ function wDoGenerate() {
         btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Generate Playlist';
         mc1Toast('Request failed', 'err');
     });
+}
+
+// ── AI Playlist Enhance ──────────────────────────────────────────────────
+
+var _previewTracks     = [];   // current preview track list
+var _originalTracks    = [];   // backup before AI reorder
+var _aiReorderIndices  = [];   // AI-suggested index order
+
+window.aiEnhancePlaylist = function () {
+    if (!_previewTracks || _previewTracks.length < 2) {
+        mc1Toast('Need at least 2 tracks to enhance', 'warn');
+        return;
+    }
+
+    var btn   = document.getElementById('ai-enhance-btn');
+    var stat  = document.getElementById('ai-enhance-status');
+    var rat   = document.getElementById('ai-enhance-rationale');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:4px"></div> Thinking...';
+    stat.textContent = 'Analyzing ' + _previewTracks.length + ' tracks...';
+
+    var goal = document.getElementById('ai-enhance-goal').value;
+    var payload = {
+        playlist_tracks: _previewTracks.map(function (t) {
+            return {
+                title:       t.title || '',
+                artist:      t.artist || '',
+                genre:       t.genre || '',
+                bpm:         t.bpm || 0,
+                energy:      t.energy_level || t.energy || 0,
+                duration_ms: t.duration_ms || 0
+            };
+        }),
+        goal: goal
+    };
+
+    mc1Api('POST', '/api/v1/ai/playlist/enhance', payload).then(function (d) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Enhance';
+
+        if (!d || !d.ok) {
+            stat.textContent = 'AI error: ' + (d && d.error ? d.error : 'Unknown');
+            mc1Toast('AI enhance failed', 'err');
+            return;
+        }
+
+        var indices = d.reordered_indices;
+        if (!indices || !indices.length) {
+            stat.textContent = 'AI could not reorder tracks';
+            if (d.rationale) {
+                rat.style.display = 'block';
+                rat.textContent = d.rationale;
+            }
+            return;
+        }
+
+        _aiReorderIndices = indices;
+        _originalTracks   = _previewTracks.slice();
+
+        /* Apply reorder to preview */
+        var reordered = [];
+        for (var i = 0; i < indices.length; i++) {
+            var idx = indices[i];
+            if (idx >= 0 && idx < _previewTracks.length) {
+                reordered.push(_previewTracks[idx]);
+            }
+        }
+        /* Include any tracks the AI missed */
+        if (reordered.length < _previewTracks.length) {
+            var used = {};
+            indices.forEach(function (x) { used[x] = true; });
+            for (var j = 0; j < _previewTracks.length; j++) {
+                if (!used[j]) reordered.push(_previewTracks[j]);
+            }
+        }
+        _previewTracks = reordered;
+
+        /* Re-render preview with reordered list */
+        wRenderPreviewTracks(_previewTracks);
+
+        stat.textContent = 'Reordered for ' + goal.replace(/_/g, ' ') +
+            (d.latency_ms ? ' (' + d.latency_ms + 'ms)' : '');
+        if (d.rationale) {
+            rat.style.display = 'block';
+            rat.textContent = d.rationale;
+        }
+
+        document.getElementById('ai-apply-btn').style.display = '';
+        document.getElementById('ai-revert-btn').style.display = '';
+    }).catch(function () {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Enhance';
+        stat.textContent = 'AI service unavailable';
+        mc1Toast('AI service offline', 'err');
+    });
+};
+
+window.aiApplyReorder = function () {
+    mc1Toast('AI reorder applied to preview', 'ok');
+    document.getElementById('ai-apply-btn').style.display = 'none';
+    document.getElementById('ai-revert-btn').style.display = 'none';
+    _originalTracks = [];
+};
+
+window.aiRevertReorder = function () {
+    if (_originalTracks.length) {
+        _previewTracks = _originalTracks.slice();
+        wRenderPreviewTracks(_previewTracks);
+        mc1Toast('Reverted to original order', 'ok');
+    }
+    document.getElementById('ai-apply-btn').style.display = 'none';
+    document.getElementById('ai-revert-btn').style.display = 'none';
+    document.getElementById('ai-enhance-rationale').style.display = 'none';
+    document.getElementById('ai-enhance-status').textContent = 'Use AI to reorder tracks for optimal flow';
+    _originalTracks = [];
+};
+
+function wRenderPreviewTracks(tracks) {
+    var body = document.getElementById('preview-body');
+    if (!body || !tracks.length) return;
+    var rows = tracks.map(function (t, i) {
+        var flags = '';
+        if (t.is_jingle)  flags = '<span class="jingle-badge">JINGLE</span>';
+        if (t.is_sweeper) flags = '<span class="jingle-badge" style="background:rgba(239,68,68,.2);color:#f87171">SWEEP</span>';
+        return '<div class="preview-track">'
+            + '<div class="pnum">'+(i+1)+'</div>'
+            + '<div><span style="color:var(--text)">'+esc(t.title||'\u2014')+'</span>'+flags
+            + '<div class="preview-artist">'+esc(t.artist||'\u2014')+'</div></div>'
+            + '<div style="color:var(--muted);font-size:11px">'+esc(t.album||'')+'</div>'
+            + '<div style="color:var(--muted)">'+esc(t.duration||'\u2014')+'</div>'
+            + '<div style="color:var(--muted)">'+(t.bpm?t.bpm+' bpm':'')+'</div>'
+            + '</div>';
+    }).join('');
+    body.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Showing ' + tracks.length + ' tracks:</div>'
+        + '<div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">'
+        + '<div style="display:grid;grid-template-columns:28px 1fr 120px 60px 40px;gap:8px;padding:6px 8px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border)">'
+        + '<div>#</div><div>Title / Artist</div><div>Album</div><div>Dur</div><div>BPM</div></div>'
+        + rows + '</div>';
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────

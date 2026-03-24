@@ -118,33 +118,39 @@ static const EffectVersionInfo EFFECT_VERSIONS[] = {
     /* ── Reverb ───────────────────────────────────────────────────────────── */
     {
         /* type_id      */ "reverb",
-        /* brand_name   */ "Mcaster1 Reverb v0.1.0",
+        /* brand_name   */ "Mcaster1 Reverb v1.0.0",
         /* short_name   */ "Mcaster1 Reverb",
-        /* version      */ "0.1.0",
-        /* ver_major    */ 0,
-        /* ver_minor    */ 1,
+        /* version      */ "1.0.0",
+        /* ver_major    */ 1,
+        /* ver_minor    */ 0,
         /* ver_patch    */ 0,
         /* release_date */ "2026-03-27",
-        /* description  */ "Reverb effect — pass-through stub awaiting algorithm implementation. "
-                           "Wet/dry mix parameter exposed but not yet applied to audio.",
-        /* changelog    */ "v0.1.0: Stub release with mix parameter. Algorithm pending.",
-        /* is_stub      */ true
+        /* description  */ "Schroeder reverb with 4 parallel comb filters and 2 series all-pass "
+                           "filters. Configurable room size, decay time, damping, pre-delay, "
+                           "and wet/dry mix. Processes mono reverb applied to all channels.",
+        /* changelog    */ "v1.0.0: Full Schroeder reverb implementation with comb/all-pass "
+                           "filters, one-pole damping, pre-delay, and real-time metering. "
+                           "v0.1.0: Stub release with mix parameter.",
+        /* is_stub      */ false
     },
 
     /* ── Delay ────────────────────────────────────────────────────────────── */
     {
         /* type_id      */ "delay",
-        /* brand_name   */ "Mcaster1 Delay v0.1.0",
+        /* brand_name   */ "Mcaster1 Delay v1.0.0",
         /* short_name   */ "Mcaster1 Delay",
-        /* version      */ "0.1.0",
-        /* ver_major    */ 0,
-        /* ver_minor    */ 1,
+        /* version      */ "1.0.0",
+        /* ver_major    */ 1,
+        /* ver_minor    */ 0,
         /* ver_patch    */ 0,
         /* release_date */ "2026-03-27",
-        /* description  */ "Delay/echo effect — pass-through stub awaiting algorithm implementation. "
-                           "Time and feedback parameters exposed but not yet applied to audio.",
-        /* changelog    */ "v0.1.0: Stub release with time_ms + feedback params. Algorithm pending.",
-        /* is_stub      */ true
+        /* description  */ "Feedback delay with configurable delay time (10-2000ms), feedback "
+                           "with 0.95 cap, one-pole lowpass filter in feedback path, stereo "
+                           "ping-pong spread, and wet/dry mix.",
+        /* changelog    */ "v1.0.0: Full delay implementation with circular buffer, filtered "
+                           "feedback, stereo spread, and real-time metering. "
+                           "v0.1.0: Stub release with time_ms + feedback params.",
+        /* is_stub      */ false
     },
 
     /* ── Sidechain Ducker (PTT) ───────────────────────────────────────────── */

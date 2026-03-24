@@ -169,6 +169,12 @@ require_once __DIR__ . '/app/inc/header.php';
     </div>
   </div>
 
+  <!-- AI / Ollama -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title"><i class="fa-solid fa-brain fa-fw"></i> AI / Ollama</div></div>
+    <div id="ai-card-body"><div class="empty"><div class="spinner"></div></div></div>
+  </div>
+
 </div><!-- /card-grid -->
 
 <?php if ($can_admin): ?>
@@ -452,6 +458,84 @@ require_once __DIR__ . '/app/inc/header.php';
     </table>
   </div>
   <?php endif; ?>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     WEBHOOKS
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-bell fa-fw"></i> Webhooks
+      <span class="badge badge-red" style="margin-left:6px">Admin Only</span>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="whkNew()"><i class="fa-solid fa-plus"></i> Add Webhook</button>
+  </div>
+  <div id="whk-list"><div class="empty"><div class="spinner"></div></div></div>
+</div>
+
+<!-- Webhook Add/Edit Modal -->
+<div id="whk-modal" style="display:none;position:fixed;inset:0;z-index:8200;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);overflow-y:auto;padding:24px 16px">
+  <div style="max-width:580px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <div id="whk-modal-title" style="font-size:16px;font-weight:700;color:var(--text)">Add Webhook</div>
+      <button onclick="whkModalClose()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1">&times;</button>
+    </div>
+    <div style="padding:20px 24px">
+      <input type="hidden" id="whk-id" value="0">
+      <div class="form-group">
+        <label class="form-label">Name <span style="color:var(--red)">*</span></label>
+        <input class="form-input" id="whk-name" placeholder="My Discord Hook" autocomplete="off">
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Service <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="whk-service">
+            <option value="discord">Discord</option>
+            <option value="slack">Slack</option>
+            <option value="twitter">Twitter / X</option>
+            <option value="custom">Custom HTTP</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Active</label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 0;cursor:pointer">
+            <input type="checkbox" id="whk-active" checked style="width:18px;height:18px;accent-color:var(--teal)">
+            <span style="font-size:13px">Enabled</span>
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Webhook URL <span style="color:var(--red)">*</span></label>
+        <input class="form-input" id="whk-url" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Events</label>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;padding:6px 0">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+            <input type="checkbox" class="whk-event" value="now_playing" checked style="accent-color:var(--teal)"> Now Playing
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+            <input type="checkbox" class="whk-event" value="listener_count" style="accent-color:var(--teal)"> Listener Count
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-dim);cursor:pointer">
+            <input type="checkbox" class="whk-event" value="request_received" style="accent-color:var(--teal)"> Request Received
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Custom Template <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <textarea class="form-textarea" id="whk-template" placeholder="Now Playing: {title} by {artist} | {listeners} listeners on {mount}" style="min-height:60px"></textarea>
+        <span class="form-hint">Placeholders: {title}, {artist}, {listeners}, {mount}, {slot}</span>
+      </div>
+      <div id="whk-test-result" style="margin-top:8px;display:none"></div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="whkSave()"><i class="fa-solid fa-check"></i> Save</button>
+      <button class="btn btn-secondary btn-sm" id="whk-test-btn" onclick="whkTest()" style="display:none"><i class="fa-solid fa-paper-plane"></i> Test</button>
+      <button class="btn btn-secondary btn-sm" onclick="whkModalClose()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
@@ -743,6 +827,9 @@ document.addEventListener('DOMContentLoaded', function() {
   /* API Token card — we load from MySQL (authoritative store) */
   apiTokLoad();
 
+  /* AI / Ollama card — we load config from C++ API */
+  aiLoadConfig();
+
 <?php if ($can_admin): ?>
   /* ── Restore DB admin tab from mc1State ── */
   var savedDbTab = mc1State.get('settings', 'dbtab', 'users');
@@ -758,6 +845,9 @@ document.addEventListener('DOMContentLoaded', function() {
   /* ── Poll live encoder slot states (Online/Offline/Reconnecting) ── */
   pollEncoderStates();
   setInterval(pollEncoderStates, 10000);
+
+  /* ── Load webhook list ── */
+  whkLoad();
 <?php endif; ?>
 
 }); /* end DOMContentLoaded */
@@ -770,6 +860,146 @@ document.addEventListener('DOMContentLoaded', function() {
  * ─────────────────────────────────────────────────────────────────────────*/
 var MC1_SERVERS     = <?= json_encode(array_values($streaming_servers), JSON_UNESCAPED_SLASHES) ?>;
 var MC1_ENC_CONFIGS = <?= json_encode(array_values($enc_configs),       JSON_UNESCAPED_SLASHES) ?>;
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * WEBHOOKS JS
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+var WHK_SERVICE_ICONS = {
+  discord: '<i class="fa-brands fa-discord" style="color:#5865f2"></i>',
+  slack:   '<i class="fa-brands fa-slack" style="color:#4a154b"></i>',
+  twitter: '<i class="fa-brands fa-x-twitter" style="color:var(--text)"></i>',
+  custom:  '<i class="fa-solid fa-globe" style="color:var(--teal)"></i>'
+};
+
+/* We load and render the webhook list */
+window.whkLoad = function() {
+  mc1Api('POST', '/app/api/webhooks.php', { action: 'list' }).then(function(d) {
+    var el = document.getElementById('whk-list');
+    if (!d.ok || !d.webhooks || d.webhooks.length === 0) {
+      el.innerHTML = '<div class="empty"><i class="fa-solid fa-bell" style="font-size:28px;display:block;margin-bottom:10px;color:var(--border)"></i><p>No webhooks configured. Click <strong>Add Webhook</strong> to create one.</p></div>';
+      return;
+    }
+    var html = '<div class="tbl-wrap"><table><thead><tr><th>Service</th><th>Name</th><th>Events</th><th>Status</th><th>Last Fired</th><th></th></tr></thead><tbody>';
+    d.webhooks.forEach(function(w) {
+      var icon = WHK_SERVICE_ICONS[w.service] || WHK_SERVICE_ICONS.custom;
+      var evts = (w.events || '').split(',').map(function(e) {
+        return '<span class="badge badge-teal" style="font-size:10px;margin:1px">' + esc(e.trim()) + '</span>';
+      }).join(' ');
+      var status = w.is_active == 1
+        ? '<span class="badge badge-green">Active</span>'
+        : '<span class="badge badge-gray">Inactive</span>';
+      var lastFired = w.last_fired_at || 'Never';
+      html += '<tr>'
+        + '<td>' + icon + ' ' + esc(w.service) + '</td>'
+        + '<td style="font-weight:600;color:var(--text)">' + esc(w.name) + '</td>'
+        + '<td>' + evts + '</td>'
+        + '<td>' + status + '</td>'
+        + '<td style="font-size:11px;color:var(--muted)">' + esc(lastFired) + '</td>'
+        + '<td class="td-acts">'
+        + '<button class="btn btn-secondary btn-xs" onclick="whkEdit(' + w.id + ')" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+        + '<button class="btn btn-secondary btn-xs" onclick="whkTestById(' + w.id + ')" title="Test"><i class="fa-solid fa-paper-plane"></i></button>'
+        + '<button class="btn btn-danger btn-xs" onclick="whkDel(' + w.id + ','+esc(JSON.stringify(w.name))+')" title="Delete"><i class="fa-solid fa-trash"></i></button>'
+        + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+    /* We store the data for edit lookups */
+    window._whkData = d.webhooks;
+  }).catch(function() {
+    document.getElementById('whk-list').innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> Failed to load webhooks</div>';
+  });
+};
+
+/* We open the modal in Add mode */
+window.whkNew = function() {
+  document.getElementById('whk-id').value = '0';
+  document.getElementById('whk-modal-title').textContent = 'Add Webhook';
+  document.getElementById('whk-name').value    = '';
+  document.getElementById('whk-service').value = 'discord';
+  document.getElementById('whk-url').value     = '';
+  document.getElementById('whk-template').value = '';
+  document.getElementById('whk-active').checked = true;
+  document.querySelectorAll('.whk-event').forEach(function(cb) { cb.checked = cb.value === 'now_playing'; });
+  document.getElementById('whk-test-btn').style.display = 'none';
+  document.getElementById('whk-test-result').style.display = 'none';
+  document.getElementById('whk-modal').style.display = 'block';
+};
+
+/* We open the modal in Edit mode */
+window.whkEdit = function(id) {
+  var w = (window._whkData || []).find(function(h) { return h.id == id; });
+  if (!w) { mc1Toast('Webhook not found', 'err'); return; }
+  document.getElementById('whk-id').value = w.id;
+  document.getElementById('whk-modal-title').textContent = 'Edit Webhook';
+  document.getElementById('whk-name').value    = w.name;
+  document.getElementById('whk-service').value = w.service;
+  document.getElementById('whk-url').value     = w.webhook_url;
+  document.getElementById('whk-template').value = w.template || '';
+  document.getElementById('whk-active').checked = w.is_active == 1;
+  var evts = (w.events || '').split(',').map(function(e){ return e.trim(); });
+  document.querySelectorAll('.whk-event').forEach(function(cb) { cb.checked = evts.indexOf(cb.value) !== -1; });
+  document.getElementById('whk-test-btn').style.display = 'inline-flex';
+  document.getElementById('whk-test-result').style.display = 'none';
+  document.getElementById('whk-modal').style.display = 'block';
+};
+
+window.whkModalClose = function() {
+  document.getElementById('whk-modal').style.display = 'none';
+};
+
+/* We save (create or update) a webhook */
+window.whkSave = function() {
+  var id = parseInt(document.getElementById('whk-id').value);
+  var events = [];
+  document.querySelectorAll('.whk-event:checked').forEach(function(cb) { events.push(cb.value); });
+
+  var payload = {
+    action:      id > 0 ? 'update' : 'create',
+    id:          id > 0 ? id : undefined,
+    name:        document.getElementById('whk-name').value.trim(),
+    service:     document.getElementById('whk-service').value,
+    webhook_url: document.getElementById('whk-url').value.trim(),
+    events:      events,
+    template:    document.getElementById('whk-template').value.trim(),
+    is_active:   document.getElementById('whk-active').checked
+  };
+
+  mc1Api('POST', '/app/api/webhooks.php', payload).then(function(d) {
+    if (d.ok) {
+      mc1Toast('Webhook saved', 'ok');
+      whkModalClose();
+      whkLoad();
+    } else {
+      mc1Toast(d.error || 'Save failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We test a webhook by ID */
+window.whkTestById = function(id) {
+  mc1Toast('Sending test...', 'ok');
+  mc1Api('POST', '/app/api/webhooks.php', { action: 'test', id: id }).then(function(d) {
+    if (d.ok) mc1Toast('Test sent successfully (HTTP ' + (d.http_code || '?') + ')', 'ok');
+    else mc1Toast(d.error || 'Test failed', 'err');
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We test from inside the modal (uses the saved ID) */
+window.whkTest = function() {
+  var id = parseInt(document.getElementById('whk-id').value);
+  if (id < 1) { mc1Toast('Save first before testing', 'warn'); return; }
+  whkTestById(id);
+};
+
+/* We delete a webhook */
+window.whkDel = function(id, name) {
+  if (!confirm('Delete webhook "' + name + '"? This cannot be undone.')) return;
+  mc1Api('POST', '/app/api/webhooks.php', { action: 'delete', id: id }).then(function(d) {
+    if (d.ok) { mc1Toast('Webhook deleted', 'ok'); whkLoad(); }
+    else mc1Toast(d.error || 'Delete failed', 'err');
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
 
 /* ══════════════════════════════════════════════════════════════════════════
  * STREAMING SERVERS JS
@@ -1442,6 +1672,178 @@ window.apiTokCopy = function() {
     /* We fall back to a prompt for environments where clipboard API is unavailable */
     prompt('Copy this token:', _apiTokValue);
   });
+};
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * AI / OLLAMA SETTINGS JS
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+var _aiConfig = {};
+
+window.aiLoadConfig = function() {
+  var el = document.getElementById('ai-card-body');
+  mc1Api('GET', '/api/v1/ai/config').then(function(d) {
+    _aiConfig = d;
+    aiRenderCard(d);
+  }).catch(function() {
+    if (el) el.innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> Could not load AI config</div>';
+  });
+};
+
+function aiRenderCard(d) {
+  var el = document.getElementById('ai-card-body');
+  if (!el) return;
+  var enabled = d.enabled !== false;
+  var reachable = d.status && d.status.reachable;
+  var dotCls = !enabled ? 'offline' : (reachable ? 'online' : 'offline');
+  var statusText = !enabled ? 'Disabled' : (reachable ? 'Connected' : 'Unreachable');
+  var badgeCls = !enabled ? 'badge-gray' : (reachable ? 'badge-green' : 'badge-red');
+  var models = (d.status && d.status.models) ? d.status.models : [];
+
+  var html = '<table style="width:100%;border-collapse:collapse">'
+    + kv('Status', '<span style="display:inline-flex;align-items:center"><span class="srv-dot '+dotCls+'"></span><span class="badge '+badgeCls+'">'+statusText+'</span></span>')
+    + kv('Endpoint', '<span class="td-mono" style="font-size:11px">'+esc(d.endpoint||'')+'</span>')
+    + kv('Model', '<span class="td-mono">'+esc(d.model||'')+'</span>')
+    + kv('Timeout', (d.timeout_sec||60)+'s');
+
+  if (models.length > 0) {
+    var modelList = models.map(function(m) {
+      var name = m.name || m.model || '?';
+      var size = m.size ? ' <span style="color:var(--muted);font-size:10px">(' + aiFormatSize(m.size) + ')</span>' : '';
+      return '<span class="badge badge-teal" style="margin:2px 4px 2px 0;font-size:11px">'+esc(name)+'</span>' + size;
+    }).join('');
+    html += kv('Models', '<div style="display:flex;flex-wrap:wrap;align-items:center">'+modelList+'</div>');
+  }
+  html += '</table>';
+
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">';
+  html += '<button class="btn btn-secondary btn-sm" onclick="aiEditOpen()"><i class="fa-solid fa-pen"></i> Configure</button>';
+  html += '<button class="btn btn-secondary btn-sm" onclick="aiTestConnection()"><i class="fa-solid fa-satellite-dish"></i> Test Connection</button>';
+  html += '</div>';
+  html += '<div id="ai-test-result" style="margin-top:8px"></div>';
+
+  el.innerHTML = html;
+}
+
+function aiFormatSize(bytes) {
+  if (!bytes || bytes <= 0) return '0 B';
+  var units = ['B','KB','MB','GB','TB'];
+  var i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+}
+
+window.aiTestConnection = function() {
+  var el = document.getElementById('ai-test-result');
+  if (el) el.innerHTML = '<div class="empty"><div class="spinner"></div> Testing...</div>';
+  mc1Api('POST', '/api/v1/ai/test', {run_test: true}).then(function(d) {
+    if (!el) return;
+    if (d.ok === false) {
+      el.innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> ' + esc(d.error || 'Test failed') + '</div>';
+      return;
+    }
+    var html = '';
+    if (d.reachable) {
+      html += '<div class="alert alert-ok"><i class="fa-solid fa-circle-check"></i> Ollama reachable — latency: '+d.latency_ms+'ms';
+      if (d.test_response) html += ' — response: <em>'+esc(d.test_response).substring(0,100)+'</em>';
+      if (d.test_latency_ms) html += ' (generate: '+d.test_latency_ms+'ms)';
+      html += '</div>';
+    } else {
+      html += '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> ' + esc(d.error || 'Not reachable') + ' ('+d.latency_ms+'ms)</div>';
+    }
+    el.innerHTML = html;
+  }).catch(function() {
+    if (el) el.innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> Request failed</div>';
+  });
+};
+
+window.aiEditOpen = function() {
+  var el = document.getElementById('ai-card-body');
+  if (!el) return;
+  var d = _aiConfig;
+  var enabled = d.enabled !== false;
+
+  var html = '<div style="background:rgba(255,255,255,.03);border:1px solid var(--teal);border-radius:var(--radius-sm);padding:16px">'
+    + '<div style="font-size:12px;font-weight:700;color:var(--teal);margin-bottom:14px;text-transform:uppercase;letter-spacing:.06em">Configure AI / Ollama</div>'
+    + '<div class="form-row form-row-2">'
+    + '<div class="form-group">'
+    + '  <label class="form-label">Endpoint URL</label>'
+    + '  <input class="form-input" id="ai-endpoint" value="'+esc(d.endpoint||'http://127.0.0.1:11434')+'" placeholder="http://127.0.0.1:11434">'
+    + '</div>'
+    + '<div class="form-group">'
+    + '  <label class="form-label">Model</label>'
+    + '  <div style="display:flex;gap:6px">'
+    + '    <select class="form-select" id="ai-model" style="flex:1">';
+
+  /* We populate the select with currently known models + the configured model */
+  var models = (d.status && d.status.models) ? d.status.models : [];
+  var currentModel = d.model || 'llama3.2';
+  var modelNames = models.map(function(m){ return m.name || m.model || ''; });
+  if (modelNames.indexOf(currentModel) === -1) modelNames.unshift(currentModel);
+  modelNames.forEach(function(n) {
+    html += '<option value="'+esc(n)+'"'+(n===currentModel?' selected':'')+'>'+esc(n)+'</option>';
+  });
+  html += '    </select>'
+    + '    <button class="btn btn-secondary btn-xs" onclick="aiRefreshModels()" title="Refresh model list"><i class="fa-solid fa-arrows-rotate"></i></button>'
+    + '  </div>'
+    + '</div>'
+    + '<div class="form-group">'
+    + '  <label class="form-label">Timeout (seconds)</label>'
+    + '  <input class="form-input" id="ai-timeout" type="number" min="5" max="300" value="'+(d.timeout_sec||60)+'">'
+    + '</div>'
+    + '<div class="form-group">'
+    + '  <label class="form-label">Enabled</label>'
+    + '  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0">'
+    + '    <input type="checkbox" id="ai-enabled" '+(enabled?'checked':'')+' style="width:18px;height:18px;accent-color:var(--teal)">'
+    + '    <span style="font-size:13px">Enable AI features (Ollama)</span>'
+    + '  </label>'
+    + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:8px;margin-top:8px">'
+    + '  <button class="btn btn-primary btn-sm" onclick="aiSaveConfig()"><i class="fa-solid fa-check"></i> Save</button>'
+    + '  <button class="btn btn-secondary btn-sm" onclick="aiLoadConfig()"><i class="fa-solid fa-xmark"></i> Cancel</button>'
+    + '</div>'
+    + '</div>';
+
+  el.innerHTML = html;
+};
+
+window.aiRefreshModels = function() {
+  mc1Api('GET', '/api/v1/ai/models').then(function(d) {
+    if (d.ok && d.models) {
+      var sel = document.getElementById('ai-model');
+      if (!sel) return;
+      var current = sel.value;
+      sel.innerHTML = '';
+      d.models.forEach(function(m) {
+        var n = m.name || m.model || '';
+        var opt = document.createElement('option');
+        opt.value = n; opt.textContent = n;
+        if (n === current) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      mc1Toast('Refreshed ' + d.models.length + ' models', 'ok');
+    } else {
+      mc1Toast(d.error || 'Could not list models', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+window.aiSaveConfig = function() {
+  var payload = {
+    endpoint:    document.getElementById('ai-endpoint').value.trim(),
+    model:       document.getElementById('ai-model').value,
+    timeout_sec: parseInt(document.getElementById('ai-timeout').value) || 60,
+    enabled:     document.getElementById('ai-enabled').checked
+  };
+  mc1Api('PUT', '/api/v1/ai/config', payload).then(function(d) {
+    if (d.ok) {
+      mc1Toast('AI configuration saved' + (d.reachable ? ' — Ollama reachable' : ' — Ollama not reachable'), d.reachable ? 'ok' : 'warn');
+      /* We reload the card to reflect new state */
+      aiLoadConfig();
+    } else {
+      mc1Toast(d.error || 'Save failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
 };
 
 })();

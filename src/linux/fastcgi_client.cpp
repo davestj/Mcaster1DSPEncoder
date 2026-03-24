@@ -233,7 +233,7 @@ FcgiResponse FastCgiClient::forward(
     {
         std::map<std::string, std::string> params;
         params["GATEWAY_INTERFACE"] = "CGI/1.1";
-        params["SERVER_SOFTWARE"]   = "mcaster1-encoder/1.2.0";
+        params["SERVER_SOFTWARE"]   = "mcaster1-encoder/1.8.0-beta.1";
         params["SERVER_NAME"]       = server_name;
         params["SERVER_PORT"]       = std::to_string(server_port);
         params["SERVER_PROTOCOL"]   = "HTTP/1.1";

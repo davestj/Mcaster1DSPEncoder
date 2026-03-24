@@ -10,15 +10,40 @@
 
 #include "vt_config.h"
 #include <string>
+#include <memory>
 
 namespace mc1vt {
 
-/* We start the VoicTune HTTP/HTTPS server(s) on configured ports.
- * This blocks the calling threads — call from main after config load.
+/* Forward declarations for subsystem pointers */
+class VtAudioCapture;
+class UsbAudioMonitor;
+class VtWebSocket;
+class VtDb;
+class VoiceCoach;
+class OllamaClient;
+class AnalysisState;
+
+/* Set subsystem pointers before calling vt_http_start.
+ * These are used by API endpoints to return real data.
+ * All pointers are optional — endpoints degrade gracefully. */
+struct VtSubsystems {
+    VtAudioCapture*  audio_capture  = nullptr;
+    UsbAudioMonitor* usb_monitor    = nullptr;
+    VtWebSocket*     websocket      = nullptr;
+    VtDb*            db             = nullptr;
+    VoiceCoach*      coach          = nullptr;
+    OllamaClient*    ollama         = nullptr;
+    AnalysisState*   analysis       = nullptr;
+};
+
+void vt_set_subsystems(const VtSubsystems& sub);
+
+/* Start the VoicTune HTTP/HTTPS server(s) on configured ports.
+ * This blocks the calling thread — call from main after config load.
  * Returns when all servers have been stopped. */
 void vt_http_start(const VtConfig& cfg);
 
-/* We stop all running VoicTune HTTP servers gracefully. */
+/* Stop all running VoicTune HTTP servers gracefully. */
 void vt_http_stop();
 
 } // namespace mc1vt

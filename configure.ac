@@ -1,4 +1,4 @@
-dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v1.4.0
+dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v1.8.0-beta.1
 dnl
 dnl ./autogen.sh  then  ./configure  then  make -j$(nproc)
 dnl
@@ -9,7 +9,7 @@ dnl   --disable-encoder          Skip codec libs (HTTP-only test build)
 dnl   --disable-medialib         Skip TagLib/avformat metadata libs
 
 AC_PREREQ([2.69])
-AC_INIT([mcaster1-dsp-encoder], [1.8.0], [support@mcaster1.com])
+AC_INIT([mcaster1-dsp-encoder], [1.8.0-beta.1], [support@mcaster1.com])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 AC_CONFIG_SRCDIR([src/linux/main_cli.cpp])
 AC_CONFIG_HEADERS([config.h])
@@ -202,6 +202,16 @@ AM_CONDITIONAL([HAVE_TAGLIB],   [test "x$have_taglib"   = "xyes"])
 AM_CONDITIONAL([HAVE_MPG123],   [test "x$have_mpg123"   = "xyes"])
 AM_CONDITIONAL([HAVE_AVFORMAT], [test "x$have_avformat" = "xyes"])
 
+dnl ── Ollama AI endpoint (for VoicTune AI integration) ───────────────────────
+AC_ARG_WITH([ollama-endpoint],
+    [AS_HELP_STRING([--with-ollama-endpoint=URL],
+        [Ollama API endpoint (default: http://127.0.0.1:11434)])],
+    [OLLAMA_ENDPOINT="$withval"],
+    [OLLAMA_ENDPOINT='http://127.0.0.1:11434'])
+AC_SUBST([OLLAMA_ENDPOINT])
+AC_DEFINE_UNQUOTED([OLLAMA_DEFAULT_ENDPOINT], ["$OLLAMA_ENDPOINT"],
+    [Default Ollama API endpoint URL])
+
 dnl ── Web UI install directory ─────────────────────────────────────────────────
 AC_ARG_WITH([webroot],
     [AS_HELP_STRING([--with-webroot=DIR],
@@ -222,7 +232,7 @@ AC_CONFIG_FILES([
 AC_OUTPUT
 
 echo ""
-echo "── Mcaster1 DSP Encoder v1.4.0 configuration ──────────────────────────────"
+echo "── Mcaster1 DSP Encoder v1.8.0-beta.1 configuration ───────────────────────"
 echo "   Prefix      : $(eval echo ${prefix})"
 echo "   Web UI dir  : $(eval echo ${WEBROOT})"
 echo "   OpenSSL     : yes"
@@ -238,6 +248,7 @@ echo "   Media libs  : ${enable_medialib}"
 echo "     TagLib    : ${have_taglib}"
 echo "     mpg123    : ${have_mpg123}"
 echo "     FFmpeg    : ${have_avformat}"
+echo "   Ollama     : ${OLLAMA_ENDPOINT}"
 echo ""
 echo "   Run: make -j\$(nproc)"
 echo "   Binary: src/linux/mcaster1-dsp-encoder  (or \$(prefix)/bin after make install)"

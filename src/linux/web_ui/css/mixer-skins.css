@@ -1,0 +1,374 @@
+/* mixer-skins.css — 6 Mcaster1-branded mixer console skins
+ * Mcaster1 DSP Encoder — Phase MX-2
+ *
+ * Each skin overrides CSS custom properties scoped via [data-mixer-skin="..."]
+ * on the .mixer-surface container. The base variables are defined in mixer.css
+ * with broadcast_dark as the default.
+ */
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 1: broadcast_dark — Default (matches original mixer.css)
+   Dark charcoal surface, teal accents, silver fader caps
+   Professional broadcast console feel
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="broadcast_dark"] {
+    --mx-surface:         linear-gradient(180deg, #0a0f1e 0%, #0d1424 40%, #0a0f1e 100%);
+    --mx-surface-border:  #1a2540;
+    --mx-surface-overlay: repeating-linear-gradient(90deg, transparent 0, transparent 1px, rgba(255,255,255,.008) 1px, rgba(255,255,255,.008) 2px),
+                          linear-gradient(180deg, rgba(255,255,255,.02) 0%, transparent 30%, transparent 70%, rgba(255,255,255,.015) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #111827 0%, #0f1626 100%);
+    --mx-strip-border:    #1e2d4a;
+    --mx-master-bg:       linear-gradient(180deg, #131b2e 0%, #101828 100%);
+    --mx-master-border:   #263350;
+    --mx-master-sep:      #263350;
+    --mx-fader-cap:       linear-gradient(180deg, #5a6a80 0%, #3d4e65 40%, #2a3a50 100%);
+    --mx-fader-cap-border:#6a7a90;
+    --mx-fader-cap-line1: rgba(255,255,255,.2);
+    --mx-fader-cap-line2: rgba(255,255,255,.12);
+    --mx-fader-track:     linear-gradient(180deg, #0d1424 0%, #182035 50%, #0d1424 100%);
+    --mx-fader-track-bdr: #1e2d4a;
+    --mx-fader-fill:      linear-gradient(180deg, var(--teal), rgba(20,184,166,.3));
+    --mx-vu-bg:           #080c14;
+    --mx-vu-border:       #1a2540;
+    --mx-accent:          var(--teal);
+    --mx-accent-glow:     rgba(20,184,166,.25);
+    --mx-live-border:     rgba(20,184,166,.45);
+    --mx-live-glow:       rgba(20,184,166,.08);
+    --mx-mute-bg:         #151e30;
+    --mx-mute-border:     #2a3a50;
+    --mx-mute-active-bg:  rgba(239,68,68,.2);
+    --mx-mute-active-clr: var(--red);
+    --mx-solo-active-bg:  rgba(245,158,11,.2);
+    --mx-solo-active-clr: #f59e0b;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #4a5568, #2d3748 70%);
+    --mx-knob-border:     #5a6a80;
+    --mx-knob-indicator:  var(--teal);
+    --mx-unity-color:     rgba(20,184,166,.35);
+    --mx-label-font:      inherit;
+    --mx-text:            var(--text);
+    --mx-text-dim:        var(--muted);
+    --mx-status-idle-bg:  rgba(100,116,139,.2);
+    --mx-status-idle-clr: var(--muted);
+    --mx-status-live-bg:  rgba(20,184,166,.2);
+    --mx-status-live-clr: var(--teal);
+    --mx-dimmed-opacity:  0.35;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 2: studio_warm — Warm recording studio aesthetic
+   Dark wood grain texture, amber/gold accents, copper fader caps
+   Cream labels, warm LED yellow VU segments
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="studio_warm"] {
+    --mx-surface:         linear-gradient(180deg, #1a1008 0%, #231810 40%, #1a1008 100%);
+    --mx-surface-border:  #4a3728;
+    --mx-surface-overlay: repeating-linear-gradient(90deg, transparent 0, transparent 2px, rgba(139,100,40,.03) 2px, rgba(139,100,40,.03) 3px),
+                          linear-gradient(180deg, rgba(205,127,50,.04) 0%, transparent 30%, transparent 70%, rgba(205,127,50,.03) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #2a1f14 0%, #221a10 100%);
+    --mx-strip-border:    #4a3728;
+    --mx-master-bg:       linear-gradient(180deg, #302214 0%, #281c10 100%);
+    --mx-master-border:   #5c4430;
+    --mx-master-sep:      #5c4430;
+    --mx-fader-cap:       linear-gradient(180deg, #cd7f32 0%, #b87333 40%, #8b5e24 100%);
+    --mx-fader-cap-border:#d4943e;
+    --mx-fader-cap-line1: rgba(255,230,180,.35);
+    --mx-fader-cap-line2: rgba(255,230,180,.2);
+    --mx-fader-track:     linear-gradient(180deg, #1a1008 0%, #2a1f14 50%, #1a1008 100%);
+    --mx-fader-track-bdr: #4a3728;
+    --mx-fader-fill:      linear-gradient(180deg, #f59e0b, rgba(217,119,6,.35));
+    --mx-vu-bg:           #0f0a04;
+    --mx-vu-border:       #4a3728;
+    --mx-accent:          #f59e0b;
+    --mx-accent-glow:     rgba(245,158,11,.3);
+    --mx-live-border:     rgba(245,158,11,.5);
+    --mx-live-glow:       rgba(245,158,11,.1);
+    --mx-mute-bg:         #1e1508;
+    --mx-mute-border:     #4a3728;
+    --mx-mute-active-bg:  rgba(239,68,68,.2);
+    --mx-mute-active-clr: #ef4444;
+    --mx-solo-active-bg:  rgba(245,158,11,.25);
+    --mx-solo-active-clr: #f59e0b;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #8b6914, #6b4f10 70%);
+    --mx-knob-border:     #a07828;
+    --mx-knob-indicator:  #fbbf24;
+    --mx-unity-color:     rgba(245,158,11,.35);
+    --mx-label-font:      'Georgia', serif;
+    --mx-text:            #fef3c7;
+    --mx-text-dim:        #92764a;
+    --mx-status-idle-bg:  rgba(146,118,74,.2);
+    --mx-status-idle-clr: #92764a;
+    --mx-status-live-bg:  rgba(245,158,11,.2);
+    --mx-status-live-clr: #f59e0b;
+    --mx-dimmed-opacity:  0.3;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 3: live_neon — Live performance / DJ booth
+   Pure black surface, neon cyan/magenta accents
+   Glowing fader tracks, transparent caps with neon edge glow
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="live_neon"] {
+    --mx-surface:         linear-gradient(180deg, #000000 0%, #050508 40%, #000000 100%);
+    --mx-surface-border:  #1a0a2e;
+    --mx-surface-overlay: linear-gradient(180deg, rgba(0,255,255,.015) 0%, transparent 20%, transparent 80%, rgba(255,0,255,.015) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #0a0a12 0%, #050510 100%);
+    --mx-strip-border:    #1a1a30;
+    --mx-master-bg:       linear-gradient(180deg, #0c0c18 0%, #080814 100%);
+    --mx-master-border:   #2a1a40;
+    --mx-master-sep:      #2a1a40;
+    --mx-fader-cap:       linear-gradient(180deg, rgba(0,255,255,.15) 0%, rgba(0,255,255,.06) 40%, rgba(0,255,255,.02) 100%);
+    --mx-fader-cap-border:#00e5ff;
+    --mx-fader-cap-line1: rgba(0,255,255,.5);
+    --mx-fader-cap-line2: rgba(0,255,255,.3);
+    --mx-fader-track:     linear-gradient(180deg, #08081a 0%, #0c0c22 50%, #08081a 100%);
+    --mx-fader-track-bdr: #1a1a30;
+    --mx-fader-fill:      linear-gradient(180deg, #00e5ff, rgba(0,229,255,.2));
+    --mx-vu-bg:           #020206;
+    --mx-vu-border:       #1a1a30;
+    --mx-accent:          #00e5ff;
+    --mx-accent-glow:     rgba(0,229,255,.4);
+    --mx-live-border:     rgba(0,229,255,.6);
+    --mx-live-glow:       rgba(0,229,255,.15);
+    --mx-mute-bg:         #0a0a14;
+    --mx-mute-border:     #1a1a30;
+    --mx-mute-active-bg:  rgba(255,0,100,.25);
+    --mx-mute-active-clr: #ff0064;
+    --mx-solo-active-bg:  rgba(0,229,255,.2);
+    --mx-solo-active-clr: #00e5ff;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #1a1a30, #0a0a18 70%);
+    --mx-knob-border:     #00e5ff;
+    --mx-knob-indicator:  #ff00ff;
+    --mx-unity-color:     rgba(255,0,255,.4);
+    --mx-label-font:      'Segoe UI', 'Roboto', sans-serif;
+    --mx-text:            #e0f7ff;
+    --mx-text-dim:        #4a6080;
+    --mx-status-idle-bg:  rgba(74,96,128,.2);
+    --mx-status-idle-clr: #4a6080;
+    --mx-status-live-bg:  rgba(0,229,255,.2);
+    --mx-status-live-clr: #00e5ff;
+    --mx-dimmed-opacity:  0.2;
+}
+/* Neon glow effects on fader tracks and caps */
+[data-mixer-skin="live_neon"] .ch-fader-track {
+    box-shadow: 0 0 6px rgba(0,229,255,.15);
+}
+[data-mixer-skin="live_neon"] .ch-fader-cap {
+    box-shadow: 0 0 8px rgba(0,229,255,.35), inset 0 0 4px rgba(0,229,255,.1);
+}
+[data-mixer-skin="live_neon"] .ch-fader-cap:hover {
+    box-shadow: 0 0 14px rgba(0,229,255,.55), inset 0 0 6px rgba(0,229,255,.15);
+}
+[data-mixer-skin="live_neon"] .ch-fader-cap.dragging {
+    box-shadow: 0 0 20px rgba(0,229,255,.6), inset 0 0 8px rgba(0,229,255,.2);
+}
+[data-mixer-skin="live_neon"] .ch-strip.live-strip {
+    box-shadow: 0 0 18px rgba(0,229,255,.12), inset 0 0 8px rgba(0,229,255,.03);
+}
+[data-mixer-skin="live_neon"] .ch-btn-mute.active {
+    box-shadow: 0 0 12px rgba(255,0,100,.35);
+}
+[data-mixer-skin="live_neon"] .ch-btn-solo.active {
+    box-shadow: 0 0 12px rgba(0,229,255,.35);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 4: vintage_analog — Classic 70s/80s analog console
+   Beige/cream surface with subtle noise, brown/burgundy accents
+   Chunky rounded fader caps, warm orange VU needles
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="vintage_analog"] {
+    --mx-surface:         linear-gradient(180deg, #2a2520 0%, #312c26 40%, #2a2520 100%);
+    --mx-surface-border:  #5a4e40;
+    --mx-surface-overlay: repeating-linear-gradient(0deg, transparent 0, transparent 3px, rgba(180,160,120,.015) 3px, rgba(180,160,120,.015) 4px),
+                          linear-gradient(180deg, rgba(180,160,120,.04) 0%, transparent 40%, transparent 60%, rgba(180,160,120,.03) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #3a342c 0%, #322c24 100%);
+    --mx-strip-border:    #5a4e40;
+    --mx-master-bg:       linear-gradient(180deg, #3e362e 0%, #362e26 100%);
+    --mx-master-border:   #6a5c4a;
+    --mx-master-sep:      #6a5c4a;
+    --mx-fader-cap:       linear-gradient(180deg, #4a3828 0%, #3a2a1a 40%, #2e2014 100%);
+    --mx-fader-cap-border:#6a5038;
+    --mx-fader-cap-line1: rgba(200,180,140,.3);
+    --mx-fader-cap-line2: rgba(200,180,140,.18);
+    --mx-fader-track:     linear-gradient(180deg, #28221c 0%, #322c24 50%, #28221c 100%);
+    --mx-fader-track-bdr: #5a4e40;
+    --mx-fader-fill:      linear-gradient(180deg, #e07030, rgba(224,112,48,.3));
+    --mx-vu-bg:           #1a1610;
+    --mx-vu-border:       #5a4e40;
+    --mx-accent:          #e07030;
+    --mx-accent-glow:     rgba(224,112,48,.3);
+    --mx-live-border:     rgba(224,112,48,.5);
+    --mx-live-glow:       rgba(224,112,48,.08);
+    --mx-mute-bg:         #2a2420;
+    --mx-mute-border:     #5a4e40;
+    --mx-mute-active-bg:  rgba(180,40,40,.25);
+    --mx-mute-active-clr: #c83030;
+    --mx-solo-active-bg:  rgba(224,160,48,.2);
+    --mx-solo-active-clr: #e0a030;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #5a4838, #3a2e20 70%);
+    --mx-knob-border:     #6a5838;
+    --mx-knob-indicator:  #e07030;
+    --mx-unity-color:     rgba(224,112,48,.35);
+    --mx-label-font:      'Courier New', monospace;
+    --mx-text:            #e8dcc8;
+    --mx-text-dim:        #8a7e6a;
+    --mx-status-idle-bg:  rgba(138,126,106,.2);
+    --mx-status-idle-clr: #8a7e6a;
+    --mx-status-live-bg:  rgba(224,112,48,.2);
+    --mx-status-live-clr: #e07030;
+    --mx-dimmed-opacity:  0.35;
+}
+/* Chunkier fader caps for vintage feel */
+[data-mixer-skin="vintage_analog"] .ch-fader-cap {
+    width: 32px;
+    height: 18px;
+    border-radius: 5px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 5: military_tactical — MIL-spec field broadcast
+   Olive drab / dark green surface, amber warning indicators
+   Stencil-font labels, ruggedized flat black caps
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="military_tactical"] {
+    --mx-surface:         linear-gradient(180deg, #12160e 0%, #181e12 40%, #12160e 100%);
+    --mx-surface-border:  #2e3a22;
+    --mx-surface-overlay: repeating-linear-gradient(90deg, transparent 0, transparent 2px, rgba(80,100,60,.02) 2px, rgba(80,100,60,.02) 3px),
+                          linear-gradient(180deg, rgba(80,100,60,.03) 0%, transparent 30%, transparent 70%, rgba(80,100,60,.02) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #1e2616 0%, #1a2012 100%);
+    --mx-strip-border:    #2e3a22;
+    --mx-master-bg:       linear-gradient(180deg, #222a1a 0%, #1e2616 100%);
+    --mx-master-border:   #3a4a2e;
+    --mx-master-sep:      #3a4a2e;
+    --mx-fader-cap:       linear-gradient(180deg, #2a2a2a 0%, #1e1e1e 40%, #141414 100%);
+    --mx-fader-cap-border:#3a3a3a;
+    --mx-fader-cap-line1: rgba(255,180,0,.25);
+    --mx-fader-cap-line2: rgba(255,180,0,.15);
+    --mx-fader-track:     linear-gradient(180deg, #14180e 0%, #1e2416 50%, #14180e 100%);
+    --mx-fader-track-bdr: #2e3a22;
+    --mx-fader-fill:      linear-gradient(180deg, #d4a017, rgba(212,160,23,.3));
+    --mx-vu-bg:           #0a0e08;
+    --mx-vu-border:       #2e3a22;
+    --mx-accent:          #d4a017;
+    --mx-accent-glow:     rgba(212,160,23,.3);
+    --mx-live-border:     rgba(100,160,60,.5);
+    --mx-live-glow:       rgba(100,160,60,.1);
+    --mx-mute-bg:         #181e12;
+    --mx-mute-border:     #2e3a22;
+    --mx-mute-active-bg:  rgba(220,40,40,.2);
+    --mx-mute-active-clr: #dc2828;
+    --mx-solo-active-bg:  rgba(212,160,23,.2);
+    --mx-solo-active-clr: #d4a017;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #3a4a2e, #222a1a 70%);
+    --mx-knob-border:     #4a5a3a;
+    --mx-knob-indicator:  #d4a017;
+    --mx-unity-color:     rgba(212,160,23,.35);
+    --mx-label-font:      'Consolas', 'Lucida Console', monospace;
+    --mx-text:            #c8d0a8;
+    --mx-text-dim:        #6a7a52;
+    --mx-status-idle-bg:  rgba(106,122,82,.2);
+    --mx-status-idle-clr: #6a7a52;
+    --mx-status-live-bg:  rgba(100,160,60,.2);
+    --mx-status-live-clr: #64a03c;
+    --mx-dimmed-opacity:  0.3;
+}
+/* Ruggedized flat caps (no gloss, no rounded corners) */
+[data-mixer-skin="military_tactical"] .ch-fader-cap {
+    border-radius: 2px;
+    box-shadow: none;
+}
+[data-mixer-skin="military_tactical"] .ch-fader-cap:hover {
+    box-shadow: 0 0 4px rgba(212,160,23,.2);
+}
+[data-mixer-skin="military_tactical"] .ch-fader-cap.dragging {
+    box-shadow: 0 0 6px rgba(212,160,23,.3);
+}
+/* Stencil-style uppercase labels */
+[data-mixer-skin="military_tactical"] .ch-label-name {
+    text-transform: uppercase;
+    letter-spacing: .1em;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Skin 6: arctic_clean — Modern minimal / light theme
+   Light grey/near-white surface, ice blue accents
+   Slim modern fader caps (white with blue highlight)
+   ═══════════════════════════════════════════════════════════ */
+[data-mixer-skin="arctic_clean"] {
+    --mx-surface:         linear-gradient(180deg, #e8ecf0 0%, #dfe4ea 40%, #e8ecf0 100%);
+    --mx-surface-border:  #c0c8d4;
+    --mx-surface-overlay: linear-gradient(180deg, rgba(255,255,255,.3) 0%, transparent 30%, transparent 70%, rgba(255,255,255,.2) 100%);
+    --mx-strip-bg:        linear-gradient(180deg, #f0f3f6 0%, #e8ecf0 100%);
+    --mx-strip-border:    #c8d0dc;
+    --mx-master-bg:       linear-gradient(180deg, #f2f5f8 0%, #eaeff4 100%);
+    --mx-master-border:   #a8b4c4;
+    --mx-master-sep:      #a8b4c4;
+    --mx-fader-cap:       linear-gradient(180deg, #ffffff 0%, #f0f4f8 40%, #e0e8f0 100%);
+    --mx-fader-cap-border:#60a5fa;
+    --mx-fader-cap-line1: rgba(96,165,250,.4);
+    --mx-fader-cap-line2: rgba(96,165,250,.25);
+    --mx-fader-track:     linear-gradient(180deg, #d0d8e0 0%, #dce2ea 50%, #d0d8e0 100%);
+    --mx-fader-track-bdr: #c0c8d4;
+    --mx-fader-fill:      linear-gradient(180deg, #60a5fa, rgba(96,165,250,.3));
+    --mx-vu-bg:           #d4dce6;
+    --mx-vu-border:       #b8c4d4;
+    --mx-accent:          #3b82f6;
+    --mx-accent-glow:     rgba(59,130,246,.25);
+    --mx-live-border:     rgba(59,130,246,.5);
+    --mx-live-glow:       rgba(59,130,246,.08);
+    --mx-mute-bg:         #e4eaf0;
+    --mx-mute-border:     #c0c8d4;
+    --mx-mute-active-bg:  rgba(239,68,68,.15);
+    --mx-mute-active-clr: #dc2626;
+    --mx-solo-active-bg:  rgba(245,158,11,.15);
+    --mx-solo-active-clr: #d97706;
+    --mx-knob-bg:         radial-gradient(circle at 40% 35%, #e0e8f0, #c8d4e0 70%);
+    --mx-knob-border:     #60a5fa;
+    --mx-knob-indicator:  #3b82f6;
+    --mx-unity-color:     rgba(59,130,246,.35);
+    --mx-label-font:      'Inter', 'Segoe UI', sans-serif;
+    --mx-text:            #1e293b;
+    --mx-text-dim:        #64748b;
+    --mx-status-idle-bg:  rgba(100,116,139,.15);
+    --mx-status-idle-clr: #64748b;
+    --mx-status-live-bg:  rgba(59,130,246,.15);
+    --mx-status-live-clr: #3b82f6;
+    --mx-dimmed-opacity:  0.4;
+}
+/* Slim modern caps */
+[data-mixer-skin="arctic_clean"] .ch-fader-cap {
+    width: 26px;
+    height: 12px;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.12);
+}
+[data-mixer-skin="arctic_clean"] .ch-fader-cap:hover {
+    box-shadow: 0 1px 6px rgba(59,130,246,.25);
+}
+[data-mixer-skin="arctic_clean"] .ch-fader-cap.dragging {
+    box-shadow: 0 0 8px rgba(59,130,246,.35);
+}
+/* Light theme overrides for mute/solo text on non-active state */
+[data-mixer-skin="arctic_clean"] .ch-btn-mute,
+[data-mixer-skin="arctic_clean"] .ch-btn-solo {
+    color: #64748b;
+}
+[data-mixer-skin="arctic_clean"] .ch-btn-mute:hover {
+    color: #dc2626;
+}
+[data-mixer-skin="arctic_clean"] .ch-btn-solo:hover {
+    color: #d97706;
+}
+/* Status text on light background */
+[data-mixer-skin="arctic_clean"] .ch-status.connecting {
+    background: rgba(234,179,8,.15);
+    color: #b45309;
+}
+[data-mixer-skin="arctic_clean"] .ch-status.error {
+    background: rgba(239,68,68,.12);
+    color: #dc2626;
+}
+[data-mixer-skin="arctic_clean"] .ch-status.sleep {
+    background: rgba(251,146,60,.12);
+    color: #c2410c;
+}

@@ -195,6 +195,34 @@ static void parse_dnas(yaml_document_t* doc, yaml_node_t* node)
 }
 
 // ---------------------------------------------------------------------------
+// ollama: section → gAdminConfig.ollama
+// ---------------------------------------------------------------------------
+
+static void parse_ollama(yaml_document_t* doc, yaml_node_t* node)
+{
+    if (!node || node->type != YAML_MAPPING_NODE) return;
+
+    yaml_node_t* v;
+    auto& ol = gAdminConfig.ollama;
+
+    // Defaults are set in mc1_load_config before calling this
+    if ((v = map_get(doc, node, "endpoint")))
+        strncpy(ol.endpoint, node_scalar(doc, v), sizeof(ol.endpoint) - 1);
+    if ((v = map_get(doc, node, "model")))
+        strncpy(ol.model, node_scalar(doc, v), sizeof(ol.model) - 1);
+    if ((v = map_get(doc, node, "timeout")))
+        ol.timeout_sec = atoi(node_scalar(doc, v));
+    if ((v = map_get(doc, node, "enabled"))) {
+        const char* val = node_scalar(doc, v);
+        // We treat "false", "no", "0" as disabled; everything else as enabled
+        if (strcmp(val, "false") == 0 || strcmp(val, "no") == 0 || strcmp(val, "0") == 0)
+            ol.enabled = 0;
+        else
+            ol.enabled = 1;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Public — load startup YAML: fills gAdminConfig (NO encoder slots)
 // ---------------------------------------------------------------------------
 
@@ -235,6 +263,14 @@ bool mc1_load_config(const char*    path,
         return false;
     }
 
+    // Set Ollama defaults before parsing (struct may contain garbage)
+    strncpy(gAdminConfig.ollama.endpoint, "http://127.0.0.1:11434",
+            sizeof(gAdminConfig.ollama.endpoint) - 1);
+    strncpy(gAdminConfig.ollama.model, "llama3.2",
+            sizeof(gAdminConfig.ollama.model) - 1);
+    gAdminConfig.ollama.timeout_sec = 60;
+    gAdminConfig.ollama.enabled     = 1;
+
     yaml_node_t* n;
 
     // http-admin → gAdminConfig (sockets, SSL, credentials, log, webroot)
@@ -252,6 +288,10 @@ bool mc1_load_config(const char*    path,
     // dnas → gAdminConfig.dnas
     if ((n = map_get(&doc, root, "dnas")))
         parse_dnas(&doc, n);
+
+    // ollama → gAdminConfig.ollama
+    if ((n = map_get(&doc, root, "ollama")))
+        parse_ollama(&doc, n);
 
     yaml_document_delete(&doc);
     yaml_parser_delete(&parser);
