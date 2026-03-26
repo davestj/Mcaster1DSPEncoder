@@ -89,7 +89,7 @@ class PodcastFeed {
         }
 
         foreach ($episodes as $ep) {
-            $audio_url = $base_url . '/podcast/episode/' . $ep['id'] . '/audio';
+            $audio_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
             $mime = self::mimeFor($ep['format'] ?? 'mp3');
 
             $xml .= "    <item>\n";

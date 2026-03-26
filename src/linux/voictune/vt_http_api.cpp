@@ -1513,6 +1513,498 @@ static void setup_routes(httplib::Server& svr)
         });
     });
 
+    /* ══════════════════════════════════════════════════════════════════════════
+     * Podcast AI tools (Phase PC-6)
+     * ══════════════════════════════════════════════════════════════════════════ */
+
+    /* ── POST /api/v1/ai/podcast/show-notes — generate show notes from transcript ── */
+    svr.Post("/api/v1/ai/podcast/show-notes", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string transcript = body.value("transcript", "");
+            std::string episode_title = body.value("episode_title", "");
+            if (transcript.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"transcript field required"})", "application/json");
+                return;
+            }
+
+            std::string user_prompt = "Generate show notes for this podcast episode";
+            if (!episode_title.empty())
+                user_prompt += " titled \"" + episode_title + "\"";
+            user_prompt += ":\n\n" + transcript;
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::SHOW_NOTES_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "podcast_show_notes";
+                ai.prompt_text   = user_prompt.substr(0, 512);
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+                out["ok"]         = true;
+                out["show_notes"] = response_text;
+                out["latency_ms"] = latency_ms;
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/ai/podcast/suggest-chapters — suggest chapters from transcript ── */
+    svr.Post("/api/v1/ai/podcast/suggest-chapters", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string transcript = body.value("transcript", "");
+            if (transcript.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"transcript field required"})", "application/json");
+                return;
+            }
+
+            std::string user_prompt = "Suggest chapter markers for this podcast transcript:\n\n" + transcript;
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::CHAPTER_SUGGEST_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "podcast_chapters";
+                ai.prompt_text   = user_prompt.substr(0, 512);
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+
+                /* Try to parse structured JSON array from AI response */
+                json chapters = json::array();
+                bool parsed_ok = false;
+                try {
+                    chapters = json::parse(response_text);
+                    if (chapters.is_array()) parsed_ok = true;
+                } catch (...) {
+                    /* Try extracting JSON array from surrounding text */
+                    auto j_start = response_text.find('[');
+                    auto j_end   = response_text.rfind(']');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            chapters = json::parse(response_text.substr(j_start, j_end - j_start + 1));
+                            if (chapters.is_array()) parsed_ok = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (parsed_ok) {
+                    out["chapters"] = chapters;
+                } else {
+                    out["chapters"]     = json::array();
+                    out["raw_response"] = response_text;
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/ai/podcast/extract-clips — identify best moments for social clips ── */
+    svr.Post("/api/v1/ai/podcast/extract-clips", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string transcript = body.value("transcript", "");
+            if (transcript.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"transcript field required"})", "application/json");
+                return;
+            }
+
+            std::string user_prompt = "Identify the best moments for social media clips from this podcast transcript:\n\n" + transcript;
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::CLIP_EXTRACT_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "podcast_clips";
+                ai.prompt_text   = user_prompt.substr(0, 512);
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+
+                /* Try to parse structured JSON array from AI response */
+                json clips = json::array();
+                bool parsed_ok = false;
+                try {
+                    clips = json::parse(response_text);
+                    if (clips.is_array()) parsed_ok = true;
+                } catch (...) {
+                    auto j_start = response_text.find('[');
+                    auto j_end   = response_text.rfind(']');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            clips = json::parse(response_text.substr(j_start, j_end - j_start + 1));
+                            if (clips.is_array()) parsed_ok = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (parsed_ok) {
+                    out["clips"] = clips;
+                } else {
+                    out["clips"]        = json::array();
+                    out["raw_response"] = response_text;
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/ai/podcast/seo-optimize — optimize episode metadata for SEO ── */
+    svr.Post("/api/v1/ai/podcast/seo-optimize", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            if (!g_sub.ollama) {
+                res.set_content(R"({"error":"Ollama client not initialized","available":false})",
+                                "application/json");
+                return;
+            }
+            if (!g_sub.ollama->is_available()) {
+                res.set_content(R"({"error":"Ollama not available. Start with: ollama serve","available":false})",
+                                "application/json");
+                return;
+            }
+
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string title       = body.value("title", "");
+            std::string description = body.value("description", "");
+            if (title.empty() && description.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"title or description required"})", "application/json");
+                return;
+            }
+
+            std::string user_prompt = "Optimize this podcast episode for SEO:\n";
+            if (!title.empty())       user_prompt += "Title: " + title + "\n";
+            if (!description.empty()) user_prompt += "Description: " + description + "\n";
+
+            json messages = json::array();
+            messages.push_back({{"role", "system"}, {"content", ai_prompts::SEO_OPTIMIZE_SYSTEM}});
+            messages.push_back({{"role", "user"}, {"content", user_prompt}});
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = g_sub.ollama->chat(messages);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            /* Log to DB */
+            if (g_sub.db && !result.contains("error")) {
+                DbAiInteraction ai;
+                ai.user_id       = 1;
+                ai.context       = "podcast_seo";
+                ai.prompt_text   = user_prompt.substr(0, 512);
+                ai.model_used    = g_sub.ollama->model();
+                ai.latency_ms    = latency_ms;
+                if (result.contains("message") && result["message"].contains("content"))
+                    ai.response_text = result["message"]["content"].get<std::string>();
+                g_sub.db->log_ai_interaction(ai);
+            }
+
+            json out;
+            if (result.contains("error")) {
+                out["ok"]    = false;
+                out["error"] = result["error"];
+            } else {
+                std::string response_text;
+                if (result.contains("message") && result["message"].contains("content"))
+                    response_text = result["message"]["content"].get<std::string>();
+
+                out["ok"]         = true;
+                out["latency_ms"] = latency_ms;
+
+                /* Try to parse structured JSON from AI response */
+                json parsed;
+                bool parsed_ok = false;
+                try {
+                    parsed = json::parse(response_text);
+                    parsed_ok = true;
+                } catch (...) {
+                    auto j_start = response_text.find('{');
+                    auto j_end   = response_text.rfind('}');
+                    if (j_start != std::string::npos && j_end != std::string::npos && j_end > j_start) {
+                        try {
+                            parsed = json::parse(response_text.substr(j_start, j_end - j_start + 1));
+                            parsed_ok = true;
+                        } catch (...) {}
+                    }
+                }
+
+                if (parsed_ok) {
+                    out["title"]          = parsed.value("title", "");
+                    out["description"]    = parsed.value("description", "");
+                    out["tags"]           = parsed.value("tags", json::array());
+                    out["social_caption"] = parsed.value("social_caption", "");
+                } else {
+                    out["title"]          = "";
+                    out["description"]    = response_text;
+                    out["tags"]           = json::array();
+                    out["social_caption"] = "";
+                }
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/ai/podcast/transcribe — transcribe episode audio ── */
+    svr.Post("/api/v1/ai/podcast/transcribe", [](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            int episode_id = body.value("episode_id", 0);
+
+            /* If episode_id provided but no file_path, look up the file from DB */
+            if (file_path.empty() && episode_id > 0 && g_sub.db && g_sub.db->is_connected()) {
+                /* We query the episode file path from the database */
+                /* For now, we require file_path to be specified directly */
+                res.status = 400;
+                res.set_content("{\"error\":\"file_path required (episode_id lookup not yet implemented)\"}",
+                                "application/json");
+                return;
+            }
+
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path or episode_id required"})", "application/json");
+                return;
+            }
+
+            /* Check if the file exists */
+            {
+                FILE* f = fopen(file_path.c_str(), "r");
+                if (!f) {
+                    res.status = 404;
+                    json err;
+                    err["ok"]    = false;
+                    err["error"] = "Audio file not found: " + file_path;
+                    res.set_content(err.dump(), "application/json");
+                    return;
+                }
+                fclose(f);
+            }
+
+            /* Check if whisper CLI is available */
+            int whisper_check = system("which whisper > /dev/null 2>&1");
+            if (whisper_check != 0) {
+                json out;
+                out["ok"]     = false;
+                out["error"]  = "Whisper not installed. Install with: pip install openai-whisper";
+                out["method"] = "unavailable";
+                res.set_content(out.dump(2), "application/json");
+                return;
+            }
+
+            /* Run whisper transcription */
+            auto t0 = std::chrono::steady_clock::now();
+
+            std::string tmp_dir = "/tmp/mc1vt_whisper_" + std::to_string(std::time(nullptr));
+            std::string cmd = "mkdir -p " + tmp_dir + " && whisper --model base --output_format txt --output_dir " +
+                              tmp_dir + " " + file_path + " 2>&1";
+
+            VT_INFO("Running Whisper transcription: " + file_path);
+            FILE* pipe = popen(cmd.c_str(), "r");
+            if (!pipe) {
+                res.status = 500;
+                res.set_content(R"({"ok":false,"error":"Failed to run whisper command"})", "application/json");
+                return;
+            }
+
+            char buffer[4096];
+            std::string whisper_output;
+            while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+                whisper_output += buffer;
+            }
+            int exit_code = pclose(pipe);
+
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            if (exit_code != 0) {
+                out["ok"]     = false;
+                out["error"]  = "Whisper failed: " + whisper_output;
+                out["method"] = "whisper";
+            } else {
+                /* Read the transcript output file */
+                /* Whisper creates a .txt file with the same basename in the output dir */
+                std::string basename = file_path.substr(file_path.find_last_of('/') + 1);
+                auto dot_pos = basename.find_last_of('.');
+                if (dot_pos != std::string::npos) basename = basename.substr(0, dot_pos);
+                std::string txt_path = tmp_dir + "/" + basename + ".txt";
+
+                std::string transcript;
+                FILE* txt_file = fopen(txt_path.c_str(), "r");
+                if (txt_file) {
+                    char tbuf[4096];
+                    while (fgets(tbuf, sizeof(tbuf), txt_file) != nullptr) {
+                        transcript += tbuf;
+                    }
+                    fclose(txt_file);
+                }
+
+                out["ok"]         = true;
+                out["transcript"] = transcript;
+                out["method"]     = "whisper";
+                out["latency_ms"] = latency_ms;
+
+                VT_INFO("Whisper transcription complete: " + std::to_string(transcript.size()) + " chars in " +
+                         std::to_string(latency_ms) + "ms");
+
+                /* Log to DB */
+                if (g_sub.db) {
+                    DbAiInteraction ai;
+                    ai.user_id       = 1;
+                    ai.context       = "podcast_transcribe";
+                    ai.prompt_text   = "whisper: " + file_path;
+                    ai.model_used    = "whisper-base";
+                    ai.latency_ms    = latency_ms;
+                    ai.response_text = transcript.substr(0, 1024);
+                    g_sub.db->log_ai_interaction(ai);
+                }
+            }
+
+            /* Cleanup temp dir */
+            std::string cleanup = "rm -rf " + tmp_dir;
+            system(cleanup.c_str());
+
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
     VT_INFO("VoicTune routes registered");
 }
 

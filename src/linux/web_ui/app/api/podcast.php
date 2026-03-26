@@ -24,6 +24,18 @@
  *  generate_rss     — Generate iTunes-compatible RSS XML for a show
  *  scan_archives    — Scan archive directory for unlinked recordings
  *
+ * Phase PC-3 — Multi-platform publishing:
+ *  list_targets       — List publish targets for a show
+ *  create_target      — Add platform target (platform, name, credentials, config)
+ *  update_target      — Update target settings
+ *  delete_target      — Remove a publish target
+ *  publish_to_targets — Queue episode for publishing to selected targets
+ *  schedule_publish   — Schedule episode for future publish (set scheduled_at)
+ *  get_publish_status — Check publish queue status for an episode
+ *  cancel_publish     — Cancel a pending/scheduled publish queue item
+ *  retry_publish      — Retry a failed publish queue item
+ *  process_queue      — Cron-compatible: process scheduled items whose time has arrived
+ *
  * Standards:
  *  - We never call exit() or die() — uopz extension is active
  *  - We use Mc1Db trait for all database access
@@ -41,13 +53,20 @@ require_once __DIR__ . '/../inc/logger.php';
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/user_auth.php';
 
-header('Content-Type: application/json');
-
-/* ── Auth gate ── */
-if (!mc1_is_authed()) {
-    mc1_api_respond(['error' => 'Unauthorized'], 403);
+/* ── Public download endpoint (no auth — podcast clients need access) ── */
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'download') {
+    $episode_id = (int)($_GET['episode_id'] ?? 0);
+    if ($episode_id < 1) {
+        http_response_code(400);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Missing episode_id']);
+        return;
+    }
+    PodcastApi::handleDownload($episode_id);
     return;
 }
+
+header('Content-Type: application/json');
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     mc1_api_respond(['error' => 'POST required'], 405);
@@ -63,6 +82,19 @@ if (!is_array($data) || empty($data['action'])) {
 }
 
 $action = $data['action'];
+
+/* ── Auth gate ── */
+/* We allow process_queue from localhost without auth for cron usage:
+ * curl -s http://127.0.0.1:8330/app/api/podcast.php -d '{"action":"process_queue","_internal":"1"}' */
+$is_cron = (
+    $action === 'process_queue'
+    && !empty($data['_internal'])
+    && in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'])
+);
+if (!$is_cron && !mc1_is_authed()) {
+    mc1_api_respond(['error' => 'Unauthorized'], 403);
+    return;
+}
 
 /* ── Podcast helper class ── */
 class PodcastApi {
@@ -137,7 +169,9 @@ class PodcastApi {
 
         self::run(self::DB,
             "UPDATE podcast_shows SET title=?, description=?, author=?, category=?,
-             language=?, cover_art_path=?, website_url=?, feed_url=?, is_active=?
+             language=?, cover_art_path=?, website_url=?, feed_url=?, is_active=?,
+             site_enabled=?, site_theme=?, site_accent_color=?, site_welcome_message=?,
+             site_custom_domain=?
              WHERE id=?",
             [
                 $title,
@@ -149,6 +183,11 @@ class PodcastApi {
                 $data['website_url'] ?? '',
                 $data['feed_url'] ?? '',
                 (int)($data['is_active'] ?? 1),
+                (int)($data['site_enabled'] ?? 1),
+                $data['site_theme'] ?? 'clean_light',
+                $data['site_accent_color'] ?? '#14b8a6',
+                $data['site_welcome_message'] ?? null,
+                $data['site_custom_domain'] ?? null,
                 $id,
             ]
         );
@@ -412,7 +451,7 @@ class PodcastApi {
 
         foreach ($episodes as $ep) {
             // We construct the audio URL for the enclosure
-            $audio_url = $base_url . '/podcast/episode/' . $ep['id'] . '/audio';
+            $audio_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
             $mime_type = self::mimeForFormat($ep['format'] ?? 'mp3');
 
             $xml .= "    <item>\n";
@@ -520,6 +559,1286 @@ class PodcastApi {
         ];
     }
 
+    /* ── MARKERS ── */
+
+    public static function listMarkers(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $markers = self::rows(self::DB,
+            "SELECT * FROM episode_markers WHERE episode_id = ? ORDER BY timestamp_ms ASC",
+            [$episode_id]
+        );
+        return ['ok' => true, 'markers' => $markers];
+    }
+
+    public static function deleteMarker(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing marker id'];
+
+        self::run(self::DB, "DELETE FROM episode_markers WHERE id = ?", [$id]);
+        return ['ok' => true, 'message' => 'Marker deleted'];
+    }
+
+    public static function updateMarker(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing marker id'];
+
+        $title = trim($data['title'] ?? '');
+        if ($title === '') return ['error' => 'Title is required'];
+
+        self::run(self::DB,
+            "UPDATE episode_markers SET title=?, marker_type=?, url=?, image_url=? WHERE id=?",
+            [
+                $title,
+                $data['marker_type'] ?? 'chapter',
+                $data['url'] ?? '',
+                $data['image_url'] ?? '',
+                $id,
+            ]
+        );
+        return ['ok' => true, 'message' => 'Marker updated'];
+    }
+
+    public static function addMarker(array $data): array
+    {
+        $episode_id   = (int)($data['episode_id'] ?? 0);
+        $timestamp_ms = (int)($data['timestamp_ms'] ?? -1);
+        $title        = trim($data['title'] ?? '');
+
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+        if ($timestamp_ms < 0) return ['error' => 'Missing timestamp_ms'];
+        if ($title === '') return ['error' => 'Title is required'];
+
+        self::run(self::DB,
+            "INSERT INTO episode_markers (episode_id, timestamp_ms, title, marker_type, url, image_url)
+             VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                $episode_id,
+                $timestamp_ms,
+                $title,
+                $data['marker_type'] ?? 'chapter',
+                $data['url'] ?? '',
+                $data['image_url'] ?? '',
+            ]
+        );
+        $id = self::lastId(self::DB);
+        return ['ok' => true, 'id' => (int)$id, 'message' => 'Marker created'];
+    }
+
+    /* ── EPISODE EXPORT (PC-2) ── */
+
+    public static function exportEpisode(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $format  = $data['format'] ?? 'mp3';
+        $bitrate = $data['bitrate'] ?? '128k';
+        $edl     = $data['edl'] ?? null;
+
+        // We validate the format
+        $validFormats = ['mp3', 'aac', 'opus', 'flac'];
+        if (!in_array($format, $validFormats)) {
+            return ['error' => 'Invalid format: ' . $format];
+        }
+
+        // We look up the episode to get the source file path
+        $ep = self::row(self::DB,
+            "SELECT * FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) return ['error' => 'Episode not found'];
+
+        $sourcePath = $ep['file_path'] ?? '';
+        if (!file_exists($sourcePath)) {
+            return ['error' => 'Source file not found: ' . basename($sourcePath)];
+        }
+
+        // We check that ffmpeg is available
+        $ffmpegPath = '';
+        if (function_exists('exec')) {
+            $lines = [];
+            @exec('which ffmpeg 2>/dev/null', $lines);
+            $ffmpegPath = $lines[0] ?? '';
+        }
+        if ($ffmpegPath === '') {
+            return ['error' => 'ffmpeg not found on this server'];
+        }
+
+        // We construct the output filename alongside the original
+        $dir = dirname($sourcePath);
+        $base = pathinfo($sourcePath, PATHINFO_FILENAME);
+        $ext = match ($format) {
+            'mp3'  => 'mp3',
+            'aac'  => 'm4a',
+            'opus' => 'opus',
+            'flac' => 'flac',
+            default => 'mp3',
+        };
+        $outputPath = $dir . '/' . $base . '_edited_' . date('Ymd_His') . '.' . $ext;
+
+        // We build the ffmpeg filter chain from the EDL operations
+        $filters = [];
+        $operations = (is_array($edl) && !empty($edl['operations'])) ? $edl['operations'] : [];
+
+        foreach ($operations as $op) {
+            $type = $op['type'] ?? '';
+            switch ($type) {
+                case 'cut':
+                    $startSec = round(($op['start_ms'] ?? 0) / 1000, 3);
+                    $endSec   = round(($op['end_ms'] ?? 0) / 1000, 3);
+                    $filters[] = "aselect='not(between(t\\," . $startSec . "\\," . $endSec . "))',asetpts=N/SR/TB";
+                    break;
+
+                case 'trim':
+                    $startSec = round(($op['start_ms'] ?? 0) / 1000, 3);
+                    $endSec   = round(($op['end_ms'] ?? 0) / 1000, 3);
+                    $filters[] = "atrim=start=" . $startSec . ":end=" . $endSec . ",asetpts=N/SR/TB";
+                    break;
+
+                case 'silence':
+                    $startSec = round(($op['start_ms'] ?? 0) / 1000, 3);
+                    $endSec   = round(($op['end_ms'] ?? 0) / 1000, 3);
+                    $filters[] = "volume=enable='between(t\\," . $startSec . "\\," . $endSec . ")':volume=0";
+                    break;
+
+                case 'fade_in':
+                    $startSec = round(($op['start_ms'] ?? 0) / 1000, 3);
+                    $durSec   = round(($op['duration_ms'] ?? 2000) / 1000, 3);
+                    $curve = ($op['curve'] ?? 'linear') === 'exponential' ? 'exp' : 'tri';
+                    $filters[] = "afade=t=in:st=" . $startSec . ":d=" . $durSec . ":curve=" . $curve;
+                    break;
+
+                case 'fade_out':
+                    $startSec = round(($op['start_ms'] ?? 0) / 1000, 3);
+                    $durSec   = round(($op['duration_ms'] ?? 2000) / 1000, 3);
+                    $curve = ($op['curve'] ?? 'linear') === 'exponential' ? 'exp' : 'tri';
+                    $filters[] = "afade=t=out:st=" . $startSec . ":d=" . $durSec . ":curve=" . $curve;
+                    break;
+
+                case 'normalize':
+                    $targetDb = (float)($op['target_db'] ?? -1.0);
+                    $filters[] = "loudnorm=I=-16:TP=" . $targetDb . ":LRA=11";
+                    break;
+            }
+        }
+
+        // We build the codec arguments
+        $codecArgs = match ($format) {
+            'mp3'  => '-c:a libmp3lame -b:a ' . escapeshellarg($bitrate),
+            'aac'  => '-c:a aac -b:a ' . escapeshellarg($bitrate),
+            'opus' => '-c:a libopus -b:a ' . escapeshellarg($bitrate),
+            'flac' => '-c:a flac',
+            default => '-c:a libmp3lame -b:a 128k',
+        };
+
+        $filterStr = '';
+        if (!empty($filters)) {
+            $filterStr = '-af ' . escapeshellarg(implode(',', $filters));
+        }
+
+        $cmd = escapeshellarg($ffmpegPath) . ' -y -i ' . escapeshellarg($sourcePath)
+             . ' ' . $filterStr . ' ' . $codecArgs
+             . ' ' . escapeshellarg($outputPath)
+             . ' 2>&1';
+
+        $output = [];
+        $retval = -1;
+        if (function_exists('exec')) {
+            @exec($cmd, $output, $retval);
+        }
+
+        if ($retval !== 0) {
+            $errMsg = implode("\n", array_slice($output, -5));
+            mc1_log(2, 'ffmpeg export failed: ' . $errMsg, 'podcast');
+            return ['error' => 'FFmpeg export failed (code ' . $retval . '): ' . $errMsg];
+        }
+
+        // We get the exported file size and duration
+        $outSize = file_exists($outputPath) ? filesize($outputPath) : 0;
+        $outDur  = 0;
+        if (function_exists('exec') && file_exists($outputPath)) {
+            $dlines = [];
+            @exec('ffprobe -v quiet -show_entries format=duration -of csv=p=0 '
+                . escapeshellarg($outputPath) . ' 2>/dev/null', $dlines);
+            if (!empty($dlines[0])) {
+                $outDur = (int)round((float)$dlines[0]);
+            }
+        }
+
+        // We update the episode record with the new file path
+        self::run(self::DB,
+            "UPDATE podcast_episodes SET file_path=?, file_size_bytes=?, duration_sec=?, format=? WHERE id=?",
+            [$outputPath, $outSize, $outDur, $format, $episode_id]
+        );
+
+        return [
+            'ok'          => true,
+            'output_file' => basename($outputPath),
+            'file_size'   => $outSize,
+            'duration_sec'=> $outDur,
+            'message'     => 'Episode exported successfully',
+        ];
+    }
+
+    /* ── PUBLISH TARGETS (PC-3) ── */
+
+    public static function listTargets(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        if ($show_id < 1) return ['error' => 'Missing show_id'];
+
+        $targets = self::rows(self::DB,
+            "SELECT * FROM publish_targets WHERE show_id = ? ORDER BY platform_name ASC",
+            [$show_id]
+        );
+        // We decode config_json for each target
+        foreach ($targets as &$t) {
+            $t['config'] = $t['config_json'] ? json_decode($t['config_json'], true) : [];
+            unset($t['config_json']);
+            // We mask API credentials — never send secrets to the browser
+            if (!empty($t['api_key'])) $t['api_key'] = '***' . substr($t['api_key'], -4);
+            if (!empty($t['api_secret'])) $t['api_secret'] = '****';
+        }
+        unset($t);
+        return ['ok' => true, 'targets' => $targets];
+    }
+
+    public static function createTarget(array $data): array
+    {
+        $show_id       = (int)($data['show_id'] ?? 0);
+        $platform      = $data['platform'] ?? '';
+        $platform_name = trim($data['platform_name'] ?? '');
+
+        if ($show_id < 1) return ['error' => 'Missing show_id'];
+        if ($platform_name === '') return ['error' => 'Platform name is required'];
+
+        $validPlatforms = ['rss','apple','spotify','google','amazon','youtube','podbean','buzzsprout','custom'];
+        if (!in_array($platform, $validPlatforms)) return ['error' => 'Invalid platform'];
+
+        $config_json = null;
+        if (!empty($data['config']) && is_array($data['config'])) {
+            $config_json = json_encode($data['config']);
+        }
+
+        self::run(self::DB,
+            "INSERT INTO publish_targets (show_id, platform, platform_name, api_key, api_secret, feed_id, is_active, config_json)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                $show_id,
+                $platform,
+                $platform_name,
+                $data['api_key'] ?? null,
+                $data['api_secret'] ?? null,
+                $data['feed_id'] ?? null,
+                (int)($data['is_active'] ?? 1),
+                $config_json,
+            ]
+        );
+        return ['ok' => true, 'id' => (int)self::lastId(self::DB), 'message' => 'Publish target created'];
+    }
+
+    public static function updateTarget(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing target id'];
+
+        $platform_name = trim($data['platform_name'] ?? '');
+        if ($platform_name === '') return ['error' => 'Platform name is required'];
+
+        $config_json = null;
+        if (!empty($data['config']) && is_array($data['config'])) {
+            $config_json = json_encode($data['config']);
+        }
+
+        // We only update api_key/api_secret if they are not masked placeholders
+        $api_key_sql    = '';
+        $api_secret_sql = '';
+        $params = [$platform_name];
+
+        $set_parts = ['platform_name=?'];
+
+        if (isset($data['api_key']) && !str_starts_with($data['api_key'] ?? '', '***')) {
+            $set_parts[] = 'api_key=?';
+            $params[]    = $data['api_key'];
+        }
+        if (isset($data['api_secret']) && ($data['api_secret'] ?? '') !== '****') {
+            $set_parts[] = 'api_secret=?';
+            $params[]    = $data['api_secret'];
+        }
+
+        $set_parts[] = 'feed_id=?';
+        $params[]    = $data['feed_id'] ?? null;
+        $set_parts[] = 'is_active=?';
+        $params[]    = (int)($data['is_active'] ?? 1);
+        $set_parts[] = 'config_json=?';
+        $params[]    = $config_json;
+
+        $params[] = $id;
+
+        self::run(self::DB,
+            "UPDATE publish_targets SET " . implode(', ', $set_parts) . " WHERE id=?",
+            $params
+        );
+        return ['ok' => true, 'message' => 'Publish target updated'];
+    }
+
+    public static function deleteTarget(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing target id'];
+
+        // We also remove any pending queue items for this target
+        self::run(self::DB, "DELETE FROM publish_queue WHERE target_id = ? AND status IN ('pending','scheduled')", [$id]);
+        self::run(self::DB, "DELETE FROM publish_targets WHERE id = ?", [$id]);
+        return ['ok' => true, 'message' => 'Publish target deleted'];
+    }
+
+    /* ── PUBLISH QUEUE (PC-3) ── */
+
+    public static function publishToTargets(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        $target_ids = $data['target_ids'] ?? [];
+
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+        if (!is_array($target_ids) || empty($target_ids)) return ['error' => 'No targets selected'];
+
+        // We verify the episode exists and is published
+        $ep = self::row(self::DB, "SELECT * FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) return ['error' => 'Episode not found'];
+
+        $queued = 0;
+        foreach ($target_ids as $tid) {
+            $tid = (int)$tid;
+            if ($tid < 1) continue;
+
+            // We skip if already queued and not failed
+            $existing = self::row(self::DB,
+                "SELECT id, status FROM publish_queue WHERE episode_id = ? AND target_id = ? AND status NOT IN ('failed')",
+                [$episode_id, $tid]
+            );
+            if ($existing) continue;
+
+            self::run(self::DB,
+                "INSERT INTO publish_queue (episode_id, target_id, status) VALUES (?, ?, 'pending')",
+                [$episode_id, $tid]
+            );
+            $queued++;
+        }
+
+        // We immediately process pending items
+        self::processQueueItems($episode_id);
+
+        return ['ok' => true, 'queued' => $queued, 'message' => "Queued $queued item(s) for publishing"];
+    }
+
+    public static function schedulePublish(array $data): array
+    {
+        $episode_id   = (int)($data['episode_id'] ?? 0);
+        $target_ids   = $data['target_ids'] ?? [];
+        $scheduled_at = trim($data['scheduled_at'] ?? '');
+
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+        if (!is_array($target_ids) || empty($target_ids)) return ['error' => 'No targets selected'];
+        if ($scheduled_at === '') return ['error' => 'Missing scheduled_at datetime'];
+
+        // We validate the datetime
+        $ts = strtotime($scheduled_at);
+        if (!$ts || $ts <= time()) return ['error' => 'Scheduled time must be in the future'];
+
+        $queued = 0;
+        foreach ($target_ids as $tid) {
+            $tid = (int)$tid;
+            if ($tid < 1) continue;
+
+            // We skip if already queued and not failed
+            $existing = self::row(self::DB,
+                "SELECT id FROM publish_queue WHERE episode_id = ? AND target_id = ? AND status NOT IN ('failed')",
+                [$episode_id, $tid]
+            );
+            if ($existing) continue;
+
+            self::run(self::DB,
+                "INSERT INTO publish_queue (episode_id, target_id, status, scheduled_at) VALUES (?, ?, 'scheduled', ?)",
+                [$episode_id, $tid, date('Y-m-d H:i:s', $ts)]
+            );
+            $queued++;
+        }
+
+        return ['ok' => true, 'queued' => $queued, 'message' => "Scheduled $queued item(s) for " . date('Y-m-d H:i', $ts)];
+    }
+
+    public static function getPublishStatus(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $items = self::rows(self::DB,
+            "SELECT pq.*, pt.platform, pt.platform_name
+             FROM publish_queue pq
+             LEFT JOIN publish_targets pt ON pt.id = pq.target_id
+             WHERE pq.episode_id = ?
+             ORDER BY pq.created_at DESC",
+            [$episode_id]
+        );
+
+        return ['ok' => true, 'queue' => $items];
+    }
+
+    public static function cancelPublish(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing queue item id'];
+
+        $item = self::row(self::DB, "SELECT status FROM publish_queue WHERE id = ?", [$id]);
+        if (!$item) return ['error' => 'Queue item not found'];
+        if (!in_array($item['status'], ['pending', 'scheduled'])) {
+            return ['error' => 'Can only cancel pending or scheduled items'];
+        }
+
+        self::run(self::DB, "DELETE FROM publish_queue WHERE id = ?", [$id]);
+        return ['ok' => true, 'message' => 'Publish cancelled'];
+    }
+
+    public static function retryPublish(array $data): array
+    {
+        $id = (int)($data['id'] ?? 0);
+        if ($id < 1) return ['error' => 'Missing queue item id'];
+
+        $item = self::row(self::DB, "SELECT * FROM publish_queue WHERE id = ?", [$id]);
+        if (!$item) return ['error' => 'Queue item not found'];
+        if ($item['status'] !== 'failed') return ['error' => 'Can only retry failed items'];
+
+        self::run(self::DB,
+            "UPDATE publish_queue SET status = 'pending', error_message = NULL WHERE id = ?",
+            [$id]
+        );
+
+        // We process it immediately
+        self::processQueueItems((int)$item['episode_id']);
+
+        return ['ok' => true, 'message' => 'Retrying publish'];
+    }
+
+    /**
+     * We process the publish queue — called by cron or after immediate publish.
+     * For cron usage: POST /app/api/podcast.php {action: "process_queue", _internal: "1"}
+     */
+    public static function processQueue(): array
+    {
+        // We find all items that are ready: pending OR (scheduled AND scheduled_at <= NOW)
+        $items = self::rows(self::DB,
+            "SELECT pq.*, pt.platform, pt.platform_name, pt.api_key, pt.api_secret,
+                    pt.feed_id, pt.config_json, pt.show_id
+             FROM publish_queue pq
+             JOIN publish_targets pt ON pt.id = pq.target_id
+             WHERE (pq.status = 'pending')
+                OR (pq.status = 'scheduled' AND pq.scheduled_at <= NOW())
+             ORDER BY pq.created_at ASC
+             LIMIT 50"
+        );
+
+        $processed = 0;
+        $errors    = [];
+
+        foreach ($items as $item) {
+            $result = self::processPublishItem($item);
+            if ($result['ok']) {
+                $processed++;
+            } else {
+                $errors[] = $item['platform_name'] . ': ' . ($result['error'] ?? 'Unknown error');
+            }
+        }
+
+        return ['ok' => true, 'processed' => $processed, 'errors' => $errors];
+    }
+
+    /**
+     * We process queue items for a specific episode (used for immediate publish).
+     */
+    private static function processQueueItems(int $episode_id): void
+    {
+        $items = self::rows(self::DB,
+            "SELECT pq.*, pt.platform, pt.platform_name, pt.api_key, pt.api_secret,
+                    pt.feed_id, pt.config_json, pt.show_id
+             FROM publish_queue pq
+             JOIN publish_targets pt ON pt.id = pq.target_id
+             WHERE pq.episode_id = ? AND pq.status = 'pending'
+             ORDER BY pq.created_at ASC",
+            [$episode_id]
+        );
+
+        foreach ($items as $item) {
+            self::processPublishItem($item);
+        }
+    }
+
+    /**
+     * We process a single publish queue item based on platform type.
+     */
+    private static function processPublishItem(array $item): array
+    {
+        $qid      = (int)$item['id'];
+        $platform = $item['platform'];
+        $config   = $item['config_json'] ? json_decode($item['config_json'], true) : [];
+
+        // We mark as publishing
+        self::run(self::DB, "UPDATE publish_queue SET status = 'publishing' WHERE id = ?", [$qid]);
+
+        // We fetch the episode data
+        $ep = self::row(self::DB, "SELECT * FROM podcast_episodes WHERE id = ?", [(int)$item['episode_id']]);
+        if (!$ep) {
+            self::run(self::DB,
+                "UPDATE publish_queue SET status = 'failed', error_message = 'Episode not found' WHERE id = ?",
+                [$qid]
+            );
+            return ['ok' => false, 'error' => 'Episode not found'];
+        }
+
+        try {
+            $result = match ($platform) {
+                'rss'     => self::publishRss($item, $ep, $config),
+                'youtube' => self::publishYouTube($item, $ep, $config),
+                'custom'  => self::publishCustomWebhook($item, $ep, $config),
+                default   => self::publishManualPlatform($item, $ep, $config),
+            };
+
+            if ($result['ok']) {
+                self::run(self::DB,
+                    "UPDATE publish_queue SET status = 'published', published_at = NOW(), platform_url = ? WHERE id = ?",
+                    [$result['url'] ?? null, $qid]
+                );
+                // We update the target's last_published_at
+                self::run(self::DB,
+                    "UPDATE publish_targets SET last_published_at = NOW() WHERE id = ?",
+                    [(int)$item['target_id']]
+                );
+
+                // We fire webhooks for social cross-post if configured
+                self::fireSocialWebhooks($ep, $item, $config);
+
+                return ['ok' => true];
+            } else {
+                self::run(self::DB,
+                    "UPDATE publish_queue SET status = 'failed', error_message = ? WHERE id = ?",
+                    [$result['error'] ?? 'Unknown error', $qid]
+                );
+                return ['ok' => false, 'error' => $result['error']];
+            }
+        } catch (\Throwable $e) {
+            mc1_log(MC1_LOG_ERROR, 'Publish error for queue item ' . $qid . ': ' . $e->getMessage(), 'podcast');
+            self::run(self::DB,
+                "UPDATE publish_queue SET status = 'failed', error_message = ? WHERE id = ?",
+                ['Exception: ' . $e->getMessage(), $qid]
+            );
+            return ['ok' => false, 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * We publish to RSS — the feed is already generated by generate_rss().
+     * We just mark the episode as published if it isn't already and record the feed URL.
+     */
+    private static function publishRss(array $item, array $ep, array $config): array
+    {
+        // We ensure the episode is marked as published in the DB
+        if (!$ep['is_published']) {
+            self::run(self::DB,
+                "UPDATE podcast_episodes SET is_published = 1, published_at = NOW() WHERE id = ?",
+                [(int)$ep['id']]
+            );
+        }
+
+        $show = self::row(self::DB, "SELECT * FROM podcast_shows WHERE id = ?", [(int)$item['show_id']]);
+        $base = $show && !empty($show['website_url'])
+            ? rtrim($show['website_url'], '/')
+            : 'https://encoder.mcaster1.com:8344';
+
+        $url = $base . '/podcast/' . (int)$item['show_id'] . '/feed.xml';
+
+        return ['ok' => true, 'url' => $url];
+    }
+
+    /**
+     * We generate a static video for YouTube upload via ffmpeg.
+     * We create the video file and store the path for manual upload.
+     */
+    private static function publishYouTube(array $item, array $ep, array $config): array
+    {
+        if (empty($ep['file_path']) || !file_exists($ep['file_path'])) {
+            return ['ok' => false, 'error' => 'Audio file not found'];
+        }
+
+        // We look for cover art: show cover, then a default placeholder
+        $show = self::row(self::DB, "SELECT cover_art_path FROM podcast_shows WHERE id = ?", [(int)$item['show_id']]);
+        $cover = $show['cover_art_path'] ?? '';
+
+        // We determine the output directory
+        $outDir = dirname($ep['file_path']);
+        $outFile = $outDir . '/' . pathinfo($ep['file_path'], PATHINFO_FILENAME) . '_youtube.mp4';
+
+        if ($cover !== '' && file_exists($cover)) {
+            // We generate a video with cover art + audio
+            $cmd = sprintf(
+                'ffmpeg -y -loop 1 -i %s -i %s -c:v libx264 -tune stillimage -c:a aac -b:a 192k '
+                . '-shortest -pix_fmt yuv420p -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1" %s 2>&1',
+                escapeshellarg($cover),
+                escapeshellarg($ep['file_path']),
+                escapeshellarg($outFile)
+            );
+        } else {
+            // We generate a video with a black background + audio
+            $dur = (int)($ep['duration_sec'] ?? 0);
+            $durArg = $dur > 0 ? '-t ' . $dur : '';
+            $cmd = sprintf(
+                'ffmpeg -y -f lavfi -i color=c=black:s=1920x1080:r=1 -i %s -c:v libx264 -tune stillimage '
+                . '-c:a aac -b:a 192k -shortest -pix_fmt yuv420p %s %s 2>&1',
+                escapeshellarg($ep['file_path']),
+                $durArg,
+                escapeshellarg($outFile)
+            );
+        }
+
+        $output = [];
+        $rc     = 0;
+        if (function_exists('exec')) {
+            @exec($cmd, $output, $rc);
+        } else {
+            return ['ok' => false, 'error' => 'exec() not available for ffmpeg'];
+        }
+
+        if ($rc !== 0 || !file_exists($outFile)) {
+            mc1_log(MC1_LOG_ERROR, 'ffmpeg YouTube video generation failed (rc=' . $rc . '): '
+                . implode("\n", array_slice($output, -5)), 'podcast');
+            return ['ok' => false, 'error' => 'Video generation failed (ffmpeg rc=' . $rc . ')'];
+        }
+
+        mc1_log(MC1_LOG_INFO, 'YouTube video generated: ' . $outFile . ' ('
+            . round(filesize($outFile) / 1048576, 1) . ' MB)', 'podcast');
+
+        return [
+            'ok'  => true,
+            'url' => 'file://' . $outFile,
+            'note' => 'Video generated at ' . $outFile . '. Upload manually to YouTube.',
+        ];
+    }
+
+    /**
+     * We publish to a custom webhook endpoint — sends episode metadata as JSON POST.
+     */
+    private static function publishCustomWebhook(array $item, array $ep, array $config): array
+    {
+        $webhook_url = $config['webhook_url'] ?? ($item['feed_id'] ?? '');
+        if (empty($webhook_url) || !filter_var($webhook_url, FILTER_VALIDATE_URL)) {
+            return ['ok' => false, 'error' => 'No valid webhook URL configured for custom target'];
+        }
+
+        $show = self::row(self::DB, "SELECT * FROM podcast_shows WHERE id = ?", [(int)$item['show_id']]);
+
+        $payload = json_encode([
+            'event'    => 'episode_published',
+            'show'     => [
+                'id'    => (int)($show['id'] ?? 0),
+                'title' => $show['title'] ?? '',
+                'author'=> $show['author'] ?? '',
+            ],
+            'episode'  => [
+                'id'            => (int)$ep['id'],
+                'title'         => $ep['title'],
+                'description'   => $ep['description'] ?? '',
+                'duration_sec'  => (int)$ep['duration_sec'],
+                'format'        => $ep['format'],
+                'episode_number'=> $ep['episode_number'],
+                'season'        => $ep['season'],
+                'published_at'  => $ep['published_at'] ?? date('Y-m-d H:i:s'),
+            ],
+            'timestamp' => date('c'),
+        ]);
+
+        $opts = [
+            'http' => [
+                'method'  => 'POST',
+                'header'  => "Content-Type: application/json\r\nUser-Agent: Mcaster1DSPEncoder/1.8.0\r\n",
+                'content' => $payload,
+                'timeout' => 15,
+                'ignore_errors' => true,
+            ],
+            'ssl' => [
+                'verify_peer'      => true,
+                'verify_peer_name' => true,
+            ],
+        ];
+
+        // We add API key as Authorization header if provided
+        if (!empty($item['api_key'])) {
+            $opts['http']['header'] .= "Authorization: Bearer " . $item['api_key'] . "\r\n";
+        }
+
+        $context  = stream_context_create($opts);
+        $response = @file_get_contents($webhook_url, false, $context);
+
+        if ($response === false) {
+            $err = error_get_last();
+            return ['ok' => false, 'error' => 'Webhook failed: ' . ($err['message'] ?? 'connection error')];
+        }
+
+        $httpCode = 0;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $hdr) {
+                if (preg_match('/^HTTP\/[\d.]+ (\d+)/', $hdr, $m)) {
+                    $httpCode = (int)$m[1];
+                }
+            }
+        }
+
+        if ($httpCode >= 200 && $httpCode < 300) {
+            return ['ok' => true, 'url' => $webhook_url];
+        }
+
+        return ['ok' => false, 'error' => 'Webhook returned HTTP ' . $httpCode];
+    }
+
+    /**
+     * We handle platforms that need manual setup (Apple, Spotify, Google, Amazon, Podbean, Buzzsprout).
+     * For v1, we record the publish attempt and provide setup instructions.
+     * Once the user has configured their account and submitted their RSS feed,
+     * episodes published to the RSS feed are automatically picked up.
+     */
+    private static function publishManualPlatform(array $item, array $ep, array $config): array
+    {
+        // We ensure the episode is published (RSS is the distribution mechanism for these platforms)
+        if (!$ep['is_published']) {
+            self::run(self::DB,
+                "UPDATE podcast_episodes SET is_published = 1, published_at = NOW() WHERE id = ?",
+                [(int)$ep['id']]
+            );
+        }
+
+        // We build the platform-specific instructions/URLs
+        $urls = [
+            'apple'     => 'https://podcastsconnect.apple.com/',
+            'spotify'   => 'https://podcasters.spotify.com/',
+            'google'    => 'https://podcastsmanager.google.com/',
+            'amazon'    => 'https://podcasters.amazon.com/',
+            'podbean'   => 'https://www.podbean.com/dashboard',
+            'buzzsprout' => 'https://www.buzzsprout.com/',
+        ];
+
+        $platform = $item['platform'];
+        $url = $urls[$platform] ?? '';
+
+        // We record it as published since RSS is the actual distribution vector
+        mc1_log(MC1_LOG_INFO, 'Episode "' . $ep['title'] . '" marked as published on '
+            . $item['platform_name'] . ' (RSS-distributed)', 'podcast');
+
+        return ['ok' => true, 'url' => $url ?: null];
+    }
+
+    /**
+     * We fire social webhook notifications after an episode is published.
+     * We check for Discord/Slack/Custom webhooks in the target's config_json.
+     */
+    private static function fireSocialWebhooks(array $ep, array $item, array $config): void
+    {
+        // We look for social webhook URLs in config
+        $socialHooks = $config['social_webhooks'] ?? [];
+        if (empty($socialHooks) || !is_array($socialHooks)) return;
+
+        $show = self::row(self::DB, "SELECT title FROM podcast_shows WHERE id = ?", [(int)$item['show_id']]);
+        $showTitle = $show['title'] ?? 'Podcast';
+
+        foreach ($socialHooks as $hook) {
+            $hookUrl     = $hook['url'] ?? '';
+            $hookService = $hook['service'] ?? 'custom';
+            $hookTemplate = $hook['template'] ?? '';
+
+            if (empty($hookUrl) || !filter_var($hookUrl, FILTER_VALIDATE_URL)) continue;
+
+            // We build the message
+            $msg = $hookTemplate ?: 'New episode published: "' . ($ep['title'] ?? 'Untitled')
+                 . '" on ' . $showTitle;
+
+            // We do placeholder replacement
+            $msg = str_replace(
+                ['{title}', '{show}', '{episode_number}', '{description}'],
+                [$ep['title'] ?? '', $showTitle, $ep['episode_number'] ?? '', $ep['description'] ?? ''],
+                $msg
+            );
+
+            // We construct the payload based on service type
+            $payload = match ($hookService) {
+                'discord' => json_encode(['content' => $msg]),
+                'slack'   => json_encode(['text' => $msg]),
+                default   => json_encode([
+                    'message' => $msg,
+                    'event'   => 'episode_published',
+                    'episode' => ['title' => $ep['title'], 'id' => $ep['id']],
+                ]),
+            };
+
+            $opts = [
+                'http' => [
+                    'method'  => 'POST',
+                    'header'  => "Content-Type: application/json\r\nUser-Agent: Mcaster1DSPEncoder/1.8.0\r\n",
+                    'content' => $payload,
+                    'timeout' => 10,
+                    'ignore_errors' => true,
+                ],
+                'ssl' => ['verify_peer' => true, 'verify_peer_name' => true],
+            ];
+
+            $ctx = stream_context_create($opts);
+            $resp = @file_get_contents($hookUrl, false, $ctx);
+            if ($resp === false) {
+                mc1_log(MC1_LOG_WARN, 'Social webhook failed to ' . $hookUrl, 'podcast');
+            } else {
+                mc1_log(MC1_LOG_INFO, 'Social webhook fired to ' . $hookUrl, 'podcast');
+            }
+        }
+    }
+
+    /* ── DOWNLOAD TRACKING (PC-4) ── */
+
+    /**
+     * We handle public download requests from podcast clients.
+     * We log the download to podcast_downloads and serve the audio file.
+     */
+    public static function handleDownload(int $episode_id): void
+    {
+        $ep = self::row(self::DB,
+            "SELECT e.*, s.title AS show_title
+             FROM podcast_episodes e
+             LEFT JOIN podcast_shows s ON s.id = e.show_id
+             WHERE e.id = ? AND e.is_published = 1",
+            [$episode_id]
+        );
+
+        if (!$ep || empty($ep['file_path']) || !file_exists($ep['file_path'])) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Episode not found']);
+            return;
+        }
+
+        $file_path  = $ep['file_path'];
+        $file_size  = (int)filesize($file_path);
+        $mime       = self::mimeForFormat($ep['format'] ?? 'mp3');
+        $client_ip  = $_SERVER['REMOTE_ADDR'] ?? '';
+        $user_agent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+        $referer    = $_SERVER['HTTP_REFERER'] ?? '';
+        $platform   = self::detectPlatform($user_agent);
+
+        // We attempt country detection via geoiplookup
+        $country = '';
+        if ($client_ip && function_exists('exec')) {
+            $out = '';
+            @exec('geoiplookup ' . escapeshellarg($client_ip) . ' 2>/dev/null', $lines);
+            if (!empty($lines[0]) && preg_match('/: ([A-Z]{2}),/', $lines[0], $m)) {
+                $country = $m[1];
+            }
+        }
+
+        // We log the download
+        try {
+            self::run(self::DB,
+                "INSERT INTO podcast_downloads (episode_id, client_ip, user_agent, referer, platform, country, bytes_sent, completed)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    $episode_id,
+                    $client_ip,
+                    substr($user_agent, 0, 2000),
+                    substr($referer, 0, 512),
+                    $platform,
+                    $country ?: null,
+                    $file_size,
+                    1,
+                ]
+            );
+        } catch (\Throwable $e) {
+            // We log but do not fail the download
+            mc1_log(MC1_LOG_ERROR, 'Download tracking insert failed: ' . $e->getMessage(), 'podcast');
+        }
+
+        // We serve the file
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . $file_size);
+        header('Content-Disposition: inline; filename="' . basename($file_path) . '"');
+        header('Accept-Ranges: bytes');
+        header('Cache-Control: public, max-age=86400');
+
+        // We support HTTP Range requests for partial downloads
+        if (!empty($_SERVER['HTTP_RANGE'])) {
+            $range = $_SERVER['HTTP_RANGE'];
+            if (preg_match('/bytes=(\d+)-(\d*)/', $range, $rm)) {
+                $start = (int)$rm[1];
+                $end   = $rm[2] !== '' ? (int)$rm[2] : $file_size - 1;
+                if ($start >= $file_size || $end >= $file_size || $start > $end) {
+                    http_response_code(416);
+                    header('Content-Range: bytes */' . $file_size);
+                    return;
+                }
+                $length = $end - $start + 1;
+                http_response_code(206);
+                header('Content-Range: bytes ' . $start . '-' . $end . '/' . $file_size);
+                header('Content-Length: ' . $length);
+
+                // We update bytes_sent for partial downloads
+                if ($length < $file_size) {
+                    try {
+                        $last_id = self::lastId(self::DB);
+                        if ($last_id) {
+                            self::run(self::DB,
+                                "UPDATE podcast_downloads SET bytes_sent = ?, completed = ? WHERE id = ?",
+                                [$length, ($length >= $file_size ? 1 : 0), $last_id]
+                            );
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                $fp = fopen($file_path, 'rb');
+                if ($fp) {
+                    fseek($fp, $start);
+                    $remaining = $length;
+                    while ($remaining > 0 && !feof($fp)) {
+                        $chunk = min(8192, $remaining);
+                        echo fread($fp, $chunk);
+                        $remaining -= $chunk;
+                        if (connection_aborted()) break;
+                    }
+                    fclose($fp);
+                }
+                return;
+            }
+        }
+
+        readfile($file_path);
+    }
+
+    /**
+     * We detect the podcast platform from the User-Agent string.
+     */
+    private static function detectPlatform(string $ua): string
+    {
+        $ua = strtolower($ua);
+        if (strpos($ua, 'applecoremedia') !== false || strpos($ua, 'itunes') !== false || strpos($ua, 'apple podcasts') !== false) return 'apple_podcasts';
+        if (strpos($ua, 'spotify') !== false) return 'spotify';
+        if (strpos($ua, 'overcast') !== false) return 'overcast';
+        if (strpos($ua, 'pocket casts') !== false || strpos($ua, 'pocketcasts') !== false) return 'pocket_casts';
+        if (strpos($ua, 'castbox') !== false) return 'castbox';
+        if (strpos($ua, 'castro') !== false) return 'castro';
+        if (strpos($ua, 'podcastaddict') !== false || strpos($ua, 'podcast addict') !== false) return 'podcast_addict';
+        if (strpos($ua, 'google-podcast') !== false || strpos($ua, 'google podcasts') !== false) return 'google_podcasts';
+        if (strpos($ua, 'stitcher') !== false) return 'stitcher';
+        if (strpos($ua, 'tunein') !== false) return 'tunein';
+        if (strpos($ua, 'deezer') !== false) return 'deezer';
+        if (strpos($ua, 'mozilla') !== false || strpos($ua, 'chrome') !== false || strpos($ua, 'safari') !== false || strpos($ua, 'firefox') !== false) return 'browser';
+        if (strpos($ua, 'feedparser') !== false || strpos($ua, 'feedfetcher') !== false || strpos($ua, 'rss') !== false || strpos($ua, 'feed') !== false) return 'rss_reader';
+        return 'unknown';
+    }
+
+    /* ── ANALYTICS (PC-4) ── */
+
+    /**
+     * We return download stats per episode over time (daily/weekly/monthly).
+     */
+    public static function downloadStats(array $data): array
+    {
+        $show_id  = (int)($data['show_id'] ?? 0);
+        $period   = $data['period'] ?? 'daily';
+        $days     = min(365, max(1, (int)($data['days'] ?? 30)));
+
+        $group_fmt = match ($period) {
+            'weekly'  => '%x-W%v',
+            'monthly' => '%Y-%m',
+            default   => '%Y-%m-%d',
+        };
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT DATE_FORMAT(d.downloaded_at, '$group_fmt') AS period_label,
+                    e.id AS episode_id, e.title AS episode_title,
+                    COUNT(*) AS downloads,
+                    SUM(d.completed) AS completed_downloads
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY period_label, e.id
+             ORDER BY period_label ASC, downloads DESC",
+            $params
+        );
+
+        // We also compute totals per period
+        $totals = self::rows(self::DB,
+            "SELECT DATE_FORMAT(d.downloaded_at, '$group_fmt') AS period_label,
+                    COUNT(*) AS downloads
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY period_label
+             ORDER BY period_label ASC",
+            $params
+        );
+
+        return ['ok' => true, 'by_episode' => $rows, 'totals' => $totals, 'period' => $period, 'days' => $days];
+    }
+
+    /**
+     * We return downloads grouped by detected platform.
+     */
+    public static function platformBreakdown(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $days    = min(365, max(1, (int)($data['days'] ?? 30)));
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT COALESCE(d.platform, 'unknown') AS platform, COUNT(*) AS downloads,
+                    SUM(d.completed) AS completed
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY d.platform
+             ORDER BY downloads DESC",
+            $params
+        );
+
+        return ['ok' => true, 'platforms' => $rows];
+    }
+
+    /**
+     * We return the most downloaded episodes.
+     */
+    public static function topEpisodes(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $days    = min(365, max(1, (int)($data['days'] ?? 30)));
+        $limit   = min(50, max(5, (int)($data['limit'] ?? 10)));
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT e.id, e.title, e.episode_number, s.title AS show_title,
+                    COUNT(*) AS downloads, SUM(d.completed) AS completed,
+                    COUNT(DISTINCT d.client_ip) AS unique_listeners
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             LEFT JOIN podcast_shows s ON s.id = e.show_id
+             $where
+             GROUP BY e.id
+             ORDER BY downloads DESC
+             LIMIT $limit",
+            $params
+        );
+
+        return ['ok' => true, 'episodes' => $rows];
+    }
+
+    /**
+     * We return total downloads per week/month over time (cumulative growth).
+     */
+    public static function growthTrend(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $period  = $data['period'] ?? 'weekly';
+        $days    = min(365, max(7, (int)($data['days'] ?? 90)));
+
+        $group_fmt = $period === 'monthly' ? '%Y-%m' : '%x-W%v';
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT DATE_FORMAT(d.downloaded_at, '$group_fmt') AS period_label,
+                    COUNT(*) AS downloads,
+                    COUNT(DISTINCT d.client_ip) AS unique_listeners
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY period_label
+             ORDER BY period_label ASC",
+            $params
+        );
+
+        // We compute cumulative totals
+        $cumulative = 0;
+        foreach ($rows as &$r) {
+            $cumulative += (int)$r['downloads'];
+            $r['cumulative'] = $cumulative;
+        }
+        unset($r);
+
+        return ['ok' => true, 'trend' => $rows, 'period' => $period];
+    }
+
+    /**
+     * We return partial vs complete download counts per episode.
+     */
+    public static function episodeRetention(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $days    = min(365, max(1, (int)($data['days'] ?? 30)));
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT e.id, e.title, e.episode_number,
+                    COUNT(*) AS total_downloads,
+                    SUM(d.completed = 1) AS completed,
+                    SUM(d.completed = 0) AS partial,
+                    ROUND(SUM(d.completed = 1) / COUNT(*) * 100, 1) AS completion_rate
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY e.id
+             ORDER BY total_downloads DESC",
+            $params
+        );
+
+        return ['ok' => true, 'retention' => $rows];
+    }
+
+    /**
+     * We return downloads by country (geography breakdown).
+     */
+    public static function listenerGeography(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $days    = min(365, max(1, (int)($data['days'] ?? 30)));
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY) AND d.country IS NOT NULL AND d.country != \'\'';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT d.country, COUNT(*) AS downloads,
+                    COUNT(DISTINCT d.client_ip) AS unique_listeners
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             $where
+             GROUP BY d.country
+             ORDER BY downloads DESC
+             LIMIT 50",
+            $params
+        );
+
+        return ['ok' => true, 'countries' => $rows];
+    }
+
+    /**
+     * We return recent downloads for the activity table.
+     */
+    public static function recentDownloads(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $limit   = min(100, max(10, (int)($data['limit'] ?? 50)));
+
+        $where  = '';
+        $params = [];
+
+        if ($show_id > 0) {
+            $where  = 'WHERE e.show_id = ?';
+            $params = [$show_id];
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT d.id, d.episode_id, e.title AS episode_title, e.episode_number,
+                    s.title AS show_title,
+                    d.platform, d.country, d.downloaded_at, d.completed, d.bytes_sent
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             LEFT JOIN podcast_shows s ON s.id = e.show_id
+             $where
+             ORDER BY d.downloaded_at DESC
+             LIMIT $limit",
+            $params
+        );
+
+        return ['ok' => true, 'downloads' => $rows];
+    }
+
+    /**
+     * We export analytics data as CSV.
+     */
+    public static function exportCsv(array $data): array
+    {
+        $show_id = (int)($data['show_id'] ?? 0);
+        $days    = min(365, max(1, (int)($data['days'] ?? 30)));
+        $type    = $data['type'] ?? 'downloads';
+
+        $where  = 'WHERE d.downloaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params = [$days];
+
+        if ($show_id > 0) {
+            $where .= ' AND e.show_id = ?';
+            $params[] = $show_id;
+        }
+
+        $rows = self::rows(self::DB,
+            "SELECT d.downloaded_at, e.title AS episode_title, e.episode_number,
+                    s.title AS show_title, d.platform, d.country,
+                    d.client_ip, d.completed, d.bytes_sent
+             FROM podcast_downloads d
+             JOIN podcast_episodes e ON e.id = d.episode_id
+             LEFT JOIN podcast_shows s ON s.id = e.show_id
+             $where
+             ORDER BY d.downloaded_at DESC",
+            $params
+        );
+
+        $csv = "Downloaded At,Episode,Episode #,Show,Platform,Country,Client IP,Completed,Bytes Sent\n";
+        foreach ($rows as $r) {
+            $csv .= '"' . ($r['downloaded_at'] ?? '') . '","'
+                  . str_replace('"', '""', $r['episode_title'] ?? '') . '",'
+                  . (int)($r['episode_number'] ?? 0) . ',"'
+                  . str_replace('"', '""', $r['show_title'] ?? '') . '","'
+                  . ($r['platform'] ?? '') . '","'
+                  . ($r['country'] ?? '') . '","'
+                  . ($r['client_ip'] ?? '') . '",'
+                  . (int)($r['completed'] ?? 0) . ','
+                  . (int)($r['bytes_sent'] ?? 0) . "\n";
+        }
+
+        return ['ok' => true, 'csv' => $csv, 'rows' => count($rows)];
+    }
+
     /* ── Helpers ── */
 
     private static function xmlEscape(string $s): string
@@ -563,6 +1882,32 @@ try {
         'unpublish_episode' => PodcastApi::unpublishEpisode($data),
         'generate_rss'      => PodcastApi::generateRss($data),
         'scan_archives'     => PodcastApi::scanArchives($data),
+        'list_markers'      => PodcastApi::listMarkers($data),
+        'delete_marker'     => PodcastApi::deleteMarker($data),
+        'update_marker'     => PodcastApi::updateMarker($data),
+        'add_marker'        => PodcastApi::addMarker($data),
+        /* PC-2: Episode export */
+        'export_episode'    => PodcastApi::exportEpisode($data),
+        /* PC-3: Multi-platform publishing */
+        'list_targets'      => PodcastApi::listTargets($data),
+        'create_target'     => PodcastApi::createTarget($data),
+        'update_target'     => PodcastApi::updateTarget($data),
+        'delete_target'     => PodcastApi::deleteTarget($data),
+        'publish_to_targets'=> PodcastApi::publishToTargets($data),
+        'schedule_publish'  => PodcastApi::schedulePublish($data),
+        'get_publish_status'=> PodcastApi::getPublishStatus($data),
+        'cancel_publish'    => PodcastApi::cancelPublish($data),
+        'retry_publish'     => PodcastApi::retryPublish($data),
+        'process_queue'     => PodcastApi::processQueue(),
+        /* PC-4: Analytics */
+        'download_stats'    => PodcastApi::downloadStats($data),
+        'platform_breakdown'=> PodcastApi::platformBreakdown($data),
+        'top_episodes'      => PodcastApi::topEpisodes($data),
+        'growth_trend'      => PodcastApi::growthTrend($data),
+        'episode_retention' => PodcastApi::episodeRetention($data),
+        'listener_geography'=> PodcastApi::listenerGeography($data),
+        'recent_downloads'  => PodcastApi::recentDownloads($data),
+        'export_csv'        => PodcastApi::exportCsv($data),
         default             => ['error' => 'Unknown action: ' . $action],
     };
 

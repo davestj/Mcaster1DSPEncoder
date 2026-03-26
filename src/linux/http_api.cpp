@@ -75,6 +75,32 @@ static std::string      g_webroot;
 static FastCgiClient*   g_fcgi = nullptr;
 static mc1vt::OllamaClient* g_ollama = nullptr;
 
+/* ── Recording state (PC-1: Podcast Recording Studio) ────────────────────── */
+struct RecordingState {
+    bool        active            = false;
+    int         slot_id           = 0;
+    int         episode_id        = 0;
+    int         show_id           = 0;
+    std::string file_path;
+    time_t      started_at        = 0;
+    int         auto_split_minutes = 0;
+    std::string format            = "mp3";
+    std::string episode_title;
+    std::string pre_roll;
+    std::string post_roll;
+    struct Marker {
+        int64_t     timestamp_ms;
+        std::string title;
+        std::string marker_type;
+        std::string url;
+        std::string image_url;
+        int         db_id = 0;
+    };
+    std::vector<Marker> markers;
+};
+static std::map<int, RecordingState> g_recordings;   // keyed by slot_id
+static std::mutex                    g_rec_mtx;
+
 // Per-listener context — keeps server alive and joinable
 struct ListenerCtx {
     std::unique_ptr<httplib::Server> svr;
@@ -3118,6 +3144,508 @@ static void setup_routes(httplib::Server& svr)
             });
         });
 
+    // ── PC-1: Podcast Recording Studio API ─────────────────────────────────
+
+    // POST /api/v1/recording/start — start recording on a slot
+    svr.Post("/api/v1/recording/start",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                int slot_id = body.value("slot_id", 0);
+                int show_id = body.value("show_id", 0);
+                std::string episode_title = body.value("episode_title", "");
+                std::string format        = body.value("format", "mp3");
+                int auto_split_min        = body.value("auto_split_minutes", 0);
+                std::string pre_roll      = body.value("pre_roll", "");
+                std::string post_roll     = body.value("post_roll", "");
+
+                if (slot_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"slot_id is required"})", "application/json");
+                    return;
+                }
+                if (show_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"show_id is required"})", "application/json");
+                    return;
+                }
+                if (episode_title.empty()) {
+                    episode_title = "Recording " + std::to_string(slot_id) + " - " +
+                        []() { char buf[32]; time_t t = time(nullptr); struct tm tm; localtime_r(&t, &tm);
+                               strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm); return std::string(buf); }();
+                }
+
+                // Check if already recording on this slot
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it != g_recordings.end() && it->second.active) {
+                        res.status = 409;
+                        json e; e["error"] = "Slot " + std::to_string(slot_id) + " is already recording";
+                        res.set_content(e.dump(), "application/json");
+                        return;
+                    }
+                }
+
+#ifndef MC1_HTTP_TEST_BUILD
+                // Verify slot exists
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"Pipeline not available"})", "application/json");
+                    return;
+                }
+                auto stats = g_pipeline->slot_stats(slot_id);
+                if (stats.slot_id == 0) {
+                    res.status = 404;
+                    json e; e["error"] = "Slot " + std::to_string(slot_id) + " not found";
+                    res.set_content(e.dump(), "application/json");
+                    return;
+                }
+#endif
+
+                // Create podcast_episode record in DB
+                auto& db = Mc1Db::instance();
+                std::string esc_title = db.escape(episode_title);
+                std::string esc_format = db.escape(format);
+
+                // Build tags JSON with pre/post roll paths
+                json tags_json;
+                if (!pre_roll.empty())  tags_json["pre_roll"]  = pre_roll;
+                if (!post_roll.empty()) tags_json["post_roll"] = post_roll;
+                std::string tags_str = tags_json.empty() ? "" : tags_json.dump();
+                std::string esc_tags = db.escape(tags_str);
+
+                // Generate recording file path
+                char ts_buf[64];
+                time_t now = time(nullptr);
+                struct tm tm_now;
+                localtime_r(&now, &tm_now);
+                strftime(ts_buf, sizeof(ts_buf), "%Y%m%d_%H%M%S", &tm_now);
+                std::string safe_title;
+                for (char c : episode_title) {
+                    if (std::isalnum(c) || c == '-' || c == '_') safe_title += c;
+                    else if (c == ' ') safe_title += '_';
+                }
+                if (safe_title.size() > 60) safe_title.resize(60);
+                std::string archive_dir = "/var/www/mcaster1.com/Mcaster1DSPEncoder/archives";
+                std::string file_name = "rec_slot" + std::to_string(slot_id) + "_" + ts_buf + "_" + safe_title + "." + format;
+                std::string file_path = archive_dir + "/" + file_name;
+
+                // Ensure archive directory exists
+                mkdir(archive_dir.c_str(), 0755);
+
+                // Insert episode record
+                char sql[2048];
+                snprintf(sql, sizeof(sql),
+                    "INSERT INTO mcaster1_media.podcast_episodes "
+                    "(show_id, title, description, file_path, format, bitrate_kbps, "
+                    " slot_id, tags, is_published, recording_started_at) "
+                    "VALUES (%d, '%s', '', '%s', '%s', 128, %d, '%s', 0, NOW())",
+                    show_id, esc_title.c_str(), db.escape(file_path).c_str(),
+                    esc_format.c_str(), slot_id, esc_tags.c_str());
+
+                if (!db.exec(sql)) {
+                    res.status = 500;
+                    res.set_content(R"({"error":"Failed to create episode record"})", "application/json");
+                    return;
+                }
+
+                // Get the episode id
+                auto rows = db.query("SELECT LAST_INSERT_ID() AS id");
+                int episode_id = 0;
+                if (!rows.empty()) episode_id = std::stoi(rows[0]["id"]);
+
+                // Store recording state
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    RecordingState& rs = g_recordings[slot_id];
+                    rs.active             = true;
+                    rs.slot_id            = slot_id;
+                    rs.episode_id         = episode_id;
+                    rs.show_id            = show_id;
+                    rs.file_path          = file_path;
+                    rs.started_at         = now;
+                    rs.auto_split_minutes = auto_split_min;
+                    rs.format             = format;
+                    rs.episode_title      = episode_title;
+                    rs.pre_roll           = pre_roll;
+                    rs.post_roll          = post_roll;
+                    rs.markers.clear();
+                }
+
+                MC1_INFO("Recording started: slot=" + std::to_string(slot_id) +
+                         " episode_id=" + std::to_string(episode_id) +
+                         " file=" + file_path);
+
+                json out;
+                out["ok"]           = true;
+                out["recording_id"] = slot_id;
+                out["episode_id"]   = episode_id;
+                out["file_path"]    = file_path;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // POST /api/v1/recording/stop — stop recording on a slot
+    svr.Post("/api/v1/recording/stop",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                int slot_id = body.value("slot_id", 0);
+                if (slot_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"slot_id is required"})", "application/json");
+                    return;
+                }
+
+                int episode_id = 0;
+                time_t started_at = 0;
+                std::string file_path;
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it == g_recordings.end() || !it->second.active) {
+                        res.status = 404;
+                        json e; e["error"] = "No active recording on slot " + std::to_string(slot_id);
+                        res.set_content(e.dump(), "application/json");
+                        return;
+                    }
+                    episode_id = it->second.episode_id;
+                    started_at = it->second.started_at;
+                    file_path  = it->second.file_path;
+                    it->second.active = false;
+                }
+
+                time_t now = time(nullptr);
+                int duration_sec = (int)(now - started_at);
+
+                // Get file size if file exists
+                int64_t file_size = 0;
+                struct stat st;
+                if (stat(file_path.c_str(), &st) == 0) {
+                    file_size = st.st_size;
+                }
+
+                // Update episode record in DB
+                auto& db = Mc1Db::instance();
+                char sql[1024];
+                snprintf(sql, sizeof(sql),
+                    "UPDATE mcaster1_media.podcast_episodes "
+                    "SET duration_sec = %d, file_size_bytes = %lld, recording_ended_at = NOW() "
+                    "WHERE id = %d",
+                    duration_sec, (long long)file_size, episode_id);
+                db.exec(sql);
+
+                MC1_INFO("Recording stopped: slot=" + std::to_string(slot_id) +
+                         " episode_id=" + std::to_string(episode_id) +
+                         " duration=" + std::to_string(duration_sec) + "s");
+
+                json out;
+                out["ok"]              = true;
+                out["episode_id"]      = episode_id;
+                out["duration_sec"]    = duration_sec;
+                out["file_size_bytes"] = file_size;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // POST /api/v1/recording/marker — add chapter marker to recording
+    svr.Post("/api/v1/recording/marker",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                int slot_id = body.value("slot_id", 0);
+                std::string marker_type = body.value("marker_type", "chapter");
+                std::string title       = body.value("title", "");
+                std::string url         = body.value("url", "");
+                std::string image_url   = body.value("image_url", "");
+
+                if (slot_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"slot_id is required"})", "application/json");
+                    return;
+                }
+
+                int episode_id = 0;
+                int64_t timestamp_ms = 0;
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it == g_recordings.end() || !it->second.active) {
+                        res.status = 404;
+                        json e; e["error"] = "No active recording on slot " + std::to_string(slot_id);
+                        res.set_content(e.dump(), "application/json");
+                        return;
+                    }
+                    episode_id   = it->second.episode_id;
+                    timestamp_ms = (int64_t)(time(nullptr) - it->second.started_at) * 1000LL;
+
+                    // If title is empty, generate a default
+                    if (title.empty()) {
+                        title = "Marker " + std::to_string(it->second.markers.size() + 1);
+                    }
+                }
+
+                // Insert into DB
+                auto& db = Mc1Db::instance();
+                char sql[2048];
+                snprintf(sql, sizeof(sql),
+                    "INSERT INTO mcaster1_media.episode_markers "
+                    "(episode_id, marker_type, timestamp_ms, title, url, image_url) "
+                    "VALUES (%d, '%s', %lld, '%s', '%s', '%s')",
+                    episode_id, db.escape(marker_type).c_str(),
+                    (long long)timestamp_ms, db.escape(title).c_str(),
+                    db.escape(url).c_str(), db.escape(image_url).c_str());
+                db.exec(sql);
+
+                // Get marker id
+                auto rows = db.query("SELECT LAST_INSERT_ID() AS id");
+                int marker_id = 0;
+                if (!rows.empty()) marker_id = std::stoi(rows[0]["id"]);
+
+                // Store in memory
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it != g_recordings.end()) {
+                        RecordingState::Marker m;
+                        m.timestamp_ms = timestamp_ms;
+                        m.title        = title;
+                        m.marker_type  = marker_type;
+                        m.url          = url;
+                        m.image_url    = image_url;
+                        m.db_id        = marker_id;
+                        it->second.markers.push_back(m);
+                    }
+                }
+
+                MC1_INFO("Marker added: slot=" + std::to_string(slot_id) +
+                         " ts=" + std::to_string(timestamp_ms) + "ms title=" + title);
+
+                json out;
+                out["ok"]           = true;
+                out["marker_id"]    = marker_id;
+                out["timestamp_ms"] = timestamp_ms;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // GET /api/v1/recording/status — recording state for all slots
+    svr.Get("/api/v1/recording/status",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json slots_arr = json::array();
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    for (auto& [sid, rs] : g_recordings) {
+                        json s;
+                        s["slot_id"]    = sid;
+                        s["recording"]  = rs.active;
+                        s["episode_id"] = rs.episode_id;
+                        s["show_id"]    = rs.show_id;
+                        s["file_path"]  = rs.file_path;
+                        s["format"]     = rs.format;
+                        s["episode_title"] = rs.episode_title;
+                        s["auto_split_minutes"] = rs.auto_split_minutes;
+
+                        if (rs.active && rs.started_at > 0) {
+                            s["duration_sec"] = (int)(time(nullptr) - rs.started_at);
+                        } else {
+                            s["duration_sec"] = 0;
+                        }
+
+                        json markers = json::array();
+                        for (auto& m : rs.markers) {
+                            json mj;
+                            mj["id"]           = m.db_id;
+                            mj["timestamp_ms"] = m.timestamp_ms;
+                            mj["title"]        = m.title;
+                            mj["marker_type"]  = m.marker_type;
+                            markers.push_back(mj);
+                        }
+                        s["markers"] = markers;
+                        slots_arr.push_back(s);
+                    }
+                }
+
+                // Also include slots that have no recording state yet
+#ifndef MC1_HTTP_TEST_BUILD
+                if (g_pipeline) {
+                    auto all = g_pipeline->all_stats();
+                    for (auto& st : all) {
+                        bool found = false;
+                        for (auto& s : slots_arr) {
+                            if (s["slot_id"] == st.slot_id) { found = true; break; }
+                        }
+                        if (!found) {
+                            json s;
+                            s["slot_id"]      = st.slot_id;
+                            s["recording"]    = false;
+                            s["episode_id"]   = 0;
+                            s["show_id"]      = 0;
+                            s["file_path"]    = "";
+                            s["format"]       = "";
+                            s["episode_title"] = "";
+                            s["duration_sec"] = 0;
+                            s["auto_split_minutes"] = 0;
+                            s["markers"]      = json::array();
+                            slots_arr.push_back(s);
+                        }
+                    }
+                }
+#endif
+
+                json out;
+                out["ok"]    = true;
+                out["slots"] = slots_arr;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
+    // POST /api/v1/recording/split — split recording into new file/episode
+    svr.Post("/api/v1/recording/split",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+
+                int slot_id = body.value("slot_id", 0);
+                if (slot_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"slot_id is required"})", "application/json");
+                    return;
+                }
+
+                int old_episode_id = 0;
+                int show_id        = 0;
+                time_t old_start   = 0;
+                std::string old_file;
+                std::string format;
+                std::string ep_title;
+                int auto_split_min = 0;
+                std::string pre_roll;
+                std::string post_roll;
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it == g_recordings.end() || !it->second.active) {
+                        res.status = 404;
+                        json e; e["error"] = "No active recording on slot " + std::to_string(slot_id);
+                        res.set_content(e.dump(), "application/json");
+                        return;
+                    }
+                    old_episode_id = it->second.episode_id;
+                    show_id        = it->second.show_id;
+                    old_start      = it->second.started_at;
+                    old_file       = it->second.file_path;
+                    format         = it->second.format;
+                    ep_title       = it->second.episode_title;
+                    auto_split_min = it->second.auto_split_minutes;
+                    pre_roll       = it->second.pre_roll;
+                    post_roll      = it->second.post_roll;
+                }
+
+                auto& db = Mc1Db::instance();
+                time_t now = time(nullptr);
+
+                // Finalize old episode
+                int old_duration = (int)(now - old_start);
+                int64_t old_file_size = 0;
+                struct stat st;
+                if (stat(old_file.c_str(), &st) == 0) old_file_size = st.st_size;
+
+                char sql[1024];
+                snprintf(sql, sizeof(sql),
+                    "UPDATE mcaster1_media.podcast_episodes "
+                    "SET duration_sec = %d, file_size_bytes = %lld, recording_ended_at = NOW() "
+                    "WHERE id = %d",
+                    old_duration, (long long)old_file_size, old_episode_id);
+                db.exec(sql);
+
+                // Create new episode record
+                char ts_buf[64];
+                struct tm tm_now;
+                localtime_r(&now, &tm_now);
+                strftime(ts_buf, sizeof(ts_buf), "%Y%m%d_%H%M%S", &tm_now);
+
+                std::string new_title = ep_title + " (cont.)";
+                std::string safe_title;
+                for (char c : new_title) {
+                    if (std::isalnum(c) || c == '-' || c == '_') safe_title += c;
+                    else if (c == ' ') safe_title += '_';
+                }
+                if (safe_title.size() > 60) safe_title.resize(60);
+                std::string archive_dir = "/var/www/mcaster1.com/Mcaster1DSPEncoder/archives";
+                std::string new_file = archive_dir + "/rec_slot" + std::to_string(slot_id) + "_" + ts_buf + "_" + safe_title + "." + format;
+
+                json tags_json;
+                if (!pre_roll.empty())  tags_json["pre_roll"]  = pre_roll;
+                if (!post_roll.empty()) tags_json["post_roll"] = post_roll;
+                tags_json["split_from_episode"] = old_episode_id;
+                std::string esc_tags = db.escape(tags_json.dump());
+
+                char sql2[2048];
+                snprintf(sql2, sizeof(sql2),
+                    "INSERT INTO mcaster1_media.podcast_episodes "
+                    "(show_id, title, description, file_path, format, bitrate_kbps, "
+                    " slot_id, tags, is_published, recording_started_at) "
+                    "VALUES (%d, '%s', '', '%s', '%s', 128, %d, '%s', 0, NOW())",
+                    show_id, db.escape(new_title).c_str(), db.escape(new_file).c_str(),
+                    db.escape(format).c_str(), slot_id, esc_tags.c_str());
+                db.exec(sql2);
+
+                auto rows = db.query("SELECT LAST_INSERT_ID() AS id");
+                int new_episode_id = 0;
+                if (!rows.empty()) new_episode_id = std::stoi(rows[0]["id"]);
+
+                // Update recording state
+                {
+                    std::lock_guard<std::mutex> lk(g_rec_mtx);
+                    auto it = g_recordings.find(slot_id);
+                    if (it != g_recordings.end()) {
+                        it->second.episode_id    = new_episode_id;
+                        it->second.file_path     = new_file;
+                        it->second.started_at    = now;
+                        it->second.episode_title = new_title;
+                        it->second.markers.clear();
+                    }
+                }
+
+                MC1_INFO("Recording split: slot=" + std::to_string(slot_id) +
+                         " old_ep=" + std::to_string(old_episode_id) +
+                         " new_ep=" + std::to_string(new_episode_id));
+
+                json out;
+                out["ok"]             = true;
+                out["old_episode_id"] = old_episode_id;
+                out["new_episode_id"] = new_episode_id;
+                out["new_file_path"]  = new_file;
+                res.set_content(out.dump(2), "application/json");
+            });
+        });
+
     // ── PHP app routes — FastCGI bridge to php-fpm ─────────────────────────
     // Matches /app/foo.php and /app/api/foo.php but NOT /app/inc/*.php
     // Auth is enforced by with_auth(); php-fpm receives X-MC1-AUTHENTICATED:1
@@ -3335,6 +3863,94 @@ static void setup_routes(httplib::Server& svr)
             res.set_header(k.c_str(), v.c_str());
         res.set_content(fr.body, fr.content_type.empty()
             ? "application/rss+xml; charset=UTF-8" : fr.content_type.c_str());
+    });
+
+    // ── Public podcast episode page — NO auth required ────────────────────
+    // GET /shows/{id}/episodes/{eid} → forward to podcast-episode-page.php
+    // MUST be registered before /shows/{id} (more specific route first)
+    svr.Get(R"(/shows/(\d+)/episodes/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string show_id    = req.matches[1];
+        std::string episode_id = req.matches[2];
+        std::string script_name     = "/podcast-episode-page.php";
+        std::string script_filename = g_webroot + script_name;
+        std::string query_string    = "show_id=" + show_id + "&episode_id=" + episode_id;
+        std::string request_uri     = script_name + "?" + query_string;
+
+        std::map<std::string, std::string> extra;
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "GET", script_filename, script_name,
+            query_string, request_uri,
+            "", "",
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "text/html; charset=UTF-8" : fr.content_type.c_str());
+    });
+
+    // ── Public podcast show page — NO auth required ─────────────────────
+    // GET /shows/{id} → forward to podcast-site.php?show_id=N
+    svr.Get(R"(/shows/(\d+))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string show_id = req.matches[1];
+        std::string script_name     = "/podcast-site.php";
+        std::string script_filename = g_webroot + script_name;
+        std::string query_string    = "show_id=" + show_id;
+        std::string request_uri     = script_name + "?" + query_string;
+
+        std::map<std::string, std::string> extra;
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "GET", script_filename, script_name,
+            query_string, request_uri,
+            "", "",
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "text/html; charset=UTF-8" : fr.content_type.c_str());
     });
 
     // Block /app/inc/ — includes must never be served directly

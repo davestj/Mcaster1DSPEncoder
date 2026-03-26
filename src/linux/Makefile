@@ -98,7 +98,7 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 bin_PROGRAMS = mcaster1-dsp-encoder-admin$(EXEEXT) \
-	mcaster1-dsp-encoder$(EXEEXT)
+	mcaster1-dsp-encoder$(EXEEXT) mcaster1-voictune$(EXEEXT)
 
 # Admin links all codec/audio libs too (shares source files with encoder for symbols).
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
@@ -141,6 +141,12 @@ am__append_27 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
 am__append_28 = $(AVFORMAT_LIBS)
 am__append_29 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
 am__append_30 = $(TAGLIB_LIBS)
+
+# VoicTune uses PortAudio for mic capture (optional — can run browser-mic-only mode)
+am__append_31 = $(PORTAUDIO_LIBS)
+
+# VoicTune uses JACK for advanced audio routing (optional)
+am__append_32 = $(JACK_LIBS)
 subdir = src/linux
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -204,7 +210,8 @@ am__mcaster1_dsp_encoder_admin_SOURCES_DIST = main_cli.cpp \
 	clockwheel_scheduler.cpp dsp/eq.cpp dsp/agc.cpp \
 	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
 	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
-	dsp/dead_air_detector.cpp jack_manager.cpp
+	dsp/dead_air_detector.cpp voictune/ollama_client.cpp \
+	jack_manager.cpp
 am__objects_2 = mcaster1_dsp_encoder_admin-jack_manager.$(OBJEXT)
 am_mcaster1_dsp_encoder_admin_OBJECTS =  \
 	mcaster1_dsp_encoder_admin-main_cli.$(OBJEXT) \
@@ -232,6 +239,7 @@ am_mcaster1_dsp_encoder_admin_OBJECTS =  \
 	dsp/mcaster1_dsp_encoder_admin-effects_rack.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-dead_air_detector.$(OBJEXT) \
+	voictune/mcaster1_dsp_encoder_admin-ollama_client.$(OBJEXT) \
 	$(am__objects_2)
 mcaster1_dsp_encoder_admin_OBJECTS =  \
 	$(am_mcaster1_dsp_encoder_admin_OBJECTS)
@@ -242,6 +250,24 @@ mcaster1_dsp_encoder_admin_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
 	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
 	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
+am_mcaster1_voictune_OBJECTS =  \
+	voictune/mcaster1_voictune-main_voictune.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_http_api.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_config.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_db.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_audio_capture.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_websocket.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_usb_monitor.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_fft.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_meters.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_pitch.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_coach.$(OBJEXT) \
+	voictune/mcaster1_voictune-vt_worker_pool.$(OBJEXT) \
+	voictune/mcaster1_voictune-ollama_client.$(OBJEXT)
+mcaster1_voictune_OBJECTS = $(am_mcaster1_voictune_OBJECTS)
+mcaster1_voictune_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_3)
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
 am__v_P_0 = false
@@ -296,7 +322,21 @@ am__depfiles_remade = ./$(DEPDIR)/archive_writer.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po \
-	dsp/$(DEPDIR)/sidechain_ducker.Po
+	dsp/$(DEPDIR)/sidechain_ducker.Po \
+	voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po \
+	voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po
 am__mv = mv -f
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
@@ -316,9 +356,11 @@ am__v_CXXLD_ = $(am__v_CXXLD_$(AM_DEFAULT_VERBOSITY))
 am__v_CXXLD_0 = @echo "  CXXLD   " $@;
 am__v_CXXLD_1 = 
 SOURCES = $(mcaster1_dsp_encoder_SOURCES) \
-	$(mcaster1_dsp_encoder_admin_SOURCES)
+	$(mcaster1_dsp_encoder_admin_SOURCES) \
+	$(mcaster1_voictune_SOURCES)
 DIST_SOURCES = $(am__mcaster1_dsp_encoder_SOURCES_DIST) \
-	$(am__mcaster1_dsp_encoder_admin_SOURCES_DIST)
+	$(am__mcaster1_dsp_encoder_admin_SOURCES_DIST) \
+	$(mcaster1_voictune_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -396,6 +438,7 @@ MKDIR_P = /usr/bin/mkdir -p
 MPG123_CFLAGS = -I/usr/include/x86_64-linux-gnu 
 MPG123_LIBS = -lmpg123 
 OBJEXT = o
+OLLAMA_ENDPOINT = http://127.0.0.1:11434
 OPENSSL_CFLAGS = 
 OPENSSL_LIBS = -lssl -lcrypto 
 OPUS_CFLAGS = -I/usr/include/opus 
@@ -403,10 +446,10 @@ OPUS_LIBS = -lopusenc
 PACKAGE = mcaster1-dsp-encoder
 PACKAGE_BUGREPORT = support@mcaster1.com
 PACKAGE_NAME = mcaster1-dsp-encoder
-PACKAGE_STRING = mcaster1-dsp-encoder 1.5.0
+PACKAGE_STRING = mcaster1-dsp-encoder 1.8.0-beta.1
 PACKAGE_TARNAME = mcaster1-dsp-encoder
 PACKAGE_URL = 
-PACKAGE_VERSION = 1.5.0
+PACKAGE_VERSION = 1.8.0-beta.1
 PATH_SEPARATOR = :
 PKG_CONFIG = /usr/bin/pkg-config
 PKG_CONFIG_LIBDIR = 
@@ -418,7 +461,7 @@ SHELL = /bin/bash
 STRIP = 
 TAGLIB_CFLAGS = -I/usr/include/taglib 
 TAGLIB_LIBS = -ltag -lz 
-VERSION = 1.5.0
+VERSION = 1.8.0-beta.1
 VORBIS_CFLAGS = 
 VORBIS_LIBS = -lvorbisenc -logg -lvorbis 
 WEBROOT = ${datadir}/mcaster1/web_ui
@@ -492,7 +535,7 @@ mcaster1_dsp_encoder_admin_SOURCES = main_cli.cpp http_api.cpp \
 	dsp/eq.cpp dsp/agc.cpp dsp/crossfader.cpp \
 	dsp/dj_crossfader.cpp dsp/dsp_chain.cpp dsp/effects_rack.cpp \
 	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
-	$(am__append_1)
+	voictune/ollama_client.cpp $(am__append_1)
 
 # Admin needs these shared DSP headers for static curve data / effects type listing
 # but does NOT need the audio processing source files.
@@ -557,6 +600,29 @@ dist_appinc_webuiDATA = \
     web_ui/app/inc/mc1_config.php \
     web_ui/app/inc/traits.db.class.php
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# VOICTUNE BINARY — Voice Analysis & Coaching Daemon (Phase VT)
+# ══════════════════════════════════════════════════════════════════════════════
+mcaster1_voictune_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_VOICTUNE_BUILD
+mcaster1_voictune_SOURCES = \
+    voictune/main_voictune.cpp \
+    voictune/vt_http_api.cpp \
+    voictune/vt_config.cpp \
+    voictune/vt_db.cpp \
+    voictune/vt_audio_capture.cpp \
+    voictune/vt_websocket.cpp \
+    voictune/vt_usb_monitor.cpp \
+    voictune/vt_fft.cpp \
+    voictune/vt_meters.cpp \
+    voictune/vt_pitch.cpp \
+    voictune/vt_coach.cpp \
+    voictune/vt_worker_pool.cpp \
+    voictune/ollama_client.cpp
+
+mcaster1_voictune_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
+	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_31) \
+	$(am__append_32)
 
 # ── Extra dist ─────────────────────────────────────────────────────────────────
 EXTRA_DIST = \
@@ -680,14 +746,53 @@ dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT):  \
 	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/mcaster1_dsp_encoder_admin-dead_air_detector.$(OBJEXT):  \
 	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+voictune/$(am__dirstamp):
+	@$(MKDIR_P) voictune
+	@: > voictune/$(am__dirstamp)
+voictune/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) voictune/$(DEPDIR)
+	@: > voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_dsp_encoder_admin-ollama_client.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
 
 mcaster1-dsp-encoder-admin$(EXEEXT): $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_DEPENDENCIES) $(EXTRA_mcaster1_dsp_encoder_admin_DEPENDENCIES) 
 	@rm -f mcaster1-dsp-encoder-admin$(EXEEXT)
 	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_LDADD) $(LIBS)
+voictune/mcaster1_voictune-main_voictune.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_http_api.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_config.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_db.$(OBJEXT): voictune/$(am__dirstamp) \
+	voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_audio_capture.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_websocket.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_usb_monitor.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_fft.$(OBJEXT): voictune/$(am__dirstamp) \
+	voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_meters.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_pitch.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_coach.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-vt_worker_pool.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+voictune/mcaster1_voictune-ollama_client.$(OBJEXT):  \
+	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
+
+mcaster1-voictune$(EXEEXT): $(mcaster1_voictune_OBJECTS) $(mcaster1_voictune_DEPENDENCIES) $(EXTRA_mcaster1_voictune_DEPENDENCIES) 
+	@rm -f mcaster1-voictune$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_voictune_OBJECTS) $(mcaster1_voictune_LDADD) $(LIBS)
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 	-rm -f dsp/*.$(OBJEXT)
+	-rm -f voictune/*.$(OBJEXT)
 
 distclean-compile:
 	-rm -f *.tab.c
@@ -741,6 +846,20 @@ include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po # am--include-m
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po # am--include-marker
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po # am--include-marker
 include dsp/$(DEPDIR)/sidechain_ducker.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po # am--include-marker
+include voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -1114,6 +1233,20 @@ dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj: dsp/dead_air_detector.cpp
 #	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
 #	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-dead_air_detector.obj `if test -f 'dsp/dead_air_detector.cpp'; then $(CYGPATH_W) 'dsp/dead_air_detector.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/dead_air_detector.cpp'; fi`
 
+voictune/mcaster1_dsp_encoder_admin-ollama_client.o: voictune/ollama_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_dsp_encoder_admin-ollama_client.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Tpo -c -o voictune/mcaster1_dsp_encoder_admin-ollama_client.o `test -f 'voictune/ollama_client.cpp' || echo '$(srcdir)/'`voictune/ollama_client.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Tpo voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
+#	$(AM_V_CXX)source='voictune/ollama_client.cpp' object='voictune/mcaster1_dsp_encoder_admin-ollama_client.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_dsp_encoder_admin-ollama_client.o `test -f 'voictune/ollama_client.cpp' || echo '$(srcdir)/'`voictune/ollama_client.cpp
+
+voictune/mcaster1_dsp_encoder_admin-ollama_client.obj: voictune/ollama_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_dsp_encoder_admin-ollama_client.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Tpo -c -o voictune/mcaster1_dsp_encoder_admin-ollama_client.obj `if test -f 'voictune/ollama_client.cpp'; then $(CYGPATH_W) 'voictune/ollama_client.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/ollama_client.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Tpo voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
+#	$(AM_V_CXX)source='voictune/ollama_client.cpp' object='voictune/mcaster1_dsp_encoder_admin-ollama_client.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_dsp_encoder_admin-ollama_client.obj `if test -f 'voictune/ollama_client.cpp'; then $(CYGPATH_W) 'voictune/ollama_client.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/ollama_client.cpp'; fi`
+
 mcaster1_dsp_encoder_admin-jack_manager.o: jack_manager.cpp
 	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT mcaster1_dsp_encoder_admin-jack_manager.o -MD -MP -MF $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo -c -o mcaster1_dsp_encoder_admin-jack_manager.o `test -f 'jack_manager.cpp' || echo '$(srcdir)/'`jack_manager.cpp
 	$(AM_V_at)$(am__mv) $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Tpo $(DEPDIR)/mcaster1_dsp_encoder_admin-jack_manager.Po
@@ -1127,6 +1260,188 @@ mcaster1_dsp_encoder_admin-jack_manager.obj: jack_manager.cpp
 #	$(AM_V_CXX)source='jack_manager.cpp' object='mcaster1_dsp_encoder_admin-jack_manager.obj' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
 #	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-jack_manager.obj `if test -f 'jack_manager.cpp'; then $(CYGPATH_W) 'jack_manager.cpp'; else $(CYGPATH_W) '$(srcdir)/jack_manager.cpp'; fi`
+
+voictune/mcaster1_voictune-main_voictune.o: voictune/main_voictune.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-main_voictune.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo -c -o voictune/mcaster1_voictune-main_voictune.o `test -f 'voictune/main_voictune.cpp' || echo '$(srcdir)/'`voictune/main_voictune.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
+#	$(AM_V_CXX)source='voictune/main_voictune.cpp' object='voictune/mcaster1_voictune-main_voictune.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-main_voictune.o `test -f 'voictune/main_voictune.cpp' || echo '$(srcdir)/'`voictune/main_voictune.cpp
+
+voictune/mcaster1_voictune-main_voictune.obj: voictune/main_voictune.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-main_voictune.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo -c -o voictune/mcaster1_voictune-main_voictune.obj `if test -f 'voictune/main_voictune.cpp'; then $(CYGPATH_W) 'voictune/main_voictune.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/main_voictune.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
+#	$(AM_V_CXX)source='voictune/main_voictune.cpp' object='voictune/mcaster1_voictune-main_voictune.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-main_voictune.obj `if test -f 'voictune/main_voictune.cpp'; then $(CYGPATH_W) 'voictune/main_voictune.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/main_voictune.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_http_api.o: voictune/vt_http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_http_api.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Tpo -c -o voictune/mcaster1_voictune-vt_http_api.o `test -f 'voictune/vt_http_api.cpp' || echo '$(srcdir)/'`voictune/vt_http_api.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po
+#	$(AM_V_CXX)source='voictune/vt_http_api.cpp' object='voictune/mcaster1_voictune-vt_http_api.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_http_api.o `test -f 'voictune/vt_http_api.cpp' || echo '$(srcdir)/'`voictune/vt_http_api.cpp
+
+voictune/mcaster1_voictune-vt_http_api.obj: voictune/vt_http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_http_api.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Tpo -c -o voictune/mcaster1_voictune-vt_http_api.obj `if test -f 'voictune/vt_http_api.cpp'; then $(CYGPATH_W) 'voictune/vt_http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_http_api.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po
+#	$(AM_V_CXX)source='voictune/vt_http_api.cpp' object='voictune/mcaster1_voictune-vt_http_api.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_http_api.obj `if test -f 'voictune/vt_http_api.cpp'; then $(CYGPATH_W) 'voictune/vt_http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_http_api.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_config.o: voictune/vt_config.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_config.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Tpo -c -o voictune/mcaster1_voictune-vt_config.o `test -f 'voictune/vt_config.cpp' || echo '$(srcdir)/'`voictune/vt_config.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po
+#	$(AM_V_CXX)source='voictune/vt_config.cpp' object='voictune/mcaster1_voictune-vt_config.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_config.o `test -f 'voictune/vt_config.cpp' || echo '$(srcdir)/'`voictune/vt_config.cpp
+
+voictune/mcaster1_voictune-vt_config.obj: voictune/vt_config.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_config.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Tpo -c -o voictune/mcaster1_voictune-vt_config.obj `if test -f 'voictune/vt_config.cpp'; then $(CYGPATH_W) 'voictune/vt_config.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_config.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po
+#	$(AM_V_CXX)source='voictune/vt_config.cpp' object='voictune/mcaster1_voictune-vt_config.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_config.obj `if test -f 'voictune/vt_config.cpp'; then $(CYGPATH_W) 'voictune/vt_config.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_config.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_db.o: voictune/vt_db.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_db.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Tpo -c -o voictune/mcaster1_voictune-vt_db.o `test -f 'voictune/vt_db.cpp' || echo '$(srcdir)/'`voictune/vt_db.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po
+#	$(AM_V_CXX)source='voictune/vt_db.cpp' object='voictune/mcaster1_voictune-vt_db.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_db.o `test -f 'voictune/vt_db.cpp' || echo '$(srcdir)/'`voictune/vt_db.cpp
+
+voictune/mcaster1_voictune-vt_db.obj: voictune/vt_db.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_db.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Tpo -c -o voictune/mcaster1_voictune-vt_db.obj `if test -f 'voictune/vt_db.cpp'; then $(CYGPATH_W) 'voictune/vt_db.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_db.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po
+#	$(AM_V_CXX)source='voictune/vt_db.cpp' object='voictune/mcaster1_voictune-vt_db.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_db.obj `if test -f 'voictune/vt_db.cpp'; then $(CYGPATH_W) 'voictune/vt_db.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_db.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_audio_capture.o: voictune/vt_audio_capture.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_audio_capture.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Tpo -c -o voictune/mcaster1_voictune-vt_audio_capture.o `test -f 'voictune/vt_audio_capture.cpp' || echo '$(srcdir)/'`voictune/vt_audio_capture.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po
+#	$(AM_V_CXX)source='voictune/vt_audio_capture.cpp' object='voictune/mcaster1_voictune-vt_audio_capture.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_audio_capture.o `test -f 'voictune/vt_audio_capture.cpp' || echo '$(srcdir)/'`voictune/vt_audio_capture.cpp
+
+voictune/mcaster1_voictune-vt_audio_capture.obj: voictune/vt_audio_capture.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_audio_capture.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Tpo -c -o voictune/mcaster1_voictune-vt_audio_capture.obj `if test -f 'voictune/vt_audio_capture.cpp'; then $(CYGPATH_W) 'voictune/vt_audio_capture.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_audio_capture.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po
+#	$(AM_V_CXX)source='voictune/vt_audio_capture.cpp' object='voictune/mcaster1_voictune-vt_audio_capture.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_audio_capture.obj `if test -f 'voictune/vt_audio_capture.cpp'; then $(CYGPATH_W) 'voictune/vt_audio_capture.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_audio_capture.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_websocket.o: voictune/vt_websocket.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_websocket.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Tpo -c -o voictune/mcaster1_voictune-vt_websocket.o `test -f 'voictune/vt_websocket.cpp' || echo '$(srcdir)/'`voictune/vt_websocket.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po
+#	$(AM_V_CXX)source='voictune/vt_websocket.cpp' object='voictune/mcaster1_voictune-vt_websocket.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_websocket.o `test -f 'voictune/vt_websocket.cpp' || echo '$(srcdir)/'`voictune/vt_websocket.cpp
+
+voictune/mcaster1_voictune-vt_websocket.obj: voictune/vt_websocket.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_websocket.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Tpo -c -o voictune/mcaster1_voictune-vt_websocket.obj `if test -f 'voictune/vt_websocket.cpp'; then $(CYGPATH_W) 'voictune/vt_websocket.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_websocket.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po
+#	$(AM_V_CXX)source='voictune/vt_websocket.cpp' object='voictune/mcaster1_voictune-vt_websocket.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_websocket.obj `if test -f 'voictune/vt_websocket.cpp'; then $(CYGPATH_W) 'voictune/vt_websocket.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_websocket.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_usb_monitor.o: voictune/vt_usb_monitor.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_usb_monitor.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Tpo -c -o voictune/mcaster1_voictune-vt_usb_monitor.o `test -f 'voictune/vt_usb_monitor.cpp' || echo '$(srcdir)/'`voictune/vt_usb_monitor.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po
+#	$(AM_V_CXX)source='voictune/vt_usb_monitor.cpp' object='voictune/mcaster1_voictune-vt_usb_monitor.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_usb_monitor.o `test -f 'voictune/vt_usb_monitor.cpp' || echo '$(srcdir)/'`voictune/vt_usb_monitor.cpp
+
+voictune/mcaster1_voictune-vt_usb_monitor.obj: voictune/vt_usb_monitor.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_usb_monitor.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Tpo -c -o voictune/mcaster1_voictune-vt_usb_monitor.obj `if test -f 'voictune/vt_usb_monitor.cpp'; then $(CYGPATH_W) 'voictune/vt_usb_monitor.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_usb_monitor.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po
+#	$(AM_V_CXX)source='voictune/vt_usb_monitor.cpp' object='voictune/mcaster1_voictune-vt_usb_monitor.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_usb_monitor.obj `if test -f 'voictune/vt_usb_monitor.cpp'; then $(CYGPATH_W) 'voictune/vt_usb_monitor.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_usb_monitor.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_fft.o: voictune/vt_fft.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_fft.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Tpo -c -o voictune/mcaster1_voictune-vt_fft.o `test -f 'voictune/vt_fft.cpp' || echo '$(srcdir)/'`voictune/vt_fft.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po
+#	$(AM_V_CXX)source='voictune/vt_fft.cpp' object='voictune/mcaster1_voictune-vt_fft.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_fft.o `test -f 'voictune/vt_fft.cpp' || echo '$(srcdir)/'`voictune/vt_fft.cpp
+
+voictune/mcaster1_voictune-vt_fft.obj: voictune/vt_fft.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_fft.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Tpo -c -o voictune/mcaster1_voictune-vt_fft.obj `if test -f 'voictune/vt_fft.cpp'; then $(CYGPATH_W) 'voictune/vt_fft.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_fft.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po
+#	$(AM_V_CXX)source='voictune/vt_fft.cpp' object='voictune/mcaster1_voictune-vt_fft.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_fft.obj `if test -f 'voictune/vt_fft.cpp'; then $(CYGPATH_W) 'voictune/vt_fft.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_fft.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_meters.o: voictune/vt_meters.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_meters.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Tpo -c -o voictune/mcaster1_voictune-vt_meters.o `test -f 'voictune/vt_meters.cpp' || echo '$(srcdir)/'`voictune/vt_meters.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po
+#	$(AM_V_CXX)source='voictune/vt_meters.cpp' object='voictune/mcaster1_voictune-vt_meters.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_meters.o `test -f 'voictune/vt_meters.cpp' || echo '$(srcdir)/'`voictune/vt_meters.cpp
+
+voictune/mcaster1_voictune-vt_meters.obj: voictune/vt_meters.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_meters.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Tpo -c -o voictune/mcaster1_voictune-vt_meters.obj `if test -f 'voictune/vt_meters.cpp'; then $(CYGPATH_W) 'voictune/vt_meters.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_meters.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po
+#	$(AM_V_CXX)source='voictune/vt_meters.cpp' object='voictune/mcaster1_voictune-vt_meters.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_meters.obj `if test -f 'voictune/vt_meters.cpp'; then $(CYGPATH_W) 'voictune/vt_meters.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_meters.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_pitch.o: voictune/vt_pitch.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_pitch.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Tpo -c -o voictune/mcaster1_voictune-vt_pitch.o `test -f 'voictune/vt_pitch.cpp' || echo '$(srcdir)/'`voictune/vt_pitch.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po
+#	$(AM_V_CXX)source='voictune/vt_pitch.cpp' object='voictune/mcaster1_voictune-vt_pitch.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_pitch.o `test -f 'voictune/vt_pitch.cpp' || echo '$(srcdir)/'`voictune/vt_pitch.cpp
+
+voictune/mcaster1_voictune-vt_pitch.obj: voictune/vt_pitch.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_pitch.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Tpo -c -o voictune/mcaster1_voictune-vt_pitch.obj `if test -f 'voictune/vt_pitch.cpp'; then $(CYGPATH_W) 'voictune/vt_pitch.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_pitch.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po
+#	$(AM_V_CXX)source='voictune/vt_pitch.cpp' object='voictune/mcaster1_voictune-vt_pitch.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_pitch.obj `if test -f 'voictune/vt_pitch.cpp'; then $(CYGPATH_W) 'voictune/vt_pitch.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_pitch.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_coach.o: voictune/vt_coach.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_coach.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Tpo -c -o voictune/mcaster1_voictune-vt_coach.o `test -f 'voictune/vt_coach.cpp' || echo '$(srcdir)/'`voictune/vt_coach.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po
+#	$(AM_V_CXX)source='voictune/vt_coach.cpp' object='voictune/mcaster1_voictune-vt_coach.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_coach.o `test -f 'voictune/vt_coach.cpp' || echo '$(srcdir)/'`voictune/vt_coach.cpp
+
+voictune/mcaster1_voictune-vt_coach.obj: voictune/vt_coach.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_coach.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Tpo -c -o voictune/mcaster1_voictune-vt_coach.obj `if test -f 'voictune/vt_coach.cpp'; then $(CYGPATH_W) 'voictune/vt_coach.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_coach.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po
+#	$(AM_V_CXX)source='voictune/vt_coach.cpp' object='voictune/mcaster1_voictune-vt_coach.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_coach.obj `if test -f 'voictune/vt_coach.cpp'; then $(CYGPATH_W) 'voictune/vt_coach.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_coach.cpp'; fi`
+
+voictune/mcaster1_voictune-vt_worker_pool.o: voictune/vt_worker_pool.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_worker_pool.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Tpo -c -o voictune/mcaster1_voictune-vt_worker_pool.o `test -f 'voictune/vt_worker_pool.cpp' || echo '$(srcdir)/'`voictune/vt_worker_pool.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po
+#	$(AM_V_CXX)source='voictune/vt_worker_pool.cpp' object='voictune/mcaster1_voictune-vt_worker_pool.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_worker_pool.o `test -f 'voictune/vt_worker_pool.cpp' || echo '$(srcdir)/'`voictune/vt_worker_pool.cpp
+
+voictune/mcaster1_voictune-vt_worker_pool.obj: voictune/vt_worker_pool.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-vt_worker_pool.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Tpo -c -o voictune/mcaster1_voictune-vt_worker_pool.obj `if test -f 'voictune/vt_worker_pool.cpp'; then $(CYGPATH_W) 'voictune/vt_worker_pool.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_worker_pool.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Tpo voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po
+#	$(AM_V_CXX)source='voictune/vt_worker_pool.cpp' object='voictune/mcaster1_voictune-vt_worker_pool.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-vt_worker_pool.obj `if test -f 'voictune/vt_worker_pool.cpp'; then $(CYGPATH_W) 'voictune/vt_worker_pool.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/vt_worker_pool.cpp'; fi`
+
+voictune/mcaster1_voictune-ollama_client.o: voictune/ollama_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-ollama_client.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Tpo -c -o voictune/mcaster1_voictune-ollama_client.o `test -f 'voictune/ollama_client.cpp' || echo '$(srcdir)/'`voictune/ollama_client.cpp
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Tpo voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po
+#	$(AM_V_CXX)source='voictune/ollama_client.cpp' object='voictune/mcaster1_voictune-ollama_client.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-ollama_client.o `test -f 'voictune/ollama_client.cpp' || echo '$(srcdir)/'`voictune/ollama_client.cpp
+
+voictune/mcaster1_voictune-ollama_client.obj: voictune/ollama_client.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-ollama_client.obj -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Tpo -c -o voictune/mcaster1_voictune-ollama_client.obj `if test -f 'voictune/ollama_client.cpp'; then $(CYGPATH_W) 'voictune/ollama_client.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/ollama_client.cpp'; fi`
+	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Tpo voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po
+#	$(AM_V_CXX)source='voictune/ollama_client.cpp' object='voictune/mcaster1_voictune-ollama_client.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o voictune/mcaster1_voictune-ollama_client.obj `if test -f 'voictune/ollama_client.cpp'; then $(CYGPATH_W) 'voictune/ollama_client.cpp'; else $(CYGPATH_W) '$(srcdir)/voictune/ollama_client.cpp'; fi`
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique
@@ -1247,6 +1562,8 @@ distclean-generic:
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
 	-rm -f dsp/$(DEPDIR)/$(am__dirstamp)
 	-rm -f dsp/$(am__dirstamp)
+	-rm -f voictune/$(DEPDIR)/$(am__dirstamp)
+	-rm -f voictune/$(am__dirstamp)
 
 maintainer-clean-generic:
 	@echo "This command is intended for maintainers to use"
@@ -1305,6 +1622,20 @@ distclean: distclean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-tags
@@ -1399,6 +1730,20 @@ maintainer-clean: maintainer-clean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_audio_capture.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_coach.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_config.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_db.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_fft.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_http_api.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_meters.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_pitch.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_usb_monitor.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_websocket.Po
+	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-vt_worker_pool.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 
