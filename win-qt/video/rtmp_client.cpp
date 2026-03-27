@@ -646,7 +646,16 @@ bool RtmpClient::parse_rtmp_url(const std::string& url,
     }
 
     app = path;
-    return !host.empty() && !app.empty();
+
+    // SEC-012: Validate hostname — reject empty, whitespace-only, or containing path separators
+    if (host.empty() || host.find(' ') != std::string::npos ||
+        host.find('\t') != std::string::npos ||
+        host.find('\\') != std::string::npos ||
+        host.find('/') != std::string::npos) {
+        return false;
+    }
+
+    return !app.empty();
 }
 
 void RtmpClient::set_error(const std::string& msg)

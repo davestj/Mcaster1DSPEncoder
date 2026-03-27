@@ -58,6 +58,17 @@ std::string PlaylistParser::resolve_path(const std::string& entry_path,
 // ---------------------------------------------------------------------------
 std::vector<PlaylistEntry> PlaylistParser::parse(const std::string& file_path)
 {
+    // SEC-015: Reject oversized playlist files (10 MB limit)
+    {
+        std::error_code ec;
+        auto fsize = std::filesystem::file_size(file_path, ec);
+        if (!ec && fsize > 10 * 1024 * 1024) {
+            fprintf(stderr, "[PlaylistParser] File too large (%llu bytes), skipping: %s\n",
+                    (unsigned long long)fsize, file_path.c_str());
+            return {};
+        }
+    }
+
     std::ifstream f(file_path);
     if (!f.is_open()) return {};
 

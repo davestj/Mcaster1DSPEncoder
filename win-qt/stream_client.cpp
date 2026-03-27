@@ -208,6 +208,13 @@ bool StreamClient::send_admin_metadata(const std::string& title,
               "\r\n";
     }
 
+    // SEC-010: Warn when sending credentials over plain HTTP (raw sockets — no TLS support)
+    // This client uses raw TCP sockets without TLS. Credentials (Basic auth, password params)
+    // are transmitted in cleartext. A future enhancement should add OpenSSL/Schannel support.
+    fprintf(stderr, "[StreamClient] WARNING: Metadata push uses plain HTTP — "
+            "credentials sent in cleartext to %s:%d\n",
+            target_.host.c_str(), target_.port);
+
     // Open a fresh TCP connection for the metadata update
     struct addrinfo hints{}, *res = nullptr;
     hints.ai_family   = AF_UNSPEC;
@@ -589,7 +596,36 @@ void StreamClient::set_error(const std::string& msg)
 {
     std::lock_guard<std::mutex> lk(err_mutex_);
     last_error_ = msg;
-    fprintf(stderr, "[StreamClient] Error: %s\n", msg.c_str());
+    // SEC-009: Scrub potential credentials from log output
+    std::string safe_msg = msg;
+    // Redact Base64 auth tokens
+    auto pos = safe_msg.find("Basic ");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("\r\n ", pos + 6);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 6, end - pos - 6, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 6, std::string::npos, "[REDACTED]");
+    }
+    // Redact password= query parameters
+    pos = safe_msg.find("pass=");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("&\r\n ", pos + 5);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 5, end - pos - 5, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 5, std::string::npos, "[REDACTED]");
+    }
+    // Redact icy-password header values
+    pos = safe_msg.find("icy-password: ");
+    if (pos != std::string::npos) {
+        auto end = safe_msg.find_first_of("\r\n", pos + 14);
+        if (end != std::string::npos)
+            safe_msg.replace(pos + 14, end - pos - 14, "[REDACTED]");
+        else
+            safe_msg.replace(pos + 14, std::string::npos, "[REDACTED]");
+    }
+    fprintf(stderr, "[StreamClient] Error: %s\n", safe_msg.c_str());
 }
 
 void StreamClient::set_state(State s)

@@ -81,6 +81,17 @@ std::string RssGenerator::generate(const PodcastConfig &cfg,
 {
     if (cfg.rss_output_dir.empty()) return {};
 
+    // SEC-016: Validate output path — reject path traversal
+    {
+        std::string clean = cfg.rss_output_dir;
+        // Normalize separators
+        std::replace(clean.begin(), clean.end(), '\\', '/');
+        if (clean.find("..") != std::string::npos) {
+            fprintf(stderr, "[RssGenerator] Rejected output dir with path traversal: %s\n", clean.c_str());
+            return {};
+        }
+    }
+
     /* Ensure output dir exists */
 #ifdef _WIN32
     _mkdir(cfg.rss_output_dir.c_str());

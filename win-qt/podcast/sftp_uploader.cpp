@@ -98,6 +98,17 @@ bool SftpUploader::testConnection(const PodcastConfig &cfg, std::string &error_o
     /* Authenticate */
     bool auth_ok = false;
     if (!cfg.sftp_key_path.empty()) {
+        // SEC-013: Validate SSH key file exists before attempting auth
+        std::ifstream key_test(cfg.sftp_key_path);
+        if (!key_test.good()) {
+            error_out = "SSH key file not found: " + cfg.sftp_key_path;
+            libssh2_session_disconnect(session, "key_not_found");
+            libssh2_session_free(session);
+            close(sock);
+            return false;
+        }
+        key_test.close();
+
         rc = libssh2_userauth_publickey_fromfile(session,
                 cfg.sftp_username.c_str(),
                 nullptr, /* public key — auto-derived from private */
@@ -190,6 +201,17 @@ bool SftpUploader::uploadFile(const PodcastConfig &cfg,
 
     /* Auth */
     if (!cfg.sftp_key_path.empty()) {
+        // SEC-013: Validate SSH key file exists before attempting auth
+        std::ifstream key_test(cfg.sftp_key_path);
+        if (!key_test.good()) {
+            error_out = "SSH key file not found: " + cfg.sftp_key_path;
+            libssh2_session_disconnect(session, "key_not_found");
+            libssh2_session_free(session);
+            close(sock);
+            return false;
+        }
+        key_test.close();
+
         rc = libssh2_userauth_publickey_fromfile(session,
                 cfg.sftp_username.c_str(), nullptr,
                 cfg.sftp_key_path.c_str(), cfg.sftp_password.c_str());
