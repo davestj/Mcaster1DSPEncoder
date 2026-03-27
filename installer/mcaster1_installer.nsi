@@ -73,15 +73,14 @@ Section "Main Application" SecMain
   ; ── Virtual Camera DLL ──
   File /nonfatal "${STAGING_DIR}\Mcaster1VirtualCam.dll"
 
-  ; ── Qt Framework DLLs ──
-  File "${STAGING_DIR}\Qt6Cored.dll"
-  File "${STAGING_DIR}\Qt6Guid.dll"
-  File "${STAGING_DIR}\Qt6Widgetsd.dll"
-  File "${STAGING_DIR}\Qt6Multimediad.dll"
-  File "${STAGING_DIR}\Qt6Networkd.dll"
+  ; ── Qt Framework DLLs (Debug "d" suffix OR Release — only one set present) ──
+  File /nonfatal "${STAGING_DIR}\Qt6Cored.dll"
+  File /nonfatal "${STAGING_DIR}\Qt6Guid.dll"
+  File /nonfatal "${STAGING_DIR}\Qt6Widgetsd.dll"
+  File /nonfatal "${STAGING_DIR}\Qt6Multimediad.dll"
+  File /nonfatal "${STAGING_DIR}\Qt6Networkd.dll"
   File /nonfatal "${STAGING_DIR}\Qt6Svgd.dll"
   File /nonfatal "${STAGING_DIR}\Qt6Pdfd.dll"
-  ; Release Qt DLLs (no "d" suffix)
   File /nonfatal "${STAGING_DIR}\Qt6Core.dll"
   File /nonfatal "${STAGING_DIR}\Qt6Gui.dll"
   File /nonfatal "${STAGING_DIR}\Qt6Widgets.dll"
@@ -102,17 +101,17 @@ Section "Main Application" SecMain
   File /nonfatal "${STAGING_DIR}\swscale-8.dll"
 
   ; ── Codec DLLs (vcpkg) ──
-  File "${STAGING_DIR}\FLAC.dll"
-  File "${STAGING_DIR}\fdk-aac.dll"
-  File "${STAGING_DIR}\libmp3lame.dll"
+  File /nonfatal "${STAGING_DIR}\FLAC.dll"
+  File /nonfatal "${STAGING_DIR}\fdk-aac.dll"
+  File /nonfatal "${STAGING_DIR}\libmp3lame.dll"
   File /nonfatal "${STAGING_DIR}\libmp3lame.DLL"
-  File "${STAGING_DIR}\ogg.dll"
-  File "${STAGING_DIR}\opus.dll"
-  File "${STAGING_DIR}\opusenc.dll"
-  File "${STAGING_DIR}\portaudio.dll"
-  File "${STAGING_DIR}\vorbis.dll"
-  File "${STAGING_DIR}\vorbisenc.dll"
-  File "${STAGING_DIR}\yaml.dll"
+  File /nonfatal "${STAGING_DIR}\ogg.dll"
+  File /nonfatal "${STAGING_DIR}\opus.dll"
+  File /nonfatal "${STAGING_DIR}\opusenc.dll"
+  File /nonfatal "${STAGING_DIR}\portaudio.dll"
+  File /nonfatal "${STAGING_DIR}\vorbis.dll"
+  File /nonfatal "${STAGING_DIR}\vorbisenc.dll"
+  File /nonfatal "${STAGING_DIR}\yaml.dll"
 
   ; ── SSL/TLS ──
   File /nonfatal "${STAGING_DIR}\libcrypto-3-x64.dll"
