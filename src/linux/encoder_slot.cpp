@@ -686,6 +686,15 @@ bool EncoderSlot::init_opus()
 
     ope_encoder_ctl(state->enc, OPUS_SET_BITRATE(cfg_.bitrate_kbps * 1000));
 
+    // VBR is the Opus default and recommended mode; CBR disables it.
+    if (cfg_.encode_mode == EncoderConfig::EncodeMode::CBR) {
+        ope_encoder_ctl(state->enc, OPUS_SET_VBR(0));
+        MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] Opus init: CBR " + std::to_string(cfg_.bitrate_kbps) + "kbps");
+    } else {
+        ope_encoder_ctl(state->enc, OPUS_SET_VBR(1));
+        MC1_INFO("[Slot " + std::to_string(cfg_.slot_id) + "] Opus init: VBR " + std::to_string(cfg_.bitrate_kbps) + "kbps");
+    }
+
     opus_enc_ = state;
     cfg_.stream_target.content_type = EncoderConfig::codec_content_type(EncoderConfig::Codec::OPUS);
     return true;

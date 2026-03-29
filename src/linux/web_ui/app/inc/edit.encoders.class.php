@@ -123,7 +123,8 @@ class EditEncoders
     {
         try {
             return self::rows('mcaster1_encoder',
-                'SELECT id, slot_id, name, codec, bitrate_kbps, server_host, server_port,
+                'SELECT id, slot_id, name, codec, bitrate_kbps, quality, encode_mode,
+                        channel_mode, server_host, server_port,
                         server_mount, server_protocol, is_active, eq_preset
                  FROM encoder_configs ORDER BY slot_id');
         } catch (\Throwable $e) {
@@ -168,6 +169,22 @@ class EditEncoders
 
         if (!in_array($f['server_protocol'] ?? '', self::PROTOCOLS, true)) {
             $errors[] = 'Invalid server protocol';
+        }
+
+        // Quality: 0-10
+        $quality = (int)($f['quality'] ?? 5);
+        if ($quality < 0 || $quality > 10) {
+            $errors[] = 'Quality must be between 0 and 10';
+        }
+
+        // Encode mode
+        if (isset($f['encode_mode']) && !in_array($f['encode_mode'], array_keys(self::ENCODE_MODES), true)) {
+            $errors[] = 'Invalid encode mode (must be cbr, vbr, or abr)';
+        }
+
+        // Channel mode
+        if (isset($f['channel_mode']) && !in_array($f['channel_mode'], array_keys(self::CHANNEL_MODES), true)) {
+            $errors[] = 'Invalid channel mode (must be joint, stereo, or mono)';
         }
 
         return $errors;

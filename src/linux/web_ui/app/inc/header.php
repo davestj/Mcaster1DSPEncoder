@@ -355,6 +355,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <a class="nav-item <?= $active_nav === 'recording' ? 'active' : '' ?>" href="/recording.php">
     <i class="fa-solid fa-circle fa-fw" style="color:#ef4444;"></i> Recording
   </a>
+  <a class="nav-item <?= $active_nav === 'remote-recording' ? 'active' : '' ?>" href="/remote-host.php">
+    <i class="fa-solid fa-satellite-dish fa-fw"></i> Remote Recording
+  </a>
   <a class="nav-item <?= $active_nav === 'podcast-analytics' ? 'active' : '' ?>" href="/podcast-analytics.php">
     <i class="fa-solid fa-chart-line fa-fw"></i> Analytics
   </a>

@@ -471,7 +471,7 @@ static void setup_routes(httplib::Server& svr)
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
                 json j;
-                j["version"]  = "1.2.0";
+                j["version"]  = "1.8.0-beta.1";
                 j["platform"] = "linux";
                 j["uptime"]   = uptime_str(g_start_time);
                 j["admin_server"] = "mcaster1-encoder";
@@ -3819,6 +3819,97 @@ static void setup_routes(httplib::Server& svr)
             res.set_content(fr.body, fr.content_type.c_str());
         });
     };
+
+    // ── Public remote guest join page — NO auth required ───────────────────
+    // GET /join/{code} → forward to remote-guest.php?code={code}
+    svr.Get(R"(/join/([A-Za-z0-9]{4,32}))", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string code = req.matches[1];
+        std::string script_name     = "/remote-guest.php";
+        std::string script_filename = g_webroot + script_name;
+        std::string query_string    = "code=" + code;
+        std::string request_uri     = script_name + "?" + query_string;
+
+        std::map<std::string, std::string> extra;
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "GET", script_filename, script_name,
+            query_string, request_uri,
+            "", "",
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "text/html; charset=UTF-8" : fr.content_type.c_str());
+    });
+
+    // ── Public remote API — NO auth for guest actions ───────────────────────
+    // POST /api/v1/remote/guest → forward to remote.php (no auth check)
+    // Guest actions are validated by session_code + participant_id inside PHP
+    svr.Post("/api/v1/remote/guest", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string script_name     = "/app/api/remote.php";
+        std::string script_filename = g_webroot + script_name;
+        std::string request_uri     = script_name;
+
+        std::string content_type;
+        {
+            auto ct = req.headers.find("Content-Type");
+            if (ct != req.headers.end()) content_type = ct->second;
+        }
+
+        std::map<std::string, std::string> extra;
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "POST", script_filename, script_name,
+            "", request_uri,
+            content_type, req.body,
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "application/json" : fr.content_type.c_str());
+    });
 
     // ── Public podcast RSS feed — NO auth required ────────────────────────
     // GET /podcast/{show_id}/feed.xml → forward to podcast_feed.php?show_id=N

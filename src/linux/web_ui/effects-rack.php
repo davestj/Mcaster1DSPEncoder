@@ -605,7 +605,8 @@ function loadVersions() {
         if (!d || !d.ok) return;
         var fx = d.effects || [];
         for (var i = 0; i < fx.length; i++) {
-            pbVersions[fx[i].type_id] = fx[i];
+            var key = fx[i].type_id || fx[i].type || ('idx_' + i);
+            pbVersions[key] = fx[i];
         }
     }).catch(function(){});
 }
