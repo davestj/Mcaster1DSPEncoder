@@ -849,7 +849,7 @@ var meterRenderers = {
 /* ── Poll meters and render ──────────────────────────────────────────── */
 function pollMeters() {
     if (typeof mc1Api !== 'function') return;
-    mc1Api('GET', '/api/v1/effects/meters', null, function(data) {
+    mc1Api('GET', '/api/v1/effects/meters').then(function(data) {
         if (!Array.isArray(data)) return;
         for (var i = 0; i < data.length; i++) {
             var md = data[i];
@@ -868,7 +868,7 @@ function pollMeters() {
             var renderer = meterRenderers[md.type] || drawGenericMeter;
             renderer(canvas, md);
         }
-    });
+    }).catch(function() { /* meter poll failed — ignore, retry next interval */ });
 }
 
 /* ── Start/Stop meter polling (10Hz) ─────────────────────────────────── */
