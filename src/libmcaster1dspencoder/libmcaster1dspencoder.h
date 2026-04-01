@@ -609,6 +609,12 @@ typedef struct {
 	    int  timeout_sec;        /* HTTP request timeout in seconds — default 60     */
 	    int  enabled;            /* 0 = bypass AI completely, 1 = active             */
 	} ollama;
+
+	/* Inter-daemon API keys for cross-port authentication                       */
+	struct {
+	    char voictune_key[128];  /* API key for VoicTune daemon (port 8350)         */
+	    char encoder_key[128];   /* API key for encoder daemon (this process)       */
+	} daemon_keys;
 } mc1AdminConfig;
 
 /* Single global instance — defined in config_yaml.cpp,

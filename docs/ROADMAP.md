@@ -5,75 +5,67 @@
 
 ---
 
-## Current Release: v1.8.0-beta.1
+## Current Release: v1.8.0-beta.1 — ALL PHASES COMPLETE
 
-Beta preview with VoicTune daemon skeleton. All subsystems initialized, binary compiles and links, database provisioned. Audio pipeline wiring and web UI pending.
+v1.8.0-beta.1 is a major release transforming Mcaster1 from a broadcast encoder into a full podcaster/broadcaster production studio. All 23+ development phases are complete.
 
 ---
 
-## v1.8.0 Planned Phases
+## Completed Phases
 
-### Track 1: Visual Pedalboard (PB-1 through PB-3)
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| PB-1 | Pedalboard surface + SVG broadcast pedals + drag/drop | NEXT |
-| PB-2 | Cable routing + signal flow visualization (bezier SVG paths) | Planned |
-| PB-3 | Real-time meters + visual feedback on each pedal | Planned |
-
-### Track 2: VoicTune Voice Analysis (VT-1 through VT-4)
+### v1.0.0 - v1.7.0 (Foundation)
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| VT-1 | Daemon skeleton (HTTP, auth, FFT, pitch, meters, DB, WS, USB, AI) | **COMPLETE** |
-| VT-2 | Audio capture pipeline + live analysis wiring | NEXT |
-| VT-3 | Web UI (oscilloscope, spectrum analyzer, pitch display, meters) | Planned |
-| VT-4 | Voice coaching in browser (rule-based tips + AI coaching panel) | Planned |
+| L1 | Infrastructure, build system, platform abstraction | **COMPLETE** |
+| L2 | HTTP/HTTPS admin server + login + web UI shell | **COMPLETE** |
+| L3 | Audio encoding + streaming + FastCGI + PHP | **COMPLETE** |
+| L4 | DSP chain (EQ/AGC/crossfade) + ICY2 + DNAS stats | **COMPLETE** |
+| L5-L5.5 | PHP frontend, media library, player, profiles, categories | **COMPLETE** |
+| L6 | Streaming Server Relay Monitor | **COMPLETE** |
+| L7 | Listener Analytics + CSV export + GeoIP | **COMPLETE** |
+| DJ-1..6 | Crossfader, effects rack, PTT, JACK, dual-deck, per-slot FX | **COMPLETE** |
+| L8-SPLIT | Dual binary: admin + encoder (fault isolation) | **COMPLETE** |
+| L9 | Clockwheel scheduler + dead air detection | **COMPLETE** |
+| L-METRICS | System Health Dashboard | **COMPLETE** |
+| L-MEDIA | Folder browser, scan progress, category types/weights | **COMPLETE** |
 
-### Track 3: Ollama AI Integration (AI-1 through AI-4)
+### v1.8.0 — Production Studio
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| AI-1 | Coaching chat + EQ/chain suggestion API endpoints | NEXT |
-| AI-2 | Natural language command parsing (voice/text → API actions) | Planned |
-| AI-3 | Content analysis + show notes generation | Planned |
-| AI-4 | Smart playlist generation + audio troubleshooting | Planned |
-
-### Track 4: Virtual Mixer Console (MX-1 through MX-3)
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| MX-1 | Channel strips, faders, meters (WebGL 2.0 + Canvas 2D) | Planned |
-| MX-2 | 6 Mcaster1-branded mixer skins | Planned |
-| MX-3 | Custom user effect profiles + mixer presets | Planned |
-
-### Parallelism
-
-```
-PB-1 ──→ PB-2 ──→ PB-3 ────────────────────────┐
-VT-1 ──→ VT-2 ──→ VT-3 ──→ VT-4 ───────────────┤
-AI-1 ──→ AI-2 ──→ AI-3 ──→ AI-4 ────────────────┤
-                                    MX-1 ──→ MX-2 ──→ MX-3
-```
-
-PB-1, VT-2, and AI-1 can start in parallel. MX-1 starts after PB-2 + VT-2.
+| VT-1..VT-4 | VoicTune daemon (FFT, pitch, meters, coaching, web UI) | **COMPLETE** |
+| PB-1..PB-3 | Visual pedalboard (SVG pedals, cable routing, live meters) | **COMPLETE** |
+| AI-1..AI-4 | Ollama AI (coaching, EQ/chain, NLP, content analysis, smart playlists) | **COMPLETE** |
+| MX-1..MX-3 | Virtual mixer console (channel strips, 6 skins, custom presets) | **COMPLETE** |
+| L10 | Podcast archive management + iTunes RSS feed generation | **COMPLETE** |
+| L11 | Song requests, dedications, webhooks, embeddable widget | **COMPLETE** |
+| PC-1 | Recording studio (one-click record, chapter markers, auto-split) | **COMPLETE** |
+| PC-2 | Episode editor (waveform, EDL, cut/trim/fade/normalize, export) | **COMPLETE** |
+| PC-3 | Multi-platform publishing (RSS, Apple, Spotify, YouTube, etc.) | **COMPLETE** |
+| PC-4 | Podcast analytics dashboard (downloads, retention, geo) | **COMPLETE** |
+| PC-5 | Podcast website generator (landing pages, SEO, themes) | **COMPLETE** |
+| PC-6 | AI podcast tools (transcription, show notes, chapter suggestions) | **COMPLETE** |
+| PC-7 | Remote recording (WebRTC guests, per-track, chat, invite URL) | **COMPLETE** |
 
 ---
 
 ## Future Releases
 
-### v1.9.0 — Podcast & Archive Management
-- Podcast recording (WAV + MP3 split archival)
-- iTunes-compatible RSS feed generation
-- Archive browser with playback and download
-- Auto-publish to external podcast hosts
+### v1.9.0 — Platform Expansion (Planned)
 
-### v2.0.0 — User Engagement & Social Integration
-- Song request system (listener web widget → DJ queue)
-- Discord/Slack now-playing webhooks
-- Twitter/X auto-tweet on track change
-- WebSocket-based live chat
-- Embeddable station website player widget
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| macOS native build | CoreAudio backend via PortAudio | Medium |
+| Mobile-responsive UI | Web UI overhaul for tablet/phone | Medium |
+| WebRTC browser streaming | Direct browser-to-encoder audio | Low |
+| Plugin SDK | Third-party DSP effect plugins | Low |
+| Multi-user collaboration | Concurrent web session editing | Low |
+| Loudness compliance | EBU R128 / ATSC A/85 auto-correction | Medium |
+| Advanced VoicTune | De-breath, auto-tune, voice changer | Low |
+| Podcast monetization | Dynamic ad insertion, sponsor management | Low |
+| i18n localization | Multi-language web UI | Low |
+| Multi-platform streaming | Twitch, YouTube Live, Facebook Live | Medium |
 
 ---
 
@@ -91,3 +83,5 @@ PB-1, VT-2, and AI-1 can start in parallel. MX-1 starts after PB-2 + VT-2.
 | FFT engine | kiss_fft (vendored) | BSD-3, header-only, ~800 LOC |
 | AI engine | Ollama (local) | Privacy-first, graceful offline degradation |
 | WebSocket | Raw RFC 6455 | No external lib dependency |
+| Episode editor | Canvas 2D + Web Audio API | Waveform rendering, EDL operations |
+| Remote recording | WebRTC | Per-participant tracks, low latency |

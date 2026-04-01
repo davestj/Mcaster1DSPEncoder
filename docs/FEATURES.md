@@ -37,14 +37,16 @@
 - **AGC / Compressor** — Configurable threshold, ratio, attack, release
 - **Hard Limiter** — Brick-wall peak limiting
 - **Noise Gate** — Threshold-based gating with attack/release
-- **De-Esser** — Sibilance reduction (planned)
-- **Exciter** — Harmonic enhancement (planned)
+- **Reverb** — Algorithmic reverb with room size, damping, wet/dry mix
+- **Delay** — Tempo-synced or millisecond delay with feedback
+- **De-Esser** — Sibilance reduction
+- **Exciter** — Harmonic enhancement
 - **Equal-Power Crossfader** — 9-curve types (linear, logarithmic, S-curve, etc.)
 - **Sidechain Ducker** — PTT (push-to-talk) with spacebar trigger
 - **Dead Air Detector** — Configurable silence threshold and fallback action
 
 ### Effects Rack (Modular)
-- 6 unit types: EQ, Compressor, Gate, Limiter, De-Esser, Exciter
+- 8 unit types: EQ, Compressor, Gate, Limiter, De-Esser, Exciter, Reverb, Delay
 - Drag-and-drop reordering
 - Per-slot assignment: Global / Bypass / Custom chain
 - Named presets per effect type
@@ -84,6 +86,18 @@
 | Metrics | Chart.js listener analytics, session history, CSV export |
 | Settings | Server info, encoder config table, DB admin, streaming servers |
 | Profile | User profile, display name, email, password change |
+| VoicTune | Voice analysis: oscilloscope, spectrum analyzer, pitch, meters, AI coaching |
+| Mixer | Virtual mixer console with channel strips, faders, meters, 6 skins |
+| Podcast Manager | Podcast show/episode management, archive scanner, RSS feeds |
+| Recording Studio | One-click record from any slot, chapter markers, auto-split |
+| Episode Editor | Browser waveform editor, EDL (cut/trim/fade/normalize), export |
+| Podcast Analytics | Per-episode downloads, retention curves, platform breakdown, geo |
+| Podcast Website | Auto-generated landing pages, episode list, embedded players, SEO |
+| Song Requests | DJ request queue, approval workflow, dedication system |
+| Request Widget | Public listener-facing request form (embeddable) |
+| Now-Playing Widget | Embeddable player + now-playing for external sites |
+| Remote Host | Remote recording host dashboard (manage guests, recording, chat) |
+| Remote Guest | Remote recording guest view (audio, chat, hand-raise) |
 
 ### Media Library
 - Folder browser with recursive scanning
@@ -140,7 +154,7 @@
 
 ---
 
-## VoicTune — Voice Analysis & Coaching (NEW in v1.8.0)
+## VoicTune — Voice Analysis & Coaching
 
 ### Standalone Daemon
 - Independent binary: `mcaster1-voictune` (18MB)
@@ -161,41 +175,126 @@
 - Browser mic via WebSocket (getUserMedia + AudioWorklet)
 - Tri-mode: Server mic, Browser mic, Hybrid
 
-### Voice Coaching (Rule-Based)
-- Level monitoring (LUFS target tracking)
+### Voice Coaching
+- Rule-based level monitoring (LUFS target tracking)
 - Peak clipping detection
 - Sibilance analysis (high-frequency energy)
 - Proximity effect detection (low-frequency boom)
 - Pitch drift warning
 - Pacing analysis (dead air, continuous speech)
+- AI-powered coaching tips via Ollama
 
 ### Ollama AI Integration
 - HTTP client for local Ollama instance
 - Graceful degradation when Ollama is offline
-- 7 AI prompt templates:
-  - Voice coaching
-  - EQ suggestion (JSON output)
-  - Effects chain suggestion
-  - Natural language command parsing
-  - Audio troubleshooting
-  - Content analysis / show notes
-  - Mixer configuration
+- 7 AI prompt templates: voice coaching, EQ suggestion, effects chain, NLP command, troubleshooting, content analysis, mixer config
 
-### Database
-- `mcaster1_voictune.sessions` — Analysis session tracking
-- `mcaster1_voictune.voice_profiles` — Per-user voice characteristics
-- `mcaster1_voictune.analysis_snapshots` — Time-series FFT/pitch/meter data
-- `mcaster1_voictune.ai_interactions` — AI conversation history
+---
+
+## Visual Pedalboard
+
+- SVG broadcast-themed pedal faceplates
+- Drag-and-drop pedal placement on canvas
+- Bezier SVG cable routing between pedals
+- Real-time meters on each pedal (Canvas 2D)
+- Signal flow visualization
+- Save/load pedalboard layouts (DB-backed)
+
+---
+
+## Virtual Mixer Console
+
+- Channel strips with faders, pan, mute, solo
+- WebGL 2.0 rendered fader caps and meters
+- 6 Mcaster1-branded mixer skins
+- Master bus with metering
+- Custom user effect profiles per channel
+- Save/load mixer configurations (DB-backed)
+
+---
+
+## Podcast Studio
+
+### Recording (PC-1)
+- One-click record from any encoder slot
+- Live recording timer with animated indicator
+- Chapter marker system (keyboard shortcut: M key)
+- Auto-split at configurable intervals
+- Pre-roll / post-roll audio file selection
+- Format selection (MP3, WAV, OGG, Opus, FLAC, AAC)
+
+### Episode Editor (PC-2)
+- Browser-based waveform editor (Canvas 2D + Web Audio API)
+- Non-destructive editing via Edit Decision List (EDL)
+- Operations: Cut, Trim, Fade In/Out, Silence, Normalize
+- Undo/Redo stack (50 levels)
+- Chapter marker editor with drag-to-reorder
+- Multi-format export via FFmpeg
+
+### Multi-Platform Publishing (PC-3)
+- Publish targets per show (RSS, Apple, Spotify, YouTube, Podbean, Buzzsprout, custom)
+- One-click or scheduled publishing
+- Publish queue with status tracking
+- YouTube video generation (cover art + audio via ffmpeg)
+
+### Podcast Analytics (PC-4)
+- Per-episode download tracking
+- Listener retention curves
+- Platform breakdown (Apple vs Spotify vs RSS)
+- Growth trends (subscribers, downloads/week)
+- Geographic breakdown
+
+### Website Generator (PC-5)
+- Auto-generated podcast landing pages
+- Episode list with embedded players
+- Show notes with clickable chapter timestamps
+- Subscribe buttons (Apple, Spotify, RSS)
+- SEO-optimized episode pages
+- Customizable themes
+
+### AI Podcast Tools (PC-6)
+- Auto-transcription via Whisper or Ollama
+- AI-generated show notes from transcript
+- Chapter suggestions from content analysis
+- SEO title/description suggestions
+- Filler word detection
+
+### Remote Recording (PC-7)
+- WebRTC-based remote guest recording
+- Separate tracks per participant
+- Built-in chat and hand-raise
+- Guest invite via URL (no account needed)
+
+---
+
+## User Engagement & Social (L11)
+
+### Song Request System
+- Public web widget for listener requests
+- DJ queue with approve/reject workflow
+- Dedication system with to/from messages
+- Auto-load approved requests to encoder slot
+
+### Webhooks
+- Now-playing event dispatch (Discord, Slack, custom)
+- Configurable webhook targets per event type
+- Secret-based HMAC verification
+- Delivery logs and retry
+
+### Embeddable Widget
+- Now-playing display for external websites
+- Embedded audio player
+- Station branding customization
 
 ---
 
 ## Architecture
 
-### Triple-Binary Design (v1.8.0+)
+### Triple-Binary Design (v1.8.0)
 
 ```
 mcaster1-dsp-encoder-admin  (36MB) — Web UI, FastCGI, auth, supervisor
-    └── fork/exec ──→ mcaster1-dsp-encoder  (28MB) — Audio, DSP, codecs, streaming
+    +-- fork/exec --> mcaster1-dsp-encoder  (28MB) — Audio, DSP, codecs, streaming
 mcaster1-voictune           (18MB) — Voice analysis, coaching, AI (independent)
 ```
 
@@ -213,8 +312,9 @@ mcaster1-voictune           (18MB) — Voice analysis, coaching, AI (independent
 - GnuPG binary signing (RSA-4096)
 - SHA256 checksums for all binaries
 - HTTPS with configurable SSL cert/key
-- HttpOnly, SameSite=Strict session cookies
+- HttpOnly, SameSite=Lax session cookies
 - bcrypt password hashing (MySQL layer)
+- Conditional Secure flag (HTTPS only)
 
 ---
 

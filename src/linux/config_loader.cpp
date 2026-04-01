@@ -223,6 +223,23 @@ static void parse_ollama(yaml_document_t* doc, yaml_node_t* node)
 }
 
 // ---------------------------------------------------------------------------
+// daemon-keys: section → gAdminConfig.daemon_keys
+// ---------------------------------------------------------------------------
+
+static void parse_daemon_keys(yaml_document_t* doc, yaml_node_t* node)
+{
+    if (!node || node->type != YAML_MAPPING_NODE) return;
+
+    yaml_node_t* v;
+    if ((v = map_get(doc, node, "voictune")))
+        strncpy(gAdminConfig.daemon_keys.voictune_key, node_scalar(doc, v),
+                sizeof(gAdminConfig.daemon_keys.voictune_key) - 1);
+    if ((v = map_get(doc, node, "encoder")))
+        strncpy(gAdminConfig.daemon_keys.encoder_key, node_scalar(doc, v),
+                sizeof(gAdminConfig.daemon_keys.encoder_key) - 1);
+}
+
+// ---------------------------------------------------------------------------
 // Public — load startup YAML: fills gAdminConfig (NO encoder slots)
 // ---------------------------------------------------------------------------
 
@@ -292,6 +309,10 @@ bool mc1_load_config(const char*    path,
     // ollama → gAdminConfig.ollama
     if ((n = map_get(&doc, root, "ollama")))
         parse_ollama(&doc, n);
+
+    // daemon-keys → gAdminConfig.daemon_keys
+    if ((n = map_get(&doc, root, "daemon-keys")))
+        parse_daemon_keys(&doc, n);
 
     yaml_document_delete(&doc);
     yaml_parser_delete(&parser);

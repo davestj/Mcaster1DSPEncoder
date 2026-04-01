@@ -433,8 +433,18 @@ require_once __DIR__ . '/app/inc/header.php';
             <i class="fa-solid fa-globe"></i> Browser Mic
         </button>
     </div>
+
+    <div class="vt-source-toggle" id="vt-webgl-toggle" style="display:none">
+        <button class="vt-source-btn" id="vt-viz-2d" onclick="vtSetVizMode('2d')">
+            <i class="fa-solid fa-display"></i> 2D
+        </button>
+        <button class="vt-source-btn" id="vt-viz-webgl" onclick="vtSetVizMode('webgl')">
+            <i class="fa-solid fa-cube"></i> WebGL
+        </button>
+    </div>
 </div>
 
+<script src="/js/webgl-viz.js"></script>
 <script src="/js/voictune-viz.js"></script>
 <script src="/js/voictune-audio.js"></script>
 
@@ -442,8 +452,8 @@ require_once __DIR__ . '/app/inc/header.php';
 (function(){
 'use strict';
 
-/* ── VoicTune API base (cross-origin to daemon on port 8350) ─── */
-var VT_BASE = window.location.protocol + '//' + window.location.hostname + ':8350';
+/* ── VoicTune API base (proxied through admin on same origin) ── */
+var VT_BASE = '';  /* same origin — proxy via /api/v1/proxy/ */
 var POLL_MS = 80;          /* ~12 Hz data polling */
 var TIPS_POLL_MS = 3000;   /* coaching tips every 3s */
 
@@ -454,15 +464,22 @@ var pollTimer     = null;
 var tipsPollTimer = null;
 var audioSource   = 'server';  /* 'server' or 'browser' */
 
-/* ── VoicTune fetch helper (cross-origin with credentials) ──── */
+/* ── VoicTune fetch helper (same-origin via admin proxy) ─────── */
 function vtApi(method, path, body) {
+    /* Rewrite /api/v1/voictune/* → /api/v1/proxy/voictune/*
+       and     /api/v1/ai/*       → /api/v1/proxy/ai/*        */
+    var proxyPath = path;
+    if (path.indexOf('/api/v1/voictune/') === 0)
+        proxyPath = '/api/v1/proxy/voictune/' + path.substring('/api/v1/voictune/'.length);
+    else if (path.indexOf('/api/v1/ai/') === 0)
+        proxyPath = '/api/v1/proxy/ai/' + path.substring('/api/v1/ai/'.length);
     var opts = {
         method: method,
         headers: {'Content-Type': 'application/json'},
         credentials: 'include'
     };
     if (body !== undefined && body !== null) opts.body = JSON.stringify(body);
-    return fetch(VT_BASE + path, opts).then(function(r) {
+    return fetch(VT_BASE + proxyPath, opts).then(function(r) {
         return r.json().then(function(d) { d._status = r.status; return d; });
     });
 }
@@ -477,6 +494,14 @@ var elStatusDot, elStatusText, elWsBadge;
 
 /* ── Viz engine instance ─────────────────────────────────────── */
 var viz = null;
+
+/* ── WebGL visualization instances ─────────────────────────── */
+var vizMode = '2d';   /* '2d' or 'webgl' */
+var glSpectrum = null;
+var glSpectrogram = null;
+var glWaveform = null;
+var glRmsMeter = null;
+var glPeakMeter = null;
 
 /* ── Latest data from polls (for rAF interpolation) ────────── */
 var latestMeters   = null;
@@ -512,6 +537,17 @@ document.addEventListener('DOMContentLoaded', function() {
     sizeCanvas(elSpectrumCanvas);
 
     viz = new VoicTuneViz();
+
+    /* WebGL visualization setup */
+    if (window.WebGLViz && WebGLViz.isWebGLAvailable()) {
+        var toggle = document.getElementById('vt-webgl-toggle');
+        if (toggle) toggle.style.display = '';
+        if (WebGLViz.getWebGLPref()) {
+            vtSetVizMode('webgl');
+        } else {
+            vtSetVizMode('2d');
+        }
+    }
 
     loadDevices();
     checkVtStatus();
@@ -668,6 +704,44 @@ window.vtSetSource = function(src) {
     }
 };
 
+/* ── WebGL / 2D toggle ──────────────────────────────────────── */
+window.vtSetVizMode = function(mode) {
+    vizMode = mode;
+    var btn2d   = document.getElementById('vt-viz-2d');
+    var btnGL   = document.getElementById('vt-viz-webgl');
+    if (btn2d) btn2d.className = 'vt-source-btn' + (mode === '2d' ? ' active' : '');
+    if (btnGL) btnGL.className = 'vt-source-btn' + (mode === 'webgl' ? ' active' : '');
+
+    if (mode === 'webgl' && window.WebGLViz && WebGLViz.isWebGLAvailable()) {
+        WebGLViz.setWebGLPref(true);
+        /* Initialize WebGL renderers if not yet created */
+        if (!glSpectrum && elSpectrumCanvas) {
+            sizeCanvas(elSpectrumCanvas);
+            glSpectrum = new WebGLViz.Spectrum3D(elSpectrumCanvas);
+        }
+        if (!glWaveform && elScopeCanvas) {
+            sizeCanvas(elScopeCanvas);
+            glWaveform = new WebGLViz.Waveform(elScopeCanvas);
+        }
+        if (!glRmsMeter && elRmsCanvas) {
+            glRmsMeter = new WebGLViz.VUMeter(elRmsCanvas);
+        }
+        if (!glPeakMeter && elPeakCanvas) {
+            glPeakMeter = new WebGLViz.VUMeter(elPeakCanvas);
+        }
+    } else {
+        WebGLViz.setWebGLPref(false);
+        /* Destroy WebGL contexts to free GPU resources */
+        if (glSpectrum) { glSpectrum.destroy(); glSpectrum = null; }
+        if (glWaveform) { glWaveform.destroy(); glWaveform = null; }
+        if (glRmsMeter) { glRmsMeter.destroy(); glRmsMeter = null; }
+        if (glPeakMeter) { glPeakMeter.destroy(); glPeakMeter = null; }
+        /* Re-acquire 2D contexts after WebGL context was used */
+        sizeCanvas(elScopeCanvas);
+        sizeCanvas(elSpectrumCanvas);
+    }
+};
+
 /* ── Data polling ────────────────────────────────────────────── */
 function startPolling() {
     if (pollTimer) return;
@@ -752,9 +826,19 @@ function renderLoop() {
     if (viz && latestMeters) {
         var m = latestMeters;
 
-        /* Meters */
-        viz.drawMeter(elRmsCanvas, m.rms_db || -96, m.peak_hold_db || -96, 'RMS');
-        viz.drawMeter(elPeakCanvas, m.peak_db || -96, m.peak_hold_db || -96, 'Peak');
+        /* Meters — WebGL LED or Canvas 2D */
+        if (vizMode === 'webgl' && glRmsMeter && glPeakMeter) {
+            var rmsNorm = Math.max(0, Math.min(1, ((m.rms_db || -96) + 60) / 60));
+            var peakNorm = Math.max(0, Math.min(1, ((m.peak_db || -96) + 60) / 60));
+            var peakHoldNorm = Math.max(0, Math.min(1, ((m.peak_hold_db || -96) + 60) / 60));
+            glRmsMeter.setLevel(rmsNorm, peakHoldNorm);
+            glRmsMeter.draw();
+            glPeakMeter.setLevel(peakNorm, peakHoldNorm);
+            glPeakMeter.draw();
+        } else {
+            viz.drawMeter(elRmsCanvas, m.rms_db || -96, m.peak_hold_db || -96, 'RMS');
+            viz.drawMeter(elPeakCanvas, m.peak_db || -96, m.peak_hold_db || -96, 'Peak');
+        }
         viz.drawLufsGauge(elLufsCanvas, m.lufs || -96, -16);
 
         elRmsVal.textContent  = (m.rms_db  != null ? m.rms_db.toFixed(1) : '-96') + ' dB';
@@ -789,11 +873,21 @@ function renderLoop() {
         elPitchNote.style.color = conf > 0.5 ? 'var(--teal)' : 'var(--muted)';
     }
 
-    if (viz && latestWaveform) {
-        viz.drawOscilloscope(elScopeCanvas, latestWaveform);
+    if (latestWaveform) {
+        if (vizMode === 'webgl' && glWaveform) {
+            glWaveform.setData(latestWaveform);
+            glWaveform.draw();
+        } else if (viz) {
+            viz.drawOscilloscope(elScopeCanvas, latestWaveform);
+        }
     }
-    if (viz && latestSpectrum) {
-        viz.drawSpectrum(elSpectrumCanvas, latestSpectrum, 48000);
+    if (latestSpectrum) {
+        if (vizMode === 'webgl' && glSpectrum) {
+            glSpectrum.update(latestSpectrum, 48000);
+            glSpectrum.draw();
+        } else if (viz) {
+            viz.drawSpectrum(elSpectrumCanvas, latestSpectrum, 48000);
+        }
     }
 
     requestAnimationFrame(renderLoop);

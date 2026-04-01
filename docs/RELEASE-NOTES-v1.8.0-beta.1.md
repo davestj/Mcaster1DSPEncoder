@@ -1,7 +1,7 @@
 # Mcaster1DSPEncoder v1.8.0-beta.1 Release Notes
 
 **Release Date:** 2026-03-27
-**Status:** Beta Preview
+**Status:** Beta Preview (all phases complete)
 **Branch:** `linux-dev`
 **Maintainer:** Dave St. John <davestj@gmail.com>
 
@@ -9,48 +9,121 @@
 
 ## Overview
 
-v1.8.0-beta.1 is a major feature release that introduces VoicTune, a standalone voice analysis and coaching daemon. This release transforms Mcaster1 from a broadcast encoder into a full podcaster/broadcaster production studio.
+v1.8.0-beta.1 is a major feature release that transforms Mcaster1 from a broadcast encoder into a full podcaster/broadcaster production studio. All 23+ development phases are complete, adding VoicTune voice analysis, visual pedalboard, virtual mixer, Ollama AI integration, complete podcast studio with recording/editing/publishing, remote recording, song requests, webhooks, and more.
 
-The project has moved from a dual-binary (admin + encoder) to a **triple-binary architecture** with the addition of `mcaster1-voictune`.
+The project now uses a **triple-binary architecture** with the addition of `mcaster1-voictune`.
 
 ---
 
 ## New Features
 
-### VoicTune Daemon (`mcaster1-voictune`)
+### VoicTune Daemon (VT-1..VT-4)
+- Standalone C++ daemon (`mcaster1-voictune`, 18MB) for real-time voice analysis
+- HTTP/HTTPS API on ports 8350/8354, WebSocket on port 8355
+- FFT spectrum analysis (kiss_fft), musical pitch detection, RMS/peak/LUFS metering
+- PortAudio mic capture with USB/BT hotplug detection (inotify)
+- Rule-based voice coaching (level, clipping, sibilance, proximity, pitch drift, pacing)
+- Web UI with oscilloscope, spectrum analyzer, pitch display, and meters
+- AI-powered coaching tips via Ollama
+- MariaDB database (`mcaster1_voictune`) with 4 tables
 
-A new standalone C++ daemon for real-time voice analysis, pitch detection, spectrum analysis, and AI-powered voice coaching.
+### Visual Pedalboard (PB-1..PB-3)
+- SVG broadcast-themed pedal faceplates with drag-and-drop placement
+- Bezier SVG cable routing for signal flow visualization
+- Real-time Canvas 2D meters on each pedal
+- Save/load pedalboard layouts (DB-backed)
 
-- **HTTP/HTTPS REST API** on ports 8350/8354 with session auth
-- **WebSocket server** on port 8355 for browser mic audio streaming (RFC 6455)
-- **FFT spectrum analysis** using vendored kiss_fft (BSD-3, header-only)
-- **Musical pitch detection** — autocorrelation, A4=440Hz, note name + cents offset
-- **Audio metering** — RMS, peak, LUFS (ITU-R BS.1770-4 approximation)
-- **PortAudio mic capture** — device enumeration, start/stop, re-enumeration
-- **USB/BT audio hotplug** — inotify on `/dev/snd/`, 500ms settle delay, auto re-enumeration
-- **Rule-based voice coaching** — level, peak clipping, sibilance, proximity effect, pitch drift, pacing
-- **Ollama AI integration** — REST client for LLM-powered coaching, EQ suggestions, NLP commands
-- **AI prompt templates** — 7 system prompts for coaching, EQ, effects chain, NLP, troubleshooting, content, mixer
-- **Thread pool** — configurable worker threads for parallel FFT analysis
-- **MariaDB database** — `mcaster1_voictune` with 4 tables (sessions, voice_profiles, analysis_snapshots, ai_interactions)
-- **YAML configuration** — mirrors encoder admin config pattern
-- **systemd unit** — `mcaster1-voictune.service` with restart policy, resource limits
-- **Logging** — singleton logger writing to `/var/log/mcaster1/voictune.log` and `voictune_error.log`
+### Ollama AI Integration (AI-1..AI-4)
+- Coaching chat and EQ/effects chain suggestion endpoints
+- Natural language command parsing (text to API actions)
+- Content analysis and AI-generated show notes
+- Smart playlist generation and audio troubleshooting
+- 7 prompt templates with graceful offline degradation
+
+### Virtual Mixer Console (MX-1..MX-3)
+- Channel strips with faders, pan, mute, solo (WebGL 2.0)
+- 6 Mcaster1-branded mixer skins
+- Custom user effect profiles per channel
+- Save/load mixer configurations (DB-backed)
+
+### Podcast Archive & RSS (L10)
+- Podcast show and episode CRUD management
+- iTunes-compatible RSS feed generation (`/podcast/{show_id}/feed.xml`)
+- Archive directory scanner for importing existing recordings
+- Episode metadata editing (title, description, season, episode number, tags)
+
+### Song Requests & Webhooks (L11)
+- Public web widget for listener song requests
+- DJ queue with approve/reject workflow
+- Dedication system (to/from messages)
+- Webhook dispatch for now-playing events (Discord, Slack, custom)
+- HMAC-signed webhook payloads with delivery logs
+- Embeddable now-playing widget for external websites
+
+### Recording Studio (PC-1)
+- One-click record from any encoder slot
+- Live recording timer with animated indicator
+- Chapter marker system (M key shortcut)
+- Auto-split at configurable intervals
+- Pre-roll / post-roll audio file selection
+- Multi-format output (MP3, WAV, OGG, Opus, FLAC, AAC)
+- C++ recording API (`/api/v1/recording/*`)
+
+### Episode Editor (PC-2)
+- Browser-based waveform editor (Canvas 2D + Web Audio API)
+- Non-destructive editing via Edit Decision List (EDL)
+- Operations: Cut, Trim, Fade In/Out, Silence, Normalize
+- 50-level Undo/Redo stack
+- Chapter marker editor with drag-to-reorder
+- Server-side multi-format export via FFmpeg
+
+### Multi-Platform Publishing (PC-3)
+- Publish targets per show (RSS, Apple, Spotify, YouTube, Podbean, Buzzsprout, custom)
+- One-click or scheduled publishing with queue tracking
+- YouTube video generation (cover art + audio via ffmpeg)
+- Social media cross-posting via webhooks
+
+### Podcast Analytics (PC-4)
+- Per-episode download tracking
+- Listener retention curves
+- Platform breakdown (Apple vs Spotify vs RSS)
+- Growth trends and geographic breakdown
+
+### Podcast Website Generator (PC-5)
+- Auto-generated podcast landing pages
+- Episode list with embedded audio players
+- Show notes with clickable chapter timestamps
+- Subscribe buttons, SEO optimization, customizable themes
+
+### AI Podcast Tools (PC-6)
+- Auto-transcription via Whisper or Ollama
+- AI-generated show notes from transcript
+- Chapter suggestions from content analysis
+- SEO title/description suggestions
+- Filler word detection
+
+### Remote Recording (PC-7)
+- WebRTC-based remote guest recording
+- Separate tracks per participant
+- Built-in chat and hand-raise system
+- Guest invite via URL (no account needed)
+
+### DSP Enhancements
+- **Reverb** — Algorithmic reverb with room size, damping, wet/dry mix
+- **Delay** — Tempo-synced or millisecond delay with feedback
+- Effects rack expanded to 8 unit types (added Reverb, Delay)
+
+### Security Patches
+- Cookie SameSite changed from Strict to Lax (fixes cross-port navigation)
+- Conditional Secure flag (only on HTTPS, prevents HTTP login loops)
+- Improved session cleanup on competing instance detection
 
 ### Build System
-
 - `configure.ac` bumped to v1.8.0-beta.1
 - `--with-ollama-endpoint=URL` option (default: `http://127.0.0.1:11434`)
 - `mcaster1-voictune` added to `bin_PROGRAMS` in Makefile.am
 - 13 VoicTune source files in build system
-- `kiss_fft_log.h` stub for vendored FFT library compatibility
-
-### GnuPG Binary Signing
-
-- New RSA-4096 key for binary code signing: `6C07628DF4D94C20`
-- Package signing key: `A29A09463F34D8D5`
-- Signing script at `scripts/sign-binaries.sh`
-- Detached `.sig` files for all compiled binaries
+- GnuPG binary signing (RSA-4096 key: `6C07628DF4D94C20`)
 
 ---
 
@@ -67,43 +140,82 @@ A new standalone C++ daemon for real-time voice analysis, pitch detection, spect
 ## Database Changes
 
 ### New Database: `mcaster1_voictune`
+- `sessions` — Analysis session tracking
+- `voice_profiles` — Per-user voice characteristics
+- `analysis_snapshots` — Time-series FFT/pitch/meter data
+- `ai_interactions` — AI conversation history
 
-```sql
-CREATE TABLE sessions (id, session_name, user_id, started_at, ended_at, duration_sec, notes);
-CREATE TABLE voice_profiles (id, user_id, profile_name, fundamental_hz, voice_type, avg_lufs, avg_rms_db, eq_preset_json, effects_chain_json, analysis_json);
-CREATE TABLE analysis_snapshots (id, session_id, timestamp_ms, rms_db, peak_db, lufs, pitch_hz, note_name, cents_off, spectrum_json);
-CREATE TABLE ai_interactions (id, user_id, context, prompt_text, response_text, model_used, latency_ms);
-```
+### New Tables in `mcaster1_encoder`
+- `pedalboard_layouts` — Saved pedalboard configurations
+- `mixer_configs` — Mixer console configurations
+- `mixer_custom_units` — Custom effect units per mixer
+- `webhook_configs` — Webhook targets and event config
 
-No changes to existing databases (`mcaster1_encoder`, `mcaster1_media`, `mcaster1_metrics`).
+### New Tables in `mcaster1_media`
+- `podcast_shows` — Podcast show metadata
+- `podcast_episodes` — Episode metadata, file paths, publish state
+- `episode_markers` — Chapter markers (chapter, note, highlight, ad_break)
+- `publish_targets` — Per-show publish platform configs
+- `publish_queue` — Publish job queue with status tracking
+- `podcast_downloads` — Episode download tracking
+- `song_requests` — Listener song requests with status
+- `dedications` — Request dedications (to/from)
+- `remote_sessions` — Remote recording sessions
+- `remote_participants` — Per-session participants with track files
+- `remote_chat` — In-session chat messages
 
 ---
 
-## API Endpoints (VoicTune)
+## New Web UI Pages
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| GET | `/api/v1/voictune/health` | No | Health check, version, uptime |
-| POST | `/api/v1/voictune/auth/login` | No | Login, returns session cookie |
-| POST | `/api/v1/voictune/auth/logout` | Yes | Logout |
-| GET | `/api/v1/voictune/status` | Yes | Config, audio device, ports |
-| GET | `/api/v1/voictune/devices` | Yes | PortAudio devices with USB/BT flags |
-| GET | `/api/v1/voictune/meters` | Yes | RMS, peak, LUFS, pitch (live in VT-2) |
-| GET | `/api/v1/voictune/spectrum` | Yes | FFT magnitude bins (live in VT-2) |
-| GET | `/api/v1/ai/status` | Yes | Ollama availability, model list |
+| Page | URL | Description |
+|------|-----|-------------|
+| VoicTune | `/voictune.php` | Voice analysis with oscilloscope, spectrum, pitch, meters |
+| Mixer | `/mixer.php` | Virtual mixer console with 6 skins |
+| Podcast Manager | `/podcast.php` | Show/episode CRUD, archive scan, RSS |
+| Recording Studio | `/recording.php` | Live recording with chapter markers |
+| Episode Editor | `/episode-editor.php` | Waveform editor with EDL operations |
+| Podcast Analytics | `/podcast-analytics.php` | Download tracking, retention, geo |
+| Podcast Website | `/podcast-site.php` | Landing page generator |
+| Song Requests | `/requests.php` | DJ request queue and approval |
+| Request Widget | `/request-widget.php` | Public listener request form |
+| Now-Playing Widget | `/widget.php` | Embeddable player widget |
+| Remote Host | `/remote-host.php` | Remote recording host dashboard |
+| Remote Guest | `/remote-guest.php` | Guest recording view |
 
 ---
 
-## Planned Phases (Post-Beta)
+## New API Endpoints
 
-| Phase | Description |
-|-------|-------------|
-| VT-2 | Audio capture pipeline + live analysis wiring |
-| VT-3 | VoicTune web UI (oscilloscope, spectrum analyzer, pitch display) |
-| VT-4 | Voice coaching (rule-based + AI tips in browser) |
-| PB-1..3 | Visual pedalboard (SVG pedals, cable routing, live meters) |
-| AI-1..4 | Ollama AI (coaching chat, EQ/chain suggestions, NLP, content analysis) |
-| MX-1..3 | Virtual mixer console (channel strips, skins, custom presets) |
+### C++ Recording API
+- `POST /api/v1/recording/start` — Start recording on a slot
+- `POST /api/v1/recording/stop` — Stop recording
+- `POST /api/v1/recording/marker` — Add chapter marker
+- `GET /api/v1/recording/status` — Recording state for all slots
+- `POST /api/v1/recording/split` — Split current recording
+
+### PHP APIs
+- `POST /app/api/podcast.php` — Podcast CRUD, RSS, publishing (30+ actions)
+- `POST /app/api/requests.php` — Song request/dedication management
+- `POST /app/api/webhooks.php` — Webhook CRUD, test, logs
+- `POST /app/api/remote.php` — Remote recording session management
+
+### VoicTune API (ports 8350/8354)
+- `GET /api/v1/voictune/health` — Health check (no auth)
+- `POST /api/v1/voictune/auth/login` — Login
+- `GET /api/v1/voictune/status` — Config, device, ports
+- `GET /api/v1/voictune/devices` — PortAudio devices
+- `GET /api/v1/voictune/meters` — Live RMS, peak, LUFS, pitch
+- `GET /api/v1/voictune/spectrum` — Live FFT magnitude bins
+- `GET /api/v1/ai/status` — Ollama availability
+
+---
+
+## Breaking Changes
+
+- Version string in `/api/v1/status` changed from `1.2.0` to `1.8.0-beta.1`
+- `SERVER_SOFTWARE` FastCGI param changed to `mcaster1-encoder/1.8.0-beta.1`
+- Session cookie SameSite changed from `Strict` to `Lax`
 
 ---
 
@@ -120,21 +232,5 @@ make -j$(nproc)
 
 # Verify
 src/linux/mcaster1-voictune --version
-src/linux/mcaster1-voictune --help
+src/linux/mcaster1-dsp-encoder-admin --version
 ```
-
----
-
-## Breaking Changes
-
-- Version string in `/api/v1/status` changed from `1.2.0` to `1.8.0-beta.1`
-- `SERVER_SOFTWARE` FastCGI param changed from `mcaster1-encoder/1.2.0` to `mcaster1-encoder/1.8.0-beta.1`
-
----
-
-## Known Limitations (Beta)
-
-- VoicTune `/meters` and `/spectrum` endpoints return placeholder data until VT-2 wires the audio pipeline
-- WebSocket server instantiated but not started (deferred to VT-2)
-- Ollama AI client connects but no chat/coaching API endpoints yet (deferred to AI-1)
-- No web UI for VoicTune yet (deferred to VT-3)

@@ -214,37 +214,39 @@ Mcaster1 Podcast Studio is a complete end-to-end podcast production and publishi
 | Buzzsprout | API credentials | Config + manual |
 | Custom | HTTP webhook | Full support |
 
-### PC-4: Analytics Dashboard (Planned)
+### PC-4: Analytics Dashboard (COMPLETE)
 - Per-episode download tracking
 - Listener retention curves
 - Platform breakdown (Apple vs Spotify vs RSS)
 - Growth trends (subscribers, downloads/week)
 - IAB Podcast Measurement compliance
 - Geographic breakdown
+- **Page:** `/podcast-analytics.php`
 
-### PC-5: Website Generator (Planned)
+### PC-5: Website Generator (COMPLETE)
 - Auto-generated podcast landing pages
 - Episode list with embedded players
 - Show notes with clickable chapter timestamps
 - Subscribe buttons (Apple, Spotify, RSS)
 - SEO-optimized episode pages
 - Customizable themes (3-4 templates)
-- Custom domain support
+- **Page:** `/podcast-site.php`
 
-### PC-6: AI Podcast Tools (Planned)
+### PC-6: AI Podcast Tools (COMPLETE)
 - Auto-transcription via Whisper or Ollama
 - AI-generated show notes from transcript
 - Chapter suggestions from content analysis
 - SEO title/description suggestions
 - Filler word detection and removal suggestions
-- Best moment clip extraction for social sharing
+- Uses VoicTune coaching PHP helpers (`app/inc/voictune_coaching.php`)
 
-### PC-7: Remote Recording (Planned)
+### PC-7: Remote Recording (COMPLETE)
 - WebRTC-based remote guest recording
 - Separate tracks per participant
 - Built-in chat and hand-raise
-- Recording sync via NTP timestamps
 - Guest invite via URL (no account needed)
+- **Pages:** `/remote-host.php`, `/remote-guest.php`
+- **API:** `/app/api/remote.php`
 
 ---
 
@@ -255,6 +257,10 @@ Mcaster1 Podcast Studio is a complete end-to-end podcast production and publishi
 | Podcast Manager | `/podcast.php` | Yes | Show/episode management, archive scan |
 | Recording Studio | `/recording.php` | Yes | Live recording with markers |
 | Episode Editor | `/episode-editor.php` | Yes | Waveform editor with EDL |
+| Podcast Analytics | `/podcast-analytics.php` | Yes | Download tracking, retention, geo |
+| Podcast Website | `/podcast-site.php` | Yes | Landing page generator |
+| Remote Host | `/remote-host.php` | Yes | Remote recording host dashboard |
+| Remote Guest | `/remote-guest.php` | No | Guest recording view (invite link) |
 | RSS Feed | `/podcast/{id}/feed.xml` | No | Public iTunes RSS feed |
 
 ---
@@ -375,12 +381,19 @@ src/linux/web_ui/
 ├── podcast_feed.php         ← RSS XML generation
 ├── recording.php            ← Live recording studio
 ├── episode-editor.php       ← Waveform editor
+├── podcast-analytics.php    ← Download analytics dashboard
+├── podcast-site.php         ← Website generator
+├── remote-host.php          ← Remote recording host view
+├── remote-guest.php         ← Remote recording guest view
 ├── js/
-│   └── episode-editor.js    ← Waveform engine + EDL
+│   ├── episode-editor.js    ← Waveform engine + EDL
+│   └── remote.js            ← WebRTC remote recording client
 ├── app/api/
-│   └── podcast.php          ← All podcast CRUD + publishing API
+│   ├── podcast.php          ← All podcast CRUD + publishing API
+│   └── remote.php           ← Remote recording session API
 └── app/inc/
-    └── header.php           ← Nav: Podcast, Recording under "Publish" section
+    ├── header.php           ← Nav: Podcast, Recording under "Publish" section
+    └── voictune_coaching.php ← AI coaching PHP helpers (used by PC-6)
 
 src/linux/
 ├── http_api.cpp             ← Recording API + RSS route

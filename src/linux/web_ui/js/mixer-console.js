@@ -35,6 +35,8 @@ function MixerConsole() {
   this.configId   = null;
   this.selectedFader = null;
   this.skin       = 'broadcast_dark';
+  this.glVUMeters = {};     // canvasId -> WebGLViz.VUMeter instance
+  this.useWebGL   = false;  // WebGL VU meter rendering enabled
 }
 
 MixerConsole.prototype.init = function(containerId) {
@@ -44,6 +46,11 @@ MixerConsole.prototype.init = function(containerId) {
   // Load skin from localStorage immediately (before server config arrives)
   var savedSkin = localStorage.getItem('mc1_mixer_skin');
   if (savedSkin) this.setSkin(savedSkin, true);
+
+  // Check if WebGL VU meters should be enabled
+  if (window.WebGLViz && WebGLViz.isWebGLAvailable() && WebGLViz.getWebGLPref()) {
+    this.useWebGL = true;
+  }
 
   // Load saved config from server
   this._loadConfig();
@@ -177,6 +184,17 @@ MixerConsole.prototype._tickVU = function() {
 MixerConsole.prototype._drawVU = function(canvasId, level) {
   var canvas = document.getElementById(canvasId);
   if (!canvas) return;
+
+  /* WebGL VU rendering if available and enabled */
+  if (this.useWebGL && window.WebGLViz) {
+    if (!this.glVUMeters[canvasId]) {
+      this.glVUMeters[canvasId] = new WebGLViz.VUMeter(canvas);
+    }
+    this.glVUMeters[canvasId].setLevel(level, level);
+    this.glVUMeters[canvasId].draw();
+    return;
+  }
+
   var ctx = canvas.getContext('2d');
   var w = canvas.width;
   var h = canvas.height;

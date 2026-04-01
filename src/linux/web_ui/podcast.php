@@ -1606,21 +1606,28 @@ window.retryQueueItem = function(id) {
  * We call VoicTune daemon (port 8350) for all AI operations.
  * ══════════════════════════════════════════════════════════════════════ */
 
-var VT_BASE = window.location.protocol + '//' + window.location.hostname + ':8350';
+var VT_BASE = '';  /* same origin — proxied through admin server */
 var aiLastResult = '';
 var aiLastType   = '';
 var aiChaptersData = [];
 var aiSeoData    = {};
 
-/* We use fetch with credentials for cross-origin VoicTune calls */
+/* We use fetch through the admin proxy for VoicTune/AI calls */
 function vtFetch(method, path, data) {
+    /* Rewrite /api/v1/voictune/* → /api/v1/proxy/voictune/*
+       and     /api/v1/ai/*       → /api/v1/proxy/ai/*        */
+    var proxyPath = path;
+    if (path.indexOf('/api/v1/voictune/') === 0)
+        proxyPath = '/api/v1/proxy/voictune/' + path.substring('/api/v1/voictune/'.length);
+    else if (path.indexOf('/api/v1/ai/') === 0)
+        proxyPath = '/api/v1/proxy/ai/' + path.substring('/api/v1/ai/'.length);
     var opts = {
         method: method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
     };
     if (data) opts.body = JSON.stringify(data);
-    return fetch(VT_BASE + path, opts).then(function(r) { return r.json(); })
+    return fetch(VT_BASE + proxyPath, opts).then(function(r) { return r.json(); })
         .catch(function(err) {
             return { ok: false, error: 'VoicTune daemon unreachable: ' + err.message };
         });

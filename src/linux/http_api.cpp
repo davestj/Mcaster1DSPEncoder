@@ -4044,6 +4044,113 @@ static void setup_routes(httplib::Server& svr)
             ? "text/html; charset=UTF-8" : fr.content_type.c_str());
     });
 
+    // ── VoicTune / AI proxy — browser calls same-origin, we forward to VoicTune daemon ──
+
+    // Generic proxy helper: forwards request to VoicTune on localhost:8350,
+    // authenticating with the daemon API key from config.
+    auto vt_proxy = [](const httplib::Request& req, httplib::Response& res,
+                       const std::string& method, const std::string& target_path)
+    {
+        httplib::Client cli("127.0.0.1", 8350);
+        cli.set_connection_timeout(5, 0);
+        cli.set_read_timeout(60, 0);   // AI/Ollama calls can be slow
+        cli.set_write_timeout(5, 0);
+
+        // Build headers: forward everything except Cookie and Host
+        httplib::Headers hdrs;
+        for (auto& [k, v] : req.headers) {
+            std::string lk = k;
+            std::transform(lk.begin(), lk.end(), lk.begin(), ::tolower);
+            if (lk == "cookie" || lk == "host" || lk == "connection") continue;
+            hdrs.emplace(k, v);
+        }
+
+        // Staple the daemon API key
+        if (gAdminConfig.daemon_keys.voictune_key[0] != '\0')
+            hdrs.emplace("X-API-Token", gAdminConfig.daemon_keys.voictune_key);
+
+        httplib::Result result;
+        std::string ct = req.get_header_value("Content-Type");
+        if (method == "GET") {
+            // Forward query string
+            std::string full = target_path;
+            if (!req.params.empty()) {
+                full += "?";
+                bool first = true;
+                for (auto& [pk, pv] : req.params) {
+                    if (!first) full += "&";
+                    full += pk + "=" + pv;
+                    first = false;
+                }
+            }
+            result = cli.Get(full, hdrs);
+        } else if (method == "PUT") {
+            result = cli.Put(target_path, hdrs, req.body,
+                             ct.empty() ? "application/json" : ct);
+        } else {
+            result = cli.Post(target_path, hdrs, req.body,
+                              ct.empty() ? "application/json" : ct);
+        }
+
+        if (!result) {
+            res.status = 502;
+            json err;
+            err["error"] = "VoicTune daemon unreachable (127.0.0.1:8350)";
+            res.set_content(err.dump(), "application/json");
+            return;
+        }
+
+        res.status = result->status;
+        // Forward content-type
+        auto rct = result->get_header_value("Content-Type");
+        res.set_content(result->body, rct.empty() ? "application/json" : rct);
+    };
+
+    // GET /api/v1/proxy/voictune/* → forward to VoicTune /api/v1/voictune/*
+    svr.Get(R"(/api/v1/proxy/voictune/(.*))",
+        [vt_proxy](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string sub = req.matches[1];
+                vt_proxy(req, res, "GET", "/api/v1/voictune/" + sub);
+            });
+        });
+
+    // POST /api/v1/proxy/voictune/* → forward to VoicTune /api/v1/voictune/*
+    svr.Post(R"(/api/v1/proxy/voictune/(.*))",
+        [vt_proxy](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string sub = req.matches[1];
+                vt_proxy(req, res, "POST", "/api/v1/voictune/" + sub);
+            });
+        });
+
+    // PUT /api/v1/proxy/voictune/* → forward to VoicTune /api/v1/voictune/*
+    svr.Put(R"(/api/v1/proxy/voictune/(.*))",
+        [vt_proxy](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string sub = req.matches[1];
+                vt_proxy(req, res, "PUT", "/api/v1/voictune/" + sub);
+            });
+        });
+
+    // GET /api/v1/proxy/ai/* → forward to VoicTune /api/v1/ai/*
+    svr.Get(R"(/api/v1/proxy/ai/(.*))",
+        [vt_proxy](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string sub = req.matches[1];
+                vt_proxy(req, res, "GET", "/api/v1/ai/" + sub);
+            });
+        });
+
+    // POST /api/v1/proxy/ai/* → forward to VoicTune /api/v1/ai/*
+    svr.Post(R"(/api/v1/proxy/ai/(.*))",
+        [vt_proxy](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string sub = req.matches[1];
+                vt_proxy(req, res, "POST", "/api/v1/ai/" + sub);
+            });
+        });
+
     // Block /app/inc/ — includes must never be served directly
     svr.Get(R"(/app/inc/.*)", [](const httplib::Request&, httplib::Response& res) {
         res.status = 403;

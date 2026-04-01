@@ -15,7 +15,7 @@ voictune:
   auth:
     username: "djpulse"
     password: "hackme"
-    api-token: ""
+    api-token: "vt_key_change_me_in_production"
     session-timeout-sec: 3600
 
   audio:

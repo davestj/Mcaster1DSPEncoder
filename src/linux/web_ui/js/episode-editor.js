@@ -78,6 +78,13 @@ function EpisodeEditor(opts) {
     self.octx       = self.overlay.getContext('2d');
     self.rctx       = self.ruler.getContext('2d');
 
+    /* ── WebGL waveform renderer (optional, for large files) ── */
+    self.useWebGL   = false;
+    self.glWaveform = null;
+    if (window.WebGLViz && WebGLViz.isWebGLAvailable() && WebGLViz.getWebGLPref()) {
+        self.useWebGL = true;
+    }
+
     /* ── Initialize ── */
     self._init();
 }
@@ -209,6 +216,12 @@ EpisodeEditor.prototype._computePeaks = function() {
         }
         self.peaks.push({ min: mn, max: mx });
     }
+
+    /* Initialize WebGL waveform renderer with computed peaks */
+    if (self.useWebGL && window.WebGLViz) {
+        self.glWaveform = new WebGLViz.WaveformPeaks(self.canvas);
+        self.glWaveform.setPeaks(self.peaks, self.peakSR, self.duration);
+    }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -217,6 +230,14 @@ EpisodeEditor.prototype._computePeaks = function() {
 
 EpisodeEditor.prototype._drawWaveform = function() {
     var self = this;
+
+    /* WebGL fast path for large files */
+    if (self.glWaveform && self.useWebGL) {
+        var visibleDur = self.duration / self.zoom;
+        self.glWaveform.draw(self.scrollX, visibleDur);
+        return;
+    }
+
     var ctx = self.ctx;
     var w = self.canvas.width;
     var h = self.canvas.height;
