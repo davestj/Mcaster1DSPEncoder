@@ -140,6 +140,11 @@ input,select,textarea{font-family:inherit;font-size:14px}
 .prog-bar{height:100%;background:var(--teal);border-radius:2px;transition:width .4s linear}
 .slot-meta{display:flex;gap:10px;font-size:11px;color:var(--muted);margin-bottom:10px;flex-wrap:wrap}
 .slot-acts{display:flex;gap:6px;flex-wrap:wrap}
+.lufs-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:3px;font-size:10px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.02em;white-space:nowrap}
+.lufs-green{background:rgba(34,197,94,.15);color:#22c55e}
+.lufs-yellow{background:rgba(245,158,11,.15);color:#f59e0b}
+.lufs-red{background:rgba(239,68,68,.15);color:#ef4444}
+.lufs-na{background:rgba(100,116,139,.12);color:var(--muted)}
 
 /* Buttons */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--radius-sm);font-size:13px;font-weight:500;border:none;transition:all .15s;white-space:nowrap;cursor:pointer;text-decoration:none}
@@ -271,6 +276,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   .topbar{padding:0 12px;gap:8px}
 }
 </style>
+<link rel="stylesheet" href="/css/responsive.css">
 </head>
 <body>
 <div class="layout">
@@ -400,6 +406,53 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     </div>
   </div>
 </nav>
+
+<!-- Sidebar backdrop (mobile) -->
+<div class="sidebar-backdrop"></div>
+
+<!-- Bottom Tab Bar (mobile) — hidden on desktop via responsive.css -->
+<nav class="mobile-tab-bar" style="display:none">
+  <a href="/dashboard.php" data-page="dashboard">
+    <i class="fa-solid fa-gauge"></i>
+    <span>Dashboard</span>
+  </a>
+  <a href="/encoders.php" data-page="encoders,edit_encoders">
+    <i class="fa-solid fa-tower-broadcast"></i>
+    <span>Encoders</span>
+  </a>
+  <a href="/media.php" data-page="media,mediaplayer">
+    <i class="fa-solid fa-music"></i>
+    <span>Media</span>
+  </a>
+  <a href="/mixer.php" data-page="mixer,crossfader,effects">
+    <i class="fa-solid fa-sliders"></i>
+    <span>Mixer</span>
+  </a>
+  <button class="mobile-tab-more" type="button">
+    <i class="fa-solid fa-ellipsis"></i>
+    <span>More</span>
+  </button>
+</nav>
+
+<!-- "More" slide-up menu (mobile) -->
+<div class="mobile-more-backdrop"></div>
+<div class="mobile-more-panel">
+  <a href="/playlists.php"><i class="fa-solid fa-list-ul fa-fw"></i> Playlists</a>
+  <a href="/crossfader.php"><i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader</a>
+  <a href="/effects-rack.php"><i class="fa-solid fa-sliders fa-fw"></i> Effects Rack</a>
+  <a href="/jack.php"><i class="fa-solid fa-plug fa-fw"></i> JACK Audio</a>
+  <a href="/voictune.php"><i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune</a>
+  <a href="/podcast.php"><i class="fa-solid fa-podcast fa-fw"></i> Podcast</a>
+  <a href="/recording.php"><i class="fa-solid fa-circle fa-fw" style="color:#ef4444"></i> Recording</a>
+  <a href="/schedule.php"><i class="fa-solid fa-clock fa-fw"></i> Schedule</a>
+  <a href="/requests.php"><i class="fa-solid fa-hand fa-fw"></i> Requests</a>
+  <a href="/metrics.php"><i class="fa-solid fa-chart-line fa-fw"></i> Metrics</a>
+  <a href="/settings.php"><i class="fa-solid fa-gear fa-fw"></i> Settings</a>
+  <a href="/profile.php"><i class="fa-solid fa-circle-user fa-fw"></i> My Profile</a>
+  <a href="/compliance.php"><i class="fa-solid fa-shield-halved fa-fw"></i> Compliance</a>
+</div>
+
+<script src="/js/mobile-nav.js"></script>
 
 <!-- Main -->
 <main class="main">

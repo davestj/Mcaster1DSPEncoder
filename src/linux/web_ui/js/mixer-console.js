@@ -367,6 +367,7 @@ MixerConsole.prototype._attachStripEvents = function(id) {
   var knob = document.getElementById('pan-knob-' + id);
   if (knob) {
     knob.addEventListener('mousedown', function(e) { self._onPanStart(e, id); });
+    knob.addEventListener('touchstart', function(e) { self._onPanStart(e, id); }, { passive: false });
     knob.addEventListener('dblclick', function() {
       if (self.channels[id]) self.channels[id].pan = 0;
       self._updatePanVisual(id, 0);
@@ -508,7 +509,8 @@ MixerConsole.prototype._onDragEnd = function(e) {
 MixerConsole.prototype._onPanStart = function(e, id) {
   e.preventDefault();
   var pan = this.channels[id] ? this.channels[id].pan || 0 : 0;
-  this.panDrag = { slot_id: id, startX: e.clientX, startPan: pan };
+  var clientX = (e.type === 'touchstart' && e.touches.length) ? e.touches[0].clientX : e.clientX;
+  this.panDrag = { slot_id: id, startX: clientX, startPan: pan };
 };
 
 /* ── Volume Helpers ────────────────────────────────────── */

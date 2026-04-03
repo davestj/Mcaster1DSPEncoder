@@ -495,6 +495,62 @@ configBuilders.delay = function(container, params) {
         function(v) { debouncedUpdate('del-spread', { stereo_spread: v }); }));
 };
 
+/* ── Loudness: standard preset, target_lufs, target_tp, lra_max ────────── */
+configBuilders.loudness = function(container, params) {
+    container.appendChild(createToggle('loud-enabled', 'Enabled', params.enabled !== false,
+        function(v) {
+            mc1Api('PUT', '/api/v1/effects/global', { unit_id: _currentUnitId, enabled: v });
+        }));
+
+    /* Standard preset dropdown */
+    container.appendChild(createSelect('loud-standard', 'Standard', [
+        { value: 'ebu_r128', label: 'EBU R128 (-23 LUFS)' },
+        { value: 'atsc_a85', label: 'ATSC A/85 (-24 LUFS)' },
+        { value: 'podcast',  label: 'Podcast (-16 LUFS)' },
+        { value: 'spotify',  label: 'Spotify (-14 LUFS)' },
+        { value: 'youtube',  label: 'YouTube (-14 LUFS)' },
+        { value: 'custom',   label: 'Custom' }
+    ], params.standard || 'podcast', function(v) {
+        debouncedUpdate('loud-standard', { standard: v });
+    }));
+
+    var knobRow = document.createElement('div');
+    knobRow.className = 'pc-knob-row';
+
+    knobRow.appendChild(createKnob('loud-target', 'Target LUFS', params.target_lufs || -16, -36, -8, 0.5, 'LUFS',
+        function(v) { debouncedUpdate('loud-target', { target_lufs: v, standard: 'custom' }); }));
+
+    knobRow.appendChild(createKnob('loud-tp', 'True Peak', params.target_tp || -1, -6, 0, 0.1, 'dBTP',
+        function(v) { debouncedUpdate('loud-tp', { target_tp: v, standard: 'custom' }); }));
+
+    knobRow.appendChild(createKnob('loud-lra', 'LRA Max', params.lra_max || 0, 0, 20, 0.5, 'LU',
+        function(v) { debouncedUpdate('loud-lra', { lra_max: v, standard: 'custom' }); }));
+
+    container.appendChild(knobRow);
+
+    /* Live loudness readout */
+    var readout = document.createElement('div');
+    readout.className = 'pc-readout';
+    readout.style.cssText = 'margin-top:12px;padding:10px;background:rgba(10,15,24,.6);border:1px solid rgba(42,52,68,.6);border-radius:6px;font-family:monospace;font-size:11px;line-height:1.8;color:#8a9ab0';
+    var integ = params.integrated_lufs !== undefined ? params.integrated_lufs.toFixed(1) : '--';
+    var moment = params.momentary_lufs !== undefined ? params.momentary_lufs.toFixed(1) : '--';
+    var st = params.short_term_lufs !== undefined ? params.short_term_lufs.toFixed(1) : '--';
+    var tp = params.true_peak_dbtp !== undefined ? params.true_peak_dbtp.toFixed(1) : '--';
+    var lra = params.loudness_range_lu !== undefined ? params.loudness_range_lu.toFixed(1) : '0.0';
+    var gc = params.gain_correction_db !== undefined ? params.gain_correction_db.toFixed(1) : '0.0';
+    var comp = params.compliant ? '<span style="color:#22c55e">COMPLIANT</span>' : '<span style="color:#ef4444">NON-COMPLIANT</span>';
+
+    readout.innerHTML =
+        '<div>Integrated: <span style="color:#14b8a6;font-weight:700">' + integ + ' LUFS</span></div>' +
+        '<div>Momentary: <span style="color:#14b8a6">' + moment + ' LUFS</span></div>' +
+        '<div>Short-term: <span style="color:#14b8a6">' + st + ' LUFS</span></div>' +
+        '<div>True Peak: <span style="color:#a78bfa">' + tp + ' dBTP</span></div>' +
+        '<div>LRA: <span style="color:#f59e0b">' + lra + ' LU</span></div>' +
+        '<div>Gain: <span style="color:#3b82f6">' + (parseFloat(gc) >= 0 ? '+' : '') + gc + ' dB</span></div>' +
+        '<div>Status: ' + comp + '</div>';
+    container.appendChild(readout);
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * Panel Management
  * ═══════════════════════════════════════════════════════════════════════════ */
@@ -837,13 +893,53 @@ function drawVertBar(ctx, x, y, w, h, pct, color) {
 }
 
 /* ── Meter renderer dispatch ─────────────────────────────────────────── */
+/* ── Loudness: LUFS level bar + compliance LED + gain correction ──────── */
+function drawLoudnessMeter(canvas, md) {
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    var inDb = md.input_db || -96;
+    var outDb = md.output_db || -96;
+    var gr = md.gain_reduction_db || 0;
+
+    /* Input/Output vertical bars */
+    var barW = 4, barH = h - 4;
+    drawVertBar(ctx, 2, 2, barW, barH, dbToBar(inDb), '#3b82f6');
+    drawVertBar(ctx, w - barW - 2, 2, barW, barH, dbToBar(outDb), '#14b8a6');
+
+    /* Gain correction bar (center, horizontal) */
+    var gcBarX = 12, gcBarY = h - 6, gcBarW = w - 24, gcBarH = 3;
+    ctx.fillStyle = 'rgba(100,116,139,0.2)';
+    ctx.fillRect(gcBarX, gcBarY, gcBarW, gcBarH);
+    var grPct = Math.min(1, Math.abs(gr) / 12);
+    if (grPct > 0) {
+        ctx.fillStyle = gr > 0 ? '#3b82f6' : '#f59e0b';
+        if (gr > 0) {
+            ctx.fillRect(gcBarX + gcBarW / 2, gcBarY, gcBarW / 2 * grPct, gcBarH);
+        } else {
+            ctx.fillRect(gcBarX + gcBarW / 2 * (1 - grPct), gcBarY, gcBarW / 2 * grPct, gcBarH);
+        }
+    }
+    /* Center mark */
+    ctx.fillStyle = '#64748b';
+    ctx.fillRect(gcBarX + gcBarW / 2 - 0.5, gcBarY - 1, 1, gcBarH + 2);
+
+    /* GR label */
+    ctx.fillStyle = '#64748b';
+    ctx.font = '7px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GC', gcBarX + gcBarW / 2, gcBarY - 2);
+}
+
 var meterRenderers = {
     'compressor': drawCompressorMeter,
     'limiter':    drawLimiterMeter,
     'noise_gate': drawGateMeter,
     'eq':         drawEqMeter,
     'reverb':     drawGenericMeter,
-    'delay':      drawGenericMeter
+    'delay':      drawGenericMeter,
+    'loudness':   drawLoudnessMeter
 };
 
 /* ── Poll meters and render ──────────────────────────────────────────── */

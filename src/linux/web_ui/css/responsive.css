@@ -1,0 +1,828 @@
+/**
+ * responsive.css -- Mobile-responsive overrides for Mcaster1 DSP Encoder UI
+ *
+ * File:    src/linux/web_ui/css/responsive.css
+ * Author:  Dave St. John <davestj@gmail.com>
+ * Date:    2026-03-27
+ * Phase:   v1.9.0 -- Mobile-Responsive Web UI
+ * Purpose: Additive media queries that make the admin UI usable on tablets
+ *          and phones without breaking the existing desktop layout.
+ *
+ * Breakpoints tested:
+ *   375px  (iPhone SE)
+ *   390px  (iPhone 14)
+ *   768px  (iPad portrait)
+ *   1024px (iPad landscape)
+ *   1280px+ (desktop -- no changes)
+ *
+ * Standards:
+ *   - Minimum touch target: 44x44px (Apple HIG)
+ *   - input[type="text"] font-size >= 16px (prevent iOS auto-zoom)
+ *   - No horizontal scroll on mobile (overflow-x: hidden on body)
+ *   - CSS media queries only -- no JS-based responsive switching (except nav)
+ *   - Never breaks desktop layout -- purely additive
+ */
+
+/* =========================================================================
+ * General responsive fixes (all sizes)
+ * ========================================================================= */
+
+/* Prevent horizontal scroll on any viewport */
+html, body {
+    max-width: 100vw;
+}
+
+/* Images, canvases, and embedded content respect container width */
+img, canvas, video, iframe, svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Modals: use viewport-relative width instead of fixed px */
+#stats-modal > div,
+.modal-content,
+[style*="width:min(640px"] {
+    width: min(95vw, 640px) !important;
+}
+
+/* =========================================================================
+ * Tablet: 768px - 1024px
+ * Sidebar collapses to icon-only, 2-column grids, horizontal scroll tables
+ * ========================================================================= */
+
+@media (max-width: 1024px) and (min-width: 861px) {
+
+    /* Sidebar: icon-only collapsed state */
+    :root {
+        --sidebar-w: 60px;
+    }
+
+    .sidebar {
+        overflow-x: hidden;
+        overflow-y: auto;
+    }
+
+    .sidebar .nav-section {
+        padding: 10px 0 2px;
+        font-size: 0;      /* hide section label text */
+        text-align: center;
+        height: 14px;
+    }
+
+    .sidebar .nav-item {
+        padding: 10px 0;
+        justify-content: center;
+        border-left: 3px solid transparent;
+        gap: 0;
+        min-height: 44px;
+    }
+
+    /* Hide nav label text, show only icon */
+    .sidebar .nav-item .fa-fw {
+        font-size: 16px;
+        width: 100%;
+        text-align: center;
+    }
+
+    /* Hide text nodes in nav items -- icon-only mode
+       We use a font-size trick so the icon (which has its own size) stays visible */
+    .sidebar .nav-item {
+        font-size: 0;
+        color: var(--text-dim);
+    }
+    .sidebar .nav-item .fa-fw {
+        font-size: 16px;
+    }
+    .sidebar .nav-item.active .fa-fw {
+        color: var(--teal);
+    }
+
+    /* On hover, expand sidebar to full width with labels */
+    .sidebar:hover {
+        width: var(--sidebar-w);
+        width: 220px;
+        position: fixed;
+        top: var(--topbar-h);
+        left: 0;
+        bottom: 0;
+        z-index: 200;
+        box-shadow: 4px 0 20px rgba(0,0,0,.5);
+    }
+    .sidebar:hover .nav-section {
+        font-size: 10px;
+        height: auto;
+        padding: 14px 14px 4px;
+        text-align: left;
+    }
+    .sidebar:hover .nav-item {
+        font-size: 13px;
+        padding: 8px 16px;
+        justify-content: flex-start;
+        gap: 9px;
+    }
+    .sidebar:hover .nav-item .fa-fw {
+        width: 16px;
+        text-align: center;
+    }
+
+    /* Sidebar footer: hide in collapsed, show on hover */
+    .sidebar .sidebar-footer {
+        display: none;
+    }
+    .sidebar:hover .sidebar-footer {
+        display: block;
+    }
+
+    /* Grid layouts: max 2 columns */
+    .grid-3, .grid-4 {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
+    /* Stat modal: 2-column grid is fine on tablet */
+
+    /* Tables: ensure horizontal scroll wrapper works */
+    .tbl-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Main content area gets a bit less padding */
+    .main {
+        padding: 16px 18px;
+    }
+
+    /* Topbar brand: smaller on tablet */
+    .topbar-brand {
+        min-width: auto;
+    }
+    .topbar-sub {
+        display: none;
+    }
+}
+
+/* =========================================================================
+ * Phone: < 768px
+ * Bottom tab bar, full-width content, stacked cards, card-view tables
+ * ========================================================================= */
+
+@media (max-width: 768px) {
+
+    /* Body: allow vertical scroll, prevent horizontal */
+    html, body {
+        overflow-x: hidden;
+        overflow-y: auto;
+        height: auto;
+    }
+
+    /* Font size bump: 16px base prevents iOS auto-zoom on input focus */
+    body {
+        font-size: 15px;
+    }
+    input, select, textarea,
+    input[type="text"],
+    input[type="password"],
+    input[type="email"],
+    input[type="number"],
+    input[type="search"],
+    input[type="url"],
+    .form-input,
+    .form-select,
+    .form-textarea {
+        font-size: 16px !important;
+    }
+
+    /* Layout: single column, auto rows */
+    .layout {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    /* Topbar: compact */
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 300;
+        padding: 0 12px;
+        gap: 8px;
+        height: 50px;
+    }
+    .topbar-brand {
+        min-width: auto;
+    }
+    .topbar-name {
+        font-size: 14px;
+    }
+    .topbar-sub {
+        display: none;
+    }
+    .topbar-divider {
+        display: none;
+    }
+    .topbar-page {
+        font-size: 14px;
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .topbar-uname, .topbar-urole {
+        display: none;
+    }
+    .topbar-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    /* Hamburger: show */
+    .hamburger {
+        display: block;
+        padding: 8px;
+        min-width: 44px;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* Sidebar: hidden by default, slide-in overlay on toggle */
+    .sidebar {
+        display: none;
+        position: fixed;
+        top: 50px;
+        left: 0;
+        bottom: 56px; /* above bottom tab bar */
+        width: 260px;
+        z-index: 400;
+        box-shadow: 4px 0 20px rgba(0,0,0,.6);
+        background: var(--bg2);
+    }
+    .sidebar.open {
+        display: flex;
+    }
+
+    /* Sidebar overlay backdrop */
+    .sidebar-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,.5);
+        z-index: 399;
+    }
+    .sidebar-backdrop.active {
+        display: block;
+    }
+
+    /* Bottom tab bar */
+    .mobile-tab-bar {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: var(--bg2);
+        border-top: 1px solid var(--border);
+        z-index: 500;
+        align-items: stretch;
+        justify-content: space-around;
+        padding: 0;
+    }
+
+    .mobile-tab-bar a,
+    .mobile-tab-bar button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        padding: 4px 0;
+        color: var(--text-dim);
+        font-size: 10px;
+        text-decoration: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        min-width: 44px;
+        min-height: 44px;
+        gap: 2px;
+        transition: color .15s;
+    }
+
+    .mobile-tab-bar a:hover,
+    .mobile-tab-bar button:hover,
+    .mobile-tab-bar a.active,
+    .mobile-tab-bar button.active {
+        color: var(--teal);
+    }
+
+    .mobile-tab-bar i {
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    .mobile-tab-bar span {
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    /* "More" slide-up menu */
+    .mobile-more-panel {
+        display: none;
+        position: fixed;
+        bottom: 56px;
+        left: 0;
+        right: 0;
+        max-height: 60vh;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        background: var(--bg2);
+        border-top: 1px solid var(--border);
+        z-index: 499;
+        padding: 8px 0;
+        box-shadow: 0 -4px 20px rgba(0,0,0,.5);
+        border-radius: 12px 12px 0 0;
+    }
+
+    .mobile-more-panel.open {
+        display: block;
+    }
+
+    .mobile-more-panel a {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 20px;
+        color: var(--text-dim);
+        font-size: 14px;
+        text-decoration: none;
+        min-height: 44px;
+    }
+
+    .mobile-more-panel a:hover,
+    .mobile-more-panel a.active {
+        background: rgba(255,255,255,.04);
+        color: var(--teal);
+    }
+
+    .mobile-more-panel a i {
+        width: 20px;
+        text-align: center;
+        font-size: 15px;
+        flex-shrink: 0;
+    }
+
+    /* More panel backdrop */
+    .mobile-more-backdrop {
+        display: none;
+        position: fixed;
+        inset: 0;
+        bottom: 56px;
+        background: rgba(0,0,0,.4);
+        z-index: 498;
+    }
+
+    .mobile-more-backdrop.active {
+        display: block;
+    }
+
+    /* Main content: full width with bottom padding for tab bar */
+    .main {
+        flex: 1;
+        overflow-y: auto;
+        padding: 14px 12px 70px 12px; /* 70px bottom = tab bar + breathing room */
+        min-height: 0;
+    }
+
+    /* Grids: single column */
+    .grid-2, .grid-3, .grid-4,
+    .card-grid.grid-2,
+    .card-grid.grid-3,
+    .card-grid.grid-4 {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Stat cards: stack */
+    .stat-value {
+        font-size: 20px;
+    }
+
+    /* Encoder slot cards: full width */
+    .slot-card {
+        padding: 14px;
+    }
+
+    .slot-acts {
+        flex-wrap: wrap;
+    }
+
+    /* Buttons: minimum touch target */
+    .btn, .btn-sm, .btn-xs, .btn-icon {
+        min-height: 44px;
+        min-width: 44px;
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .btn-xs {
+        padding: 6px 10px;
+        font-size: 12px;
+    }
+
+    .btn-icon {
+        padding: 8px 12px;
+    }
+
+    /* Slot action buttons: keep compact but tappable */
+    .slot-acts .btn {
+        min-height: 40px;
+        padding: 8px 12px;
+    }
+
+    /* Section headers: wrap */
+    .sec-hdr {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    .sec-hdr > div:last-child {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    /* Card headers: wrap on mobile */
+    .card-hdr {
+        flex-wrap: wrap;
+    }
+
+    /* Tables: horizontal scroll with momentum */
+    .tbl-wrap {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -12px;
+        padding: 0 12px;
+    }
+
+    table {
+        min-width: 600px;
+    }
+
+    /* Table cells: bump tap targets */
+    td, th {
+        padding: 10px 12px;
+    }
+
+    .td-acts {
+        gap: 4px;
+    }
+
+    .td-acts .btn-icon {
+        min-width: 40px;
+        min-height: 40px;
+    }
+
+    /* Search row: stack */
+    .search-row {
+        flex-direction: column;
+    }
+
+    .search-row .form-input {
+        min-width: 100%;
+    }
+
+    /* Tabs: horizontal scroll if many tabs */
+    .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        flex-wrap: nowrap;
+        gap: 0;
+        scrollbar-width: none; /* Firefox */
+    }
+
+    .tabs::-webkit-scrollbar {
+        display: none;
+    }
+
+    .tab-btn {
+        flex-shrink: 0;
+        min-height: 44px;
+        padding: 10px 14px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    /* Charts: shorter on mobile */
+    .chart-wrap {
+        height: 180px;
+    }
+
+    .chart-wrap canvas {
+        max-height: 180px;
+    }
+
+    /* Forms: full width rows */
+    .form-row-2 {
+        grid-template-columns: 1fr !important;
+    }
+
+    .form-inline {
+        flex-wrap: wrap;
+    }
+
+    .form-input, .form-select, .form-textarea {
+        padding: 10px 12px;
+        min-height: 44px;
+    }
+
+    /* Range input: bigger thumb on touch */
+    input[type=range] {
+        height: 6px;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+        width: 22px;
+        height: 22px;
+    }
+
+    input[type=range]::-moz-range-thumb {
+        width: 22px;
+        height: 22px;
+    }
+
+    /* Toggle: bigger for touch */
+    .toggle {
+        width: 44px;
+        height: 24px;
+    }
+
+    .toggle-slider::before {
+        height: 18px;
+        width: 18px;
+    }
+
+    .toggle input:checked + .toggle-slider::before {
+        transform: translateX(20px);
+    }
+
+    /* Badges: ensure tappable */
+    .badge {
+        padding: 4px 10px;
+        font-size: 12px;
+    }
+
+    /* Toast: full width on mobile */
+    #mc1-toast {
+        left: 12px !important;
+        right: 12px !important;
+        bottom: 68px !important; /* above tab bar */
+        max-width: none !important;
+    }
+
+    /* Modals: near full screen on mobile */
+    #stats-modal > div {
+        width: 95vw !important;
+        max-height: 80vh;
+        border-radius: 12px 12px 0 0;
+    }
+
+    /* DSP controls: stack labels */
+    .dsp-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
+    /* Pagination: wrap and center */
+    .pagination {
+        justify-content: center;
+    }
+
+    .pagination a, .pagination span {
+        min-width: 36px;
+        height: 36px;
+    }
+
+    /* Code blocks: scroll */
+    .code-block {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        font-size: 11px;
+    }
+
+    /* Encoder live pill in topbar: hide text, show dot only */
+    #enc-live-pill {
+        padding: 4px 8px !important;
+    }
+
+    #enc-live-label {
+        display: none;
+    }
+
+    /* Pedalboard: horizontal scroll */
+    .pedalboard-surface,
+    .pedalboard-container,
+    [id*="pedalboard"] {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-x pan-y;
+    }
+
+    /* VoicTune canvases: stack vertically */
+    .vt-canvas-grid,
+    .voictune-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Mixer: single channel, horizontal scroll */
+    .mixer-channels,
+    .mixer-strip-container {
+        display: flex;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+        gap: 0;
+    }
+
+    .mixer-channel,
+    .mixer-strip {
+        min-width: 85vw;
+        scroll-snap-align: start;
+        flex-shrink: 0;
+    }
+
+    /* Media page: split pane becomes stacked */
+    .media-split,
+    .split-pane {
+        flex-direction: column !important;
+        height: auto !important;
+    }
+
+    .media-split > .left-pane,
+    .split-pane > .left-pane,
+    .media-split > [style*="width:"],
+    .split-pane > [style*="width:"] {
+        width: 100% !important;
+        max-height: 200px;
+        overflow-y: auto;
+        border-right: none !important;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .media-split > .right-pane,
+    .split-pane > .right-pane {
+        width: 100% !important;
+        flex: 1;
+    }
+
+    /* Resize handles: hide on mobile (no split-pane dragging) */
+    .resize-handle,
+    .split-handle,
+    .pane-divider {
+        display: none !important;
+    }
+
+    /* Crossfader page: stack controls */
+    .crossfader-container {
+        flex-direction: column !important;
+    }
+
+    /* Effects rack: scroll */
+    .effects-chain,
+    .rack-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Alert: full width */
+    .alert {
+        font-size: 13px;
+    }
+
+    /* Empty state: less padding */
+    .empty {
+        padding: 24px 12px;
+    }
+
+    /* Compliance / multi-column layouts */
+    .compliance-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Schedule clockwheel: scroll */
+    .clockwheel-grid,
+    .schedule-grid {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}
+
+/* =========================================================================
+ * Small phone: < 480px
+ * Extra-compact adjustments
+ * ========================================================================= */
+
+@media (max-width: 480px) {
+
+    .topbar-page {
+        font-size: 13px;
+    }
+
+    .main {
+        padding: 10px 8px 70px 8px;
+        gap: 12px;
+    }
+
+    .card {
+        padding: 12px 14px;
+        border-radius: 8px;
+    }
+
+    .card-hdr {
+        margin-bottom: 10px;
+    }
+
+    .card-title {
+        font-size: 14px;
+    }
+
+    .stat-value {
+        font-size: 18px;
+    }
+
+    /* Slot card: tighter */
+    .slot-card {
+        padding: 12px;
+    }
+
+    .slot-meta {
+        font-size: 10px;
+    }
+
+    .slot-hdr {
+        gap: 6px;
+    }
+
+    /* Stat modal: single column on tiny screens */
+    #stats-modal [style*="grid-template-columns: 1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* Table minimum width reduced */
+    table {
+        min-width: 500px;
+    }
+}
+
+/* =========================================================================
+ * Landscape phone (short viewport)
+ * ========================================================================= */
+
+@media (max-height: 500px) and (max-width: 900px) {
+
+    .topbar {
+        height: 42px;
+    }
+
+    .mobile-tab-bar {
+        height: 44px;
+    }
+
+    .mobile-tab-bar span {
+        display: none; /* icon-only in landscape to save space */
+    }
+
+    .main {
+        padding-bottom: 56px;
+    }
+}
+
+/* =========================================================================
+ * Print: hide nav, full width
+ * ========================================================================= */
+
+@media print {
+    .sidebar,
+    .topbar,
+    .mobile-tab-bar,
+    .mobile-more-panel,
+    .mobile-more-backdrop,
+    .hamburger,
+    .sidebar-backdrop,
+    #mc1-toast {
+        display: none !important;
+    }
+
+    .layout {
+        display: block;
+    }
+
+    .main {
+        padding: 0;
+        overflow: visible;
+    }
+}

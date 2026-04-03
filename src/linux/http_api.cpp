@@ -1545,6 +1545,85 @@ static void setup_routes(httplib::Server& svr)
             });
         });
 
+    // ── GET /proxy/stream?slot=N — reverse-proxy the Icecast/DNAS stream
+    //    for a given encoder slot so ffmpeg (RTMP relay) can read audio
+    //    from localhost without needing external network access. ───────────
+    svr.Get("/proxy/stream",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int slot_id = 0;
+                if (req.has_param("slot"))
+                    slot_id = std::stoi(req.get_param_value("slot"));
+                if (slot_id < 1) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"Invalid slot"})", "application/json");
+                    return;
+                }
+
+#ifndef MC1_HTTP_TEST_BUILD
+                EncoderConfig cfg;
+                if (!g_pipeline || !g_pipeline->get_slot_config(slot_id, cfg)) {
+                    res.status = 404;
+                    res.set_content(R"({"error":"Slot not found or no pipeline"})",
+                                    "application/json");
+                    return;
+                }
+                const auto& st = cfg.stream_target;
+#else
+                // Stub for test build — no pipeline available
+                StreamTarget st;
+                res.status = 501;
+                res.set_content(R"({"error":"Not available in test build"})",
+                                "application/json");
+                return;
+#endif
+
+                if (st.host.empty()) {
+                    res.status = 400;
+                    res.set_content(R"({"error":"No stream target configured for this slot"})",
+                                    "application/json");
+                    return;
+                }
+
+                // We connect to the upstream stream server and relay the
+                // audio data back to the client (e.g. ffmpeg for RTMP).
+                bool use_ssl = (st.port == 443 || st.port == 9443);
+                std::string mount = st.mount.empty() ? "/stream" : st.mount;
+
+                // Lambda to handle the upstream response (shared by SSL and non-SSL paths)
+                auto handle_result = [&](httplib::Result& upstream) {
+                    if (!upstream) {
+                        res.status = 502;
+                        json e;
+                        e["error"]  = "Upstream stream unreachable";
+                        e["host"]   = st.host;
+                        e["port"]   = st.port;
+                        e["mount"]  = mount;
+                        res.set_content(e.dump(), "application/json");
+                        return;
+                    }
+                    std::string ct = upstream->get_header_value("Content-Type");
+                    if (ct.empty()) ct = "audio/mpeg";
+                    res.set_content(upstream->body, ct);
+                };
+
+                if (use_ssl) {
+                    httplib::SSLClient cli(st.host, st.port);
+                    cli.enable_server_certificate_verification(false);
+                    cli.set_connection_timeout(10);
+                    cli.set_read_timeout(300);
+                    auto r = cli.Get(mount);
+                    handle_result(r);
+                } else {
+                    httplib::Client cli(st.host, st.port);
+                    cli.set_connection_timeout(10);
+                    cli.set_read_timeout(300);
+                    auto r = cli.Get(mount);
+                    handle_result(r);
+                }
+            });
+        });
+
 #ifndef MC1_HTTP_TEST_BUILD
     // ── GET /api/v1/system/health — latest HealthSnapshot as JSON ─────────
     svr.Get("/api/v1/system/health",
@@ -1756,6 +1835,52 @@ static void setup_routes(httplib::Server& svr)
                 res.set_content(arr.dump(), "application/json");
 #else
                 res.set_content("[]", "application/json");
+#endif
+            });
+        });
+
+    // ── GET /api/v1/effects/loudness — loudness compliance measurements ────
+    svr.Get("/api/v1/effects/loudness",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+#ifndef MC1_HTTP_TEST_BUILD
+                if (!g_pipeline) {
+                    res.status = 503;
+                    res.set_content(R"({"error":"No pipeline"})", "application/json");
+                    return;
+                }
+                auto& rack = g_pipeline->global_effects_rack();
+                auto rack_json = rack.to_json();
+                json slots_arr = json::array();
+
+                /* Find all loudness units in the rack and report their measurements */
+                if (rack_json.contains("units") && rack_json["units"].is_array()) {
+                    for (const auto& u : rack_json["units"]) {
+                        if (u.value("type", "") == "loudness" && u.contains("params")) {
+                            const auto& p = u["params"];
+                            json entry;
+                            entry["unit_id"]            = u.value("id", 0);
+                            entry["integrated_lufs"]    = std::round(p.value("integrated_lufs", -70.0f) * 10.0f) / 10.0f;
+                            entry["momentary_lufs"]     = std::round(p.value("momentary_lufs", -70.0f) * 10.0f) / 10.0f;
+                            entry["short_term_lufs"]    = std::round(p.value("short_term_lufs", -70.0f) * 10.0f) / 10.0f;
+                            entry["true_peak_dbtp"]     = std::round(p.value("true_peak_dbtp", -70.0f) * 10.0f) / 10.0f;
+                            entry["loudness_range_lu"]  = std::round(p.value("loudness_range_lu", 0.0f) * 10.0f) / 10.0f;
+                            entry["gain_correction_db"] = std::round(p.value("gain_correction_db", 0.0f) * 10.0f) / 10.0f;
+                            entry["compliant"]          = p.value("compliant", false);
+                            entry["standard"]           = p.value("standard", "custom");
+                            entry["target_lufs"]        = p.value("target_lufs", -16.0f);
+                            entry["enabled"]            = u.value("enabled", false);
+                            slots_arr.push_back(entry);
+                        }
+                    }
+                }
+
+                json result;
+                result["ok"]    = true;
+                result["units"] = slots_arr;
+                res.set_content(result.dump(), "application/json");
+#else
+                res.set_content(R"({"ok":true,"units":[]})", "application/json");
 #endif
             });
         });

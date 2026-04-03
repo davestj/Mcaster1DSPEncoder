@@ -72,6 +72,7 @@ require_once __DIR__ . '/app/inc/header.php';
       <?php endif; ?>
       <span><i class="fa-solid fa-link fa-fw" style="opacity:.5"></i> <?= h($cfg['server_mount'] ?? '—') ?></span>
       <span id="sm-up-<?= (int)$cfg['slot_id'] ?>"></span>
+      <span class="lufs-badge lufs-na" id="lufs-<?= (int)$cfg['slot_id'] ?>" title="Loudness: not measured yet">— LUFS</span>
     </div>
     <div class="slot-acts" id="sa-<?= (int)$cfg['slot_id'] ?>">
       <button class="btn btn-success btn-sm" onclick="slotAct(<?= (int)$cfg['slot_id'] ?>, 'start')">
@@ -329,14 +330,50 @@ function poll() {
   });
 }
 
+// ── Loudness LUFS badge polling ─────────────────────────────────────────
+function pollLoudness() {
+  mc1Api('GET', '/api/v1/effects/loudness').then(function(d) {
+    if (!d || !d.ok || !Array.isArray(d.units) || d.units.length === 0) return;
+    // Apply loudness data to all slot badges (global rack applies to all active slots)
+    var u = d.units[0]; // first loudness unit
+    if (!u || !u.enabled) return;
+    var lufs = u.integrated_lufs;
+    var target = u.target_lufs || -16;
+    var diff = Math.abs(lufs - target);
+    var label = (lufs > -60 ? lufs.toFixed(1) : '--') + ' LUFS';
+    var cls = 'lufs-na';
+    if (lufs > -60) {
+      if (diff <= 1) cls = 'lufs-green';
+      else if (diff <= 2) cls = 'lufs-yellow';
+      else cls = 'lufs-red';
+    }
+    var tooltip = u.standard.toUpperCase() + ' target: ' + target + ' LUFS'
+      + '\nMomentary: ' + (u.momentary_lufs > -60 ? u.momentary_lufs.toFixed(1) : '--') + ' LUFS'
+      + '\nShort-term: ' + (u.short_term_lufs > -60 ? u.short_term_lufs.toFixed(1) : '--') + ' LUFS'
+      + '\nTrue Peak: ' + (u.true_peak_dbtp > -60 ? u.true_peak_dbtp.toFixed(1) : '--') + ' dBTP'
+      + '\nLRA: ' + u.loudness_range_lu.toFixed(1) + ' LU'
+      + '\nGain: ' + (u.gain_correction_db >= 0 ? '+' : '') + u.gain_correction_db.toFixed(1) + ' dB'
+      + '\n' + (u.compliant ? 'COMPLIANT' : 'NON-COMPLIANT');
+    // Update all slot LUFS badges
+    var badges = document.querySelectorAll('.lufs-badge');
+    for (var i = 0; i < badges.length; i++) {
+      badges[i].textContent = label;
+      badges[i].className = 'lufs-badge ' + cls;
+      badges[i].title = tooltip;
+    }
+  }).catch(function() { /* loudness poll failed — ignore */ });
+}
+
 // Defer until DOMContentLoaded so footer.php's mc1Api is defined before we call it.
 // (The dashboard <script> block executes before footer.php's <script>, so calling
 // poll() immediately here would throw "mc1Api is not a function" and kill setInterval.)
 document.addEventListener('DOMContentLoaded', function() {
   poll();
   pollStatus();
+  pollLoudness();
   setInterval(poll, POLL_MS);
   setInterval(pollStatus, 30000);
+  setInterval(pollLoudness, 5000);
   requestAnimationFrame(tickProgress); // start smooth progress bar animation
 });
 

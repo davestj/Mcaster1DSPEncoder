@@ -30,6 +30,7 @@ var DIMS = {
     track_crossfader: { w: 280, h: 100 },   // 1U
     reverb:           { w: 280, h: 100 },   // 1U
     delay:            { w: 280, h: 100 },   // 1U
+    loudness:         { w: 280, h: 180 },   // 2U
     __input:          { w: 120, h: 80 },    // Fixed pseudo-pedal
     __output:         { w: 120, h: 80 },    // Fixed pseudo-pedal
     __headend:        { w: 140, h: 80 }     // Fixed pseudo-pedal (optional)
@@ -397,6 +398,52 @@ generators.delay = function(uid, vi) {
     // Active LED
     s += led(uid, 245, 75, 'green');
     s += silk(245, 88, 'ACTIVE', 5);
+
+    s += brandMark(uid, w, h, vi ? vi.version : '1.0.0');
+    return s;
+};
+
+/* ── Loudness Compliance: LUFS display, compliance LED, gain meter ────── */
+generators.loudness = function(uid, vi) {
+    var w = 280, h = 180;
+    var s = sharedDefs(uid) + faceplate(uid, w, h) + screws(uid, w, h) + connectors(uid, h);
+
+    s += silk(140, 20, 'LOUDNESS', 9);
+
+    // Large LUFS display (digital readout style)
+    s += '<rect x="30" y="30" width="100" height="45" rx="4" fill="#0a0f18" stroke="#2a3444" stroke-width="1"/>';
+    s += '<text x="80" y="53" text-anchor="middle" fill="#14b8a6" font-family="\'SF Mono\',monospace" font-size="16" font-weight="700">-16.0</text>';
+    s += '<text x="80" y="68" text-anchor="middle" fill="#5a8abf" font-family="\'SF Mono\',monospace" font-size="7" font-weight="600">LUFS</text>';
+
+    // Standard label
+    s += '<rect x="150" y="30" width="100" height="20" rx="3" fill="#0a0f18" stroke="#2a3444" stroke-width=".8"/>';
+    s += '<text x="200" y="44" text-anchor="middle" fill="#8a9ab0" font-family="\'SF Mono\',monospace" font-size="8" font-weight="600">PODCAST</text>';
+
+    // True Peak display
+    s += '<rect x="150" y="55" width="100" height="20" rx="3" fill="#0a0f18" stroke="#2a3444" stroke-width=".8"/>';
+    s += '<text x="200" y="69" text-anchor="middle" fill="#a78bfa" font-family="\'SF Mono\',monospace" font-size="8">-1.0 dBTP</text>';
+
+    // Compliance indicator LED
+    s += led(uid, 42, 95, 'green');
+    s += silk(42, 110, 'COMPLIANT', 5.5);
+
+    // Gain correction meter
+    s += levelBar(70, 88, 110, 8, 0.5, '#14b8a6');
+    s += silk(125, 108, 'GAIN CORRECTION', 5.5);
+
+    // Target LUFS knob
+    s += knob(42, 145, 'TARGET', 10);
+
+    // True Peak ceiling knob
+    s += knob(102, 145, 'TP CEIL', 10);
+
+    // LRA max knob
+    s += knob(162, 145, 'LRA MAX', 10);
+
+    // LRA display
+    s += '<rect x="200" y="130" width="52" height="24" rx="3" fill="#0a0f18" stroke="#2a3444" stroke-width=".8"/>';
+    s += '<text x="226" y="146" text-anchor="middle" fill="#f59e0b" font-family="\'SF Mono\',monospace" font-size="9" font-weight="600">8.3 LU</text>';
+    s += silk(226, 165, 'LRA', 5.5);
 
     s += brandMark(uid, w, h, vi ? vi.version : '1.0.0');
     return s;

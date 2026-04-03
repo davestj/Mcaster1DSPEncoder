@@ -308,6 +308,120 @@ private:
 };
 
 /* ══════════════════════════════════════════════════════════════════════════════
+ * LoudnessUnit — EBU R128 / ATSC A/85 loudness compliance (ITU-R BS.1770-4)
+ * ══════════════════════════════════════════════════════════════════════════════ */
+class LoudnessUnit : public DspUnit {
+public:
+    struct Config {
+        float target_lufs = -16.0f;    // Target integrated LUFS
+        float target_tp   = -1.0f;     // True peak ceiling (dBTP)
+        float lra_max     = 11.0f;     // Max loudness range (LU)
+        std::string standard = "podcast"; // "ebu_r128","atsc_a85","podcast","spotify","youtube","custom"
+        bool  enabled     = false;
+    };
+
+    void process(float* pcm, size_t frames, int channels) override;
+    void set_sample_rate(int sr) override;
+    void set_enabled(bool on) override { cfg_.enabled = on; }
+    bool is_enabled() const override { return cfg_.enabled; }
+    const char* type_name() const override { return "loudness"; }
+    json get_params() const override;
+    void set_params(const json& j) override;
+    void reset() override;
+    MeterData get_meters() const override;
+
+    /* Extended loudness meter data for the dedicated API endpoint */
+    float integrated_lufs() const { return meter_integrated_lufs_.load(std::memory_order_relaxed); }
+    float momentary_lufs()  const { return meter_momentary_lufs_.load(std::memory_order_relaxed); }
+    float short_term_lufs() const { return meter_short_term_lufs_.load(std::memory_order_relaxed); }
+    float true_peak_dbtp()  const { return meter_true_peak_.load(std::memory_order_relaxed); }
+    float loudness_range()  const { return meter_lra_.load(std::memory_order_relaxed); }
+    float gain_correction() const { return meter_gain_db_.load(std::memory_order_relaxed); }
+    bool  is_compliant()    const;
+    const Config& config()  const { return cfg_; }
+
+private:
+    Config cfg_;
+    int    sample_rate_ = 48000;
+
+    /* K-weighting biquad filter state (BS.1770-4)
+     * Stage 1: pre-filter (high shelf +3.99 dB)
+     * Stage 2: RLB weighting (high-pass ~38 Hz)
+     * Per-channel state (up to 2 channels) */
+    struct BiquadState {
+        float x1 = 0, x2 = 0;   // input delay
+        float y1 = 0, y2 = 0;   // output delay
+    };
+    struct BiquadCoeffs {
+        float b0 = 1, b1 = 0, b2 = 0;
+        float a1 = 0, a2 = 0;
+    };
+    BiquadCoeffs kw_stage1_;     // pre-filter
+    BiquadCoeffs kw_stage2_;     // RLB
+    BiquadState  kw_s1_[2];      // per-channel stage 1
+    BiquadState  kw_s2_[2];      // per-channel stage 2
+
+    /* Momentary loudness: 400ms overlapping blocks, 75% overlap (100ms hop) */
+    static constexpr int MOMENTARY_BLOCKS = 4;  // 4 x 100ms = 400ms
+    float  moment_block_sum_[4] = {};            // per-block channel-summed mean-sq
+    int    moment_block_frames_[4] = {};
+    int    moment_block_idx_   = 0;
+    int    moment_hop_count_   = 0;
+    int    moment_hop_frames_  = 0;              // 100ms in samples
+
+    /* Short-term loudness: 3s window (30 x 100ms blocks) */
+    static constexpr int SHORT_TERM_BLOCKS = 30;
+    float  short_block_sum_[30] = {};
+    int    short_block_frames_[30] = {};
+    int    short_block_idx_    = 0;
+
+    /* Integrated loudness: gated, overlapping 400ms blocks
+     * BS.1770-4 two-pass gating:
+     *   1. Absolute gate: -70 LUFS
+     *   2. Relative gate: -10 LU below ungated average */
+    static constexpr int MAX_GATE_BLOCKS = 7200;  // ~12 min at 100ms hop
+    float  gate_blocks_[7200]  = {};
+    int    gate_count_         = 0;
+    float  integrated_lufs_    = -70.0f;
+
+    /* Loudness range (LRA): BS.1770-4 short-term distribution percentiles */
+    static constexpr int MAX_LRA_BLOCKS = 600;  // 10 min of 1s blocks
+    float  lra_blocks_[600]    = {};
+    int    lra_count_          = 0;
+    float  loudness_range_     = 0.0f;
+
+    /* LRA hop counter (counts 100ms hops, stores every 10th = 1s) */
+    int    lra_hop_counter_    = 0;
+
+    /* Auto-gain correction */
+    float  gain_db_            = 0.0f;    // current target gain
+    float  gain_smooth_db_     = 0.0f;    // smoothed gain (attack/release)
+    float  gain_attack_c_      = 0.0f;    // per-sample smoothing coeff
+    float  gain_release_c_     = 0.0f;
+
+    /* True peak: 4x oversampled interpolation (FIR half-band filter) */
+    float  tp_prev_[2]         = {};      // previous sample per channel
+    float  true_peak_lin_      = 0.0f;
+
+    /* Atomic meters for lock-free HTTP reads */
+    std::atomic<float> meter_input_db_{-96.0f};
+    std::atomic<float> meter_output_db_{-96.0f};
+    std::atomic<float> meter_integrated_lufs_{-70.0f};
+    std::atomic<float> meter_momentary_lufs_{-70.0f};
+    std::atomic<float> meter_short_term_lufs_{-70.0f};
+    std::atomic<float> meter_true_peak_{-70.0f};
+    std::atomic<float> meter_gain_db_{0.0f};
+    std::atomic<float> meter_lra_{0.0f};
+
+    void update_coeffs();
+    void apply_standard_preset();
+    float biquad_process(BiquadState& st, const BiquadCoeffs& c, float x);
+    float compute_integrated();
+    float compute_lra();
+    float detect_true_peak(float s0, float s1);
+};
+
+/* ══════════════════════════════════════════════════════════════════════════════
  * RoutingEntry — signal routing metadata (v1: serial only — cable order = chain order)
  * ══════════════════════════════════════════════════════════════════════════════ */
 struct RoutingEntry {

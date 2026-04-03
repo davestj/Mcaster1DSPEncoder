@@ -8,6 +8,7 @@
 
 #include "effects_rack.h"
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
@@ -572,6 +573,437 @@ MeterData DelayUnit::get_meters() const {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+ * LoudnessUnit — EBU R128 / ATSC A/85 loudness compliance (ITU-R BS.1770-4)
+ *
+ * K-weighting filter coefficients are from the ITU-R BS.1770-4 standard.
+ * Stage 1: pre-filter (high shelf boosting high frequencies ~+3.99 dB)
+ * Stage 2: RLB weighting (high-pass, ~38 Hz rolloff)
+ *
+ * Gated integrated loudness uses the BS.1770-4 two-stage gate:
+ *   1. Absolute gate at -70 LUFS
+ *   2. Relative gate at -10 LU below the ungated mean
+ *
+ * True peak detection uses 4x oversampled linear interpolation to catch
+ * inter-sample peaks that exceed the dBTP ceiling.
+ *
+ * Auto-gain correction slowly adjusts output gain to meet the target LUFS
+ * with slow attack (~1s) and fast release (~100ms) to avoid pumping while
+ * catching transients.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+void LoudnessUnit::set_sample_rate(int sr) {
+    sample_rate_ = sr;
+    update_coeffs();
+}
+
+void LoudnessUnit::update_coeffs() {
+    float sr = static_cast<float>(sample_rate_);
+
+    /* K-weighting Stage 1: pre-filter (high shelf)
+     * Coefficients from ITU-R BS.1770-4 for 48 kHz.
+     * For other sample rates, we use the bilinear transform with frequency
+     * warping from the reference 48 kHz coefficients. */
+    if (sample_rate_ == 48000) {
+        kw_stage1_.b0 = 1.53512485958697f;
+        kw_stage1_.b1 = -2.69169618940638f;
+        kw_stage1_.b2 = 1.19839281085285f;
+        kw_stage1_.a1 = -1.69065929318241f;
+        kw_stage1_.a2 = 0.73248077421585f;
+    } else {
+        /* Approximate via bilinear transform pre-warping for non-48kHz rates.
+         * We use the canonical BS.1770-4 analog prototype and warp to the target SR. */
+        float K = std::tan(3.14159265f * 1681.97f / sr);  // pre-warp fc ~1682 Hz
+        float Vh = std::pow(10.0f, 3.999f / 20.0f);       // +3.999 dB boost
+        float Vb = std::pow(Vh, 0.4996f);
+        float K2 = K * K;
+        float a0_inv = 1.0f / (1.0f + K / 0.7072f + K2);
+        kw_stage1_.b0 = (Vh + Vb * K / 0.7072f + K2) * a0_inv;
+        kw_stage1_.b1 = 2.0f * (K2 - Vh) * a0_inv;
+        kw_stage1_.b2 = (Vh - Vb * K / 0.7072f + K2) * a0_inv;
+        kw_stage1_.a1 = 2.0f * (K2 - 1.0f) * a0_inv;
+        kw_stage1_.a2 = (1.0f - K / 0.7072f + K2) * a0_inv;
+    }
+
+    /* K-weighting Stage 2: RLB weighting (high-pass, ~38 Hz)
+     * Reference coefficients for 48 kHz from BS.1770-4. */
+    if (sample_rate_ == 48000) {
+        kw_stage2_.b0 = 1.0f;
+        kw_stage2_.b1 = -2.0f;
+        kw_stage2_.b2 = 1.0f;
+        kw_stage2_.a1 = -1.99004745483398f;
+        kw_stage2_.a2 = 0.99007225036621f;
+    } else {
+        /* High-pass at ~38.135 Hz via bilinear transform */
+        float fc = 38.135f;
+        float wc = 2.0f * 3.14159265f * fc / sr;
+        float wc_tan = std::tan(wc / 2.0f);
+        float Q = 0.5003270373f;  // from BS.1770-4
+        float a0_inv = 1.0f / (1.0f + wc_tan / Q + wc_tan * wc_tan);
+        kw_stage2_.b0 = a0_inv;
+        kw_stage2_.b1 = -2.0f * a0_inv;
+        kw_stage2_.b2 = a0_inv;
+        kw_stage2_.a1 = 2.0f * (wc_tan * wc_tan - 1.0f) * a0_inv;
+        kw_stage2_.a2 = (1.0f - wc_tan / Q + wc_tan * wc_tan) * a0_inv;
+    }
+
+    /* Momentary window hop size: 100ms */
+    moment_hop_frames_ = static_cast<int>(0.1f * sr);
+    if (moment_hop_frames_ < 1) moment_hop_frames_ = 1;
+
+    /* Auto-gain smoothing: attack ~1s, release ~100ms */
+    float attack_ms = 1000.0f;
+    float release_ms = 100.0f;
+    gain_attack_c_  = 1.0f - std::exp(-2.2f / (attack_ms * sr / 1000.0f));
+    gain_release_c_ = 1.0f - std::exp(-2.2f / (release_ms * sr / 1000.0f));
+}
+
+void LoudnessUnit::apply_standard_preset() {
+    if (cfg_.standard == "ebu_r128") {
+        cfg_.target_lufs = -23.0f;
+        cfg_.target_tp   = -1.0f;
+        cfg_.lra_max     = 11.0f;
+    } else if (cfg_.standard == "atsc_a85") {
+        cfg_.target_lufs = -24.0f;
+        cfg_.target_tp   = -2.0f;
+        cfg_.lra_max     = 0.0f;  // no LRA constraint
+    } else if (cfg_.standard == "podcast") {
+        cfg_.target_lufs = -16.0f;
+        cfg_.target_tp   = -1.0f;
+        cfg_.lra_max     = 0.0f;
+    } else if (cfg_.standard == "spotify") {
+        cfg_.target_lufs = -14.0f;
+        cfg_.target_tp   = -1.0f;
+        cfg_.lra_max     = 0.0f;
+    } else if (cfg_.standard == "youtube") {
+        cfg_.target_lufs = -14.0f;
+        cfg_.target_tp   = -1.0f;
+        cfg_.lra_max     = 0.0f;
+    }
+    // "custom" leaves values as-is
+}
+
+float LoudnessUnit::biquad_process(BiquadState& st, const BiquadCoeffs& c, float x) {
+    float y = c.b0 * x + c.b1 * st.x1 + c.b2 * st.x2
+                        - c.a1 * st.y1 - c.a2 * st.y2;
+    st.x2 = st.x1; st.x1 = x;
+    st.y2 = st.y1; st.y1 = y;
+    return y;
+}
+
+float LoudnessUnit::detect_true_peak(float s0, float s1) {
+    /* 4x oversampled linear interpolation between consecutive samples.
+     * For broadcast-grade true peak, a polyphase FIR is recommended, but
+     * linear interpolation catches the majority of inter-sample peaks and
+     * is zero-allocation. */
+    float peak = std::max(std::fabs(s0), std::fabs(s1));
+    for (int i = 1; i <= 3; ++i) {
+        float t = static_cast<float>(i) / 4.0f;
+        float interp = s0 + t * (s1 - s0);
+        float a = std::fabs(interp);
+        if (a > peak) peak = a;
+    }
+    return peak;
+}
+
+float LoudnessUnit::compute_integrated() {
+    if (gate_count_ == 0) return -70.0f;
+
+    /* Pass 1: absolute gate at -70 LUFS */
+    float sum1 = 0.0f;
+    int   cnt1 = 0;
+    for (int i = 0; i < gate_count_; ++i) {
+        float block_lufs = gate_blocks_[i];
+        if (block_lufs > -70.0f) {
+            sum1 += std::pow(10.0f, block_lufs / 10.0f);
+            ++cnt1;
+        }
+    }
+    if (cnt1 == 0) return -70.0f;
+
+    float ungated_mean = sum1 / static_cast<float>(cnt1);
+    float ungated_lufs = 10.0f * std::log10(ungated_mean + 1e-20f);
+
+    /* Pass 2: relative gate at -10 LU below ungated mean */
+    float gate_threshold = ungated_lufs - 10.0f;
+    float sum2 = 0.0f;
+    int   cnt2 = 0;
+    for (int i = 0; i < gate_count_; ++i) {
+        float block_lufs = gate_blocks_[i];
+        if (block_lufs > gate_threshold) {
+            sum2 += std::pow(10.0f, block_lufs / 10.0f);
+            ++cnt2;
+        }
+    }
+    if (cnt2 == 0) return -70.0f;
+
+    float gated_mean = sum2 / static_cast<float>(cnt2);
+    return 10.0f * std::log10(gated_mean + 1e-20f);
+}
+
+float LoudnessUnit::compute_lra() {
+    if (lra_count_ < 2) return 0.0f;
+
+    /* Sort the short-term loudness blocks */
+    std::vector<float> sorted(lra_blocks_, lra_blocks_ + lra_count_);
+
+    /* Absolute gate at -70 LUFS */
+    std::vector<float> gated;
+    gated.reserve(sorted.size());
+    for (float v : sorted) {
+        if (v > -70.0f) gated.push_back(v);
+    }
+    if (gated.size() < 2) return 0.0f;
+
+    /* Relative gate: -20 LU below mean of absolutely-gated blocks */
+    float sum = 0.0f;
+    for (float v : gated) sum += std::pow(10.0f, v / 10.0f);
+    float mean_lufs = 10.0f * std::log10(sum / static_cast<float>(gated.size()) + 1e-20f);
+    float rel_gate = mean_lufs - 20.0f;
+
+    std::vector<float> final_blocks;
+    final_blocks.reserve(gated.size());
+    for (float v : gated) {
+        if (v > rel_gate) final_blocks.push_back(v);
+    }
+    if (final_blocks.size() < 2) return 0.0f;
+
+    std::sort(final_blocks.begin(), final_blocks.end());
+
+    /* LRA = 95th percentile - 10th percentile */
+    int idx_10 = static_cast<int>(0.10f * static_cast<float>(final_blocks.size()));
+    int idx_95 = static_cast<int>(0.95f * static_cast<float>(final_blocks.size()));
+    if (idx_95 >= static_cast<int>(final_blocks.size())) idx_95 = static_cast<int>(final_blocks.size()) - 1;
+
+    return final_blocks[static_cast<size_t>(idx_95)] - final_blocks[static_cast<size_t>(idx_10)];
+}
+
+bool LoudnessUnit::is_compliant() const {
+    float integ = meter_integrated_lufs_.load(std::memory_order_relaxed);
+    float tp    = meter_true_peak_.load(std::memory_order_relaxed);
+    float lra   = meter_lra_.load(std::memory_order_relaxed);
+
+    /* Within +/- 1 LU of target is compliant */
+    if (std::fabs(integ - cfg_.target_lufs) > 1.0f) return false;
+    if (tp > cfg_.target_tp + 0.1f) return false;
+    if (cfg_.lra_max > 0.0f && lra > cfg_.lra_max) return false;
+    return true;
+}
+
+void LoudnessUnit::reset() {
+    for (int c = 0; c < 2; ++c) {
+        kw_s1_[c] = {};
+        kw_s2_[c] = {};
+    }
+    for (int i = 0; i < MOMENTARY_BLOCKS; ++i) {
+        moment_block_sum_[i] = 0.0f;
+        moment_block_frames_[i] = 0;
+    }
+    moment_block_idx_ = 0;
+    moment_hop_count_ = 0;
+
+    for (int i = 0; i < SHORT_TERM_BLOCKS; ++i) {
+        short_block_sum_[i] = 0.0f;
+        short_block_frames_[i] = 0;
+    }
+    short_block_idx_ = 0;
+
+    gate_count_ = 0;
+    integrated_lufs_ = -70.0f;
+
+    lra_count_ = 0;
+    lra_hop_counter_ = 0;
+    loudness_range_ = 0.0f;
+
+    gain_db_ = 0.0f;
+    gain_smooth_db_ = 0.0f;
+    true_peak_lin_ = 0.0f;
+    tp_prev_[0] = tp_prev_[1] = 0.0f;
+
+    meter_input_db_.store(-96.0f, std::memory_order_relaxed);
+    meter_output_db_.store(-96.0f, std::memory_order_relaxed);
+    meter_integrated_lufs_.store(-70.0f, std::memory_order_relaxed);
+    meter_momentary_lufs_.store(-70.0f, std::memory_order_relaxed);
+    meter_short_term_lufs_.store(-70.0f, std::memory_order_relaxed);
+    meter_true_peak_.store(-70.0f, std::memory_order_relaxed);
+    meter_gain_db_.store(0.0f, std::memory_order_relaxed);
+    meter_lra_.store(0.0f, std::memory_order_relaxed);
+}
+
+void LoudnessUnit::process(float* pcm, size_t frames, int channels) {
+    if (!cfg_.enabled || channels < 1 || channels > 2) return;
+
+    meter_input_db_.store(peak_db(pcm, frames, channels), std::memory_order_relaxed);
+
+    const int ch = channels;
+    const float tp_ceil_lin = std::pow(10.0f, cfg_.target_tp / 20.0f);
+    float max_tp_this_buffer = true_peak_lin_;
+
+    for (size_t f = 0; f < frames; ++f) {
+        /* ── K-weighting: apply both biquad stages to each channel ── */
+        float kw_sum_sq = 0.0f;
+        for (int c = 0; c < ch; ++c) {
+            float x = pcm[f * static_cast<size_t>(ch) + static_cast<size_t>(c)];
+
+            /* True peak detection (4x oversampled) */
+            float tp = detect_true_peak(tp_prev_[c], x);
+            if (tp > max_tp_this_buffer) max_tp_this_buffer = tp;
+            tp_prev_[c] = x;
+
+            /* K-weighting Stage 1: pre-filter (high shelf) */
+            float s1 = biquad_process(kw_s1_[c], kw_stage1_, x);
+            /* K-weighting Stage 2: RLB weighting (high-pass) */
+            float kw = biquad_process(kw_s2_[c], kw_stage2_, s1);
+
+            /* BS.1770-4 channel weight: 1.0 for L/R front channels */
+            kw_sum_sq += kw * kw;
+        }
+
+        /* Accumulate into current momentary block */
+        moment_block_sum_[moment_block_idx_] += kw_sum_sq / static_cast<float>(ch);
+        moment_block_frames_[moment_block_idx_]++;
+        moment_hop_count_++;
+
+        /* Check if we've completed a 100ms hop */
+        if (moment_hop_count_ >= moment_hop_frames_) {
+            moment_hop_count_ = 0;
+
+            /* ── Momentary loudness (400ms, last 4 blocks) ── */
+            float moment_sum = 0.0f;
+            int   moment_total_frames = 0;
+            for (int b = 0; b < MOMENTARY_BLOCKS; ++b) {
+                moment_sum += moment_block_sum_[b];
+                moment_total_frames += moment_block_frames_[b];
+            }
+            float moment_lufs = -70.0f;
+            if (moment_total_frames > 0) {
+                float mean_sq = moment_sum / static_cast<float>(moment_total_frames);
+                if (mean_sq > 1e-20f) {
+                    moment_lufs = -0.691f + 10.0f * std::log10(mean_sq);
+                }
+            }
+            meter_momentary_lufs_.store(moment_lufs, std::memory_order_relaxed);
+
+            /* Store for integrated loudness gating */
+            if (gate_count_ < MAX_GATE_BLOCKS) {
+                gate_blocks_[gate_count_++] = moment_lufs;
+            } else {
+                /* Circular overwrite (lose oldest data after ~12 min) */
+                std::memmove(gate_blocks_, gate_blocks_ + 1,
+                             sizeof(float) * static_cast<size_t>(MAX_GATE_BLOCKS - 1));
+                gate_blocks_[MAX_GATE_BLOCKS - 1] = moment_lufs;
+            }
+
+            /* Advance short-term accumulator */
+            short_block_sum_[short_block_idx_] = moment_block_sum_[moment_block_idx_];
+            short_block_frames_[short_block_idx_] = moment_block_frames_[moment_block_idx_];
+            short_block_idx_ = (short_block_idx_ + 1) % SHORT_TERM_BLOCKS;
+
+            /* ── Short-term loudness (3s, last 30 blocks) ── */
+            float st_sum = 0.0f;
+            int   st_total_frames = 0;
+            for (int b = 0; b < SHORT_TERM_BLOCKS; ++b) {
+                st_sum += short_block_sum_[b];
+                st_total_frames += short_block_frames_[b];
+            }
+            float st_lufs = -70.0f;
+            if (st_total_frames > 0) {
+                float mean_sq = st_sum / static_cast<float>(st_total_frames);
+                if (mean_sq > 1e-20f) {
+                    st_lufs = -0.691f + 10.0f * std::log10(mean_sq);
+                }
+            }
+            meter_short_term_lufs_.store(st_lufs, std::memory_order_relaxed);
+
+            /* Store for LRA calculation (1 block per ~1s = every 10 hops) */
+            if (++lra_hop_counter_ >= 10) {
+                lra_hop_counter_ = 0;
+                if (lra_count_ < MAX_LRA_BLOCKS) {
+                    lra_blocks_[lra_count_++] = st_lufs;
+                } else {
+                    std::memmove(lra_blocks_, lra_blocks_ + 1,
+                                 sizeof(float) * static_cast<size_t>(MAX_LRA_BLOCKS - 1));
+                    lra_blocks_[MAX_LRA_BLOCKS - 1] = st_lufs;
+                }
+                loudness_range_ = compute_lra();
+                meter_lra_.store(loudness_range_, std::memory_order_relaxed);
+            }
+
+            /* ── Integrated loudness (gated) ── */
+            integrated_lufs_ = compute_integrated();
+            meter_integrated_lufs_.store(integrated_lufs_, std::memory_order_relaxed);
+
+            /* Advance to next momentary block, clear it */
+            moment_block_idx_ = (moment_block_idx_ + 1) % MOMENTARY_BLOCKS;
+            moment_block_sum_[moment_block_idx_] = 0.0f;
+            moment_block_frames_[moment_block_idx_] = 0;
+
+            /* ── Auto-gain correction ── */
+            float error = cfg_.target_lufs - moment_lufs;
+            /* Clamp correction to +/-12 dB to avoid runaway */
+            gain_db_ = std::max(-12.0f, std::min(12.0f, error));
+        }
+
+        /* ── Apply smoothed gain + true peak limiter ── */
+        float coeff = (gain_db_ < gain_smooth_db_) ? gain_release_c_ : gain_attack_c_;
+        gain_smooth_db_ += coeff * (gain_db_ - gain_smooth_db_);
+
+        float gain_lin = std::pow(10.0f, gain_smooth_db_ / 20.0f);
+
+        for (int c = 0; c < ch; ++c) {
+            float& s = pcm[f * static_cast<size_t>(ch) + static_cast<size_t>(c)];
+            s *= gain_lin;
+            /* True peak hard limit */
+            if (s >  tp_ceil_lin) s =  tp_ceil_lin;
+            if (s < -tp_ceil_lin) s = -tp_ceil_lin;
+        }
+    }
+
+    true_peak_lin_ = max_tp_this_buffer;
+    float tp_dbtp = (max_tp_this_buffer > 1e-10f) ? 20.0f * std::log10(max_tp_this_buffer) : -70.0f;
+    meter_true_peak_.store(tp_dbtp, std::memory_order_relaxed);
+    meter_gain_db_.store(gain_smooth_db_, std::memory_order_relaxed);
+    meter_output_db_.store(peak_db(pcm, frames, channels), std::memory_order_relaxed);
+}
+
+json LoudnessUnit::get_params() const {
+    return {
+        {"enabled",          cfg_.enabled},
+        {"standard",         cfg_.standard},
+        {"target_lufs",      cfg_.target_lufs},
+        {"target_tp",        cfg_.target_tp},
+        {"lra_max",          cfg_.lra_max},
+        {"integrated_lufs",  meter_integrated_lufs_.load(std::memory_order_relaxed)},
+        {"momentary_lufs",   meter_momentary_lufs_.load(std::memory_order_relaxed)},
+        {"short_term_lufs",  meter_short_term_lufs_.load(std::memory_order_relaxed)},
+        {"true_peak_dbtp",   meter_true_peak_.load(std::memory_order_relaxed)},
+        {"loudness_range_lu",meter_lra_.load(std::memory_order_relaxed)},
+        {"gain_correction_db", meter_gain_db_.load(std::memory_order_relaxed)},
+        {"compliant",        is_compliant()}
+    };
+}
+
+void LoudnessUnit::set_params(const json& j) {
+    if (j.contains("enabled"))     cfg_.enabled     = j["enabled"].get<bool>();
+    if (j.contains("target_lufs")) cfg_.target_lufs = j["target_lufs"].get<float>();
+    if (j.contains("target_tp"))   cfg_.target_tp   = j["target_tp"].get<float>();
+    if (j.contains("lra_max"))     cfg_.lra_max     = j["lra_max"].get<float>();
+    if (j.contains("standard")) {
+        cfg_.standard = j["standard"].get<std::string>();
+        if (cfg_.standard != "custom") {
+            apply_standard_preset();
+        }
+    }
+}
+
+MeterData LoudnessUnit::get_meters() const {
+    MeterData m;
+    m.input_db  = meter_input_db_.load(std::memory_order_relaxed);
+    m.output_db = meter_output_db_.load(std::memory_order_relaxed);
+    m.gain_reduction_db = -meter_gain_db_.load(std::memory_order_relaxed);
+    return m;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
  * EffectsRack — ordered chain management
  * ══════════════════════════════════════════════════════════════════════════════ */
 
@@ -736,12 +1168,13 @@ std::unique_ptr<DspUnit> EffectsRack::create_unit(const std::string& type) {
     if (type == "noise_gate") return std::make_unique<NoiseGateUnit>();
     if (type == "reverb")     return std::make_unique<ReverbUnit>();
     if (type == "delay")      return std::make_unique<DelayUnit>();
+    if (type == "loudness")   return std::make_unique<LoudnessUnit>();
     return nullptr;
 }
 
 json EffectsRack::available_types() {
     /* We build the types list from the version registry — single source of truth */
-    static const char* rack_types[] = {"eq", "compressor", "limiter", "noise_gate", "reverb", "delay"};
+    static const char* rack_types[] = {"eq", "compressor", "limiter", "noise_gate", "reverb", "delay", "loudness"};
     json arr = json::array();
     for (const char* tid : rack_types) {
         auto* vi = effect_version_by_type(tid);

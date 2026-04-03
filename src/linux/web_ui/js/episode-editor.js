@@ -528,6 +528,68 @@ EpisodeEditor.prototype._bindCanvasEvents = function() {
         if (self.isDragging) endDrag();
     });
 
+    /* ── Touch events for mobile waveform interaction ── */
+    ov.addEventListener('touchstart', function(e) {
+        if (!self.duration || !e.touches.length) return;
+        e.preventDefault();
+        var touch = e.touches[0];
+        var rect = ov.getBoundingClientRect();
+        var mx = touch.clientX - rect.left;
+
+        if (e.touches.length === 2) {
+            /* Two-finger: pinch-to-zoom — record initial distance */
+            self._pinchStartDist = Math.hypot(
+                e.touches[1].clientX - e.touches[0].clientX,
+                e.touches[1].clientY - e.touches[0].clientY
+            );
+            self._pinchStartZoom = self.zoom;
+            return;
+        }
+
+        /* Single finger: start selection drag */
+        self.isDragging = true;
+        self.dragStartX = mx;
+        var t = self._pixelToTime(mx);
+        self.selStart = Math.max(0, Math.min(t, self.duration));
+        self.selEnd = self.selStart;
+        self._updateSelInfo();
+    }, { passive: false });
+
+    ov.addEventListener('touchmove', function(e) {
+        if (!self.duration) return;
+        e.preventDefault();
+
+        if (e.touches.length === 2 && self._pinchStartDist) {
+            /* Pinch-to-zoom */
+            var dist = Math.hypot(
+                e.touches[1].clientX - e.touches[0].clientX,
+                e.touches[1].clientY - e.touches[0].clientY
+            );
+            var scale = dist / self._pinchStartDist;
+            var newZoom = Math.max(1, Math.min(50, Math.round(self._pinchStartZoom * scale)));
+            if (newZoom !== self.zoom) {
+                self.zoom = newZoom;
+                self._drawWaveform();
+                self._drawRuler();
+            }
+            return;
+        }
+
+        if (self.isDragging && e.touches.length === 1) {
+            var touch = e.touches[0];
+            var rect = ov.getBoundingClientRect();
+            var mx = touch.clientX - rect.left;
+            var t = self._pixelToTime(mx);
+            self.selEnd = Math.max(0, Math.min(t, self.duration));
+            self._updateSelInfo();
+        }
+    }, { passive: false });
+
+    ov.addEventListener('touchend', function(e) {
+        self._pinchStartDist = null;
+        endDrag();
+    });
+
     /* We handle wheel for zoom */
     ov.addEventListener('wheel', function(e) {
         e.preventDefault();

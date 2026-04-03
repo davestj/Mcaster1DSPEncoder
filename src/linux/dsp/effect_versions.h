@@ -207,6 +207,26 @@ static const EffectVersionInfo EFFECT_VERSIONS[] = {
         /* is_stub      */ false
     },
 
+    /* ── Loudness Compliance ─────────────────────────────────────────────── */
+    {
+        /* type_id      */ "loudness",
+        /* brand_name   */ "Mcaster1 Loudness v1.0.0",
+        /* short_name   */ "Mcaster1 Loudness",
+        /* version      */ "1.0.0",
+        /* ver_major    */ 1,
+        /* ver_minor    */ 0,
+        /* ver_patch    */ 0,
+        /* release_date */ "2026-03-27",
+        /* description  */ "EBU R128 / ATSC A/85 loudness compliance with ITU-R BS.1770-4 "
+                           "K-weighted measurement, integrated/momentary/short-term LUFS, "
+                           "true peak detection (4x oversampled), and auto-gain correction. "
+                           "Presets: EBU R128 (-23 LUFS), ATSC A/85 (-24 LUFS), Podcast (-16 LUFS), "
+                           "Spotify (-14 LUFS), YouTube (-14 LUFS), Custom.",
+        /* changelog    */ "v1.0.0: Initial release with BS.1770-4 K-weighting, gated integration, "
+                           "true peak limiter, LRA measurement, and auto-gain correction.",
+        /* is_stub      */ false
+    },
+
     /* ── Track Crossfader ─────────────────────────────────────────────────── */
     {
         /* type_id      */ "track_crossfader",

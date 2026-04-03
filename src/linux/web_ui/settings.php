@@ -539,6 +539,88 @@ require_once __DIR__ . '/app/inc/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     RTMP MULTI-PLATFORM STREAMING
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-tower-cell fa-fw"></i> RTMP Streaming
+      <span class="badge badge-red" style="margin-left:6px">Admin Only</span>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="rtmpNew()"><i class="fa-solid fa-plus"></i> Add Target</button>
+  </div>
+  <div id="rtmp-list"><div class="empty"><div class="spinner"></div></div></div>
+</div>
+
+<!-- RTMP Add/Edit Modal -->
+<div id="rtmp-modal" style="display:none;position:fixed;inset:0;z-index:8300;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);overflow-y:auto;padding:24px 16px">
+  <div style="max-width:620px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <div id="rtmp-modal-title" style="font-size:16px;font-weight:700;color:var(--text)">Add RTMP Target</div>
+      <button onclick="rtmpModalClose()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1">&times;</button>
+    </div>
+    <div style="padding:20px 24px">
+      <input type="hidden" id="rtmp-id" value="0">
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Platform <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="rtmp-platform" onchange="rtmpPlatformChanged()">
+            <option value="twitch">Twitch</option>
+            <option value="youtube">YouTube Live</option>
+            <option value="facebook">Facebook Live</option>
+            <option value="custom_rtmp">Custom RTMP</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Display Name <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="rtmp-name" placeholder="My Twitch Stream" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Encoder Slot <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="rtmp-slot">
+            <?php foreach ($enc_configs as $ec): ?>
+            <option value="<?= (int)$ec['slot_id'] ?>">Slot <?= (int)$ec['slot_id'] ?> — <?= h($ec['name']) ?></option>
+            <?php endforeach; ?>
+            <?php if (empty($enc_configs)): ?>
+            <option value="1">Slot 1 (default)</option>
+            <?php endif; ?>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Video Resolution</label>
+          <select class="form-select" id="rtmp-res">
+            <option value="1280x720">720p (1280x720)</option>
+            <option value="1920x1080">1080p (1920x1080)</option>
+            <option value="854x480">480p (854x480)</option>
+            <option value="640x360">360p (640x360)</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">RTMP URL <span style="color:var(--red)">*</span></label>
+        <input class="form-input" id="rtmp-url" placeholder="rtmp://live.twitch.tv/app/" autocomplete="off">
+        <span class="form-hint" id="rtmp-url-hint">Pre-filled for known platforms. Edit for custom servers.</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Stream Key <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;gap:6px">
+          <input type="password" class="form-input" id="rtmp-key" placeholder="Enter your stream key" autocomplete="new-password" style="flex:1">
+          <button class="btn btn-secondary btn-xs" onclick="rtmpToggleKey()" title="Show/hide stream key" style="width:36px"><i id="rtmp-key-icon" class="fa-solid fa-eye"></i></button>
+        </div>
+        <span class="form-hint">Get this from your platform's streaming settings. It will be stored securely and never displayed in full.</span>
+      </div>
+      <div style="display:flex;gap:20px;align-items:center;margin-top:12px">
+        <label class="toggle-wrap"><label class="toggle"><input type="checkbox" id="rtmp-video"><span class="toggle-slider"></span></label>&nbsp;Enable Video (static image)</label>
+      </div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="rtmpSave()"><i class="fa-solid fa-check"></i> Save</button>
+      <button class="btn btn-secondary btn-sm" onclick="rtmpModalClose()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      DATABASE ADMINISTRATION
      ══════════════════════════════════════════════════════════════════════════ -->
 <div class="card" style="margin-top:4px">
@@ -848,6 +930,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   /* ── Load webhook list ── */
   whkLoad();
+
+  /* ── Load RTMP targets list ── */
+  rtmpLoad();
+  setInterval(rtmpPollStatus, 15000);
 <?php endif; ?>
 
 }); /* end DOMContentLoaded */
@@ -1000,6 +1086,252 @@ window.whkDel = function(id, name) {
     else mc1Toast(d.error || 'Delete failed', 'err');
   }).catch(function() { mc1Toast('Request failed', 'err'); });
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * RTMP MULTI-PLATFORM STREAMING JS
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+var RTMP_PLATFORM_ICONS = {
+  twitch:      '<i class="fa-brands fa-twitch" style="color:#9146ff"></i>',
+  youtube:     '<i class="fa-brands fa-youtube" style="color:#ff0000"></i>',
+  facebook:    '<i class="fa-brands fa-facebook" style="color:#1877f2"></i>',
+  custom_rtmp: '<i class="fa-solid fa-globe" style="color:var(--teal)"></i>'
+};
+
+var RTMP_PLATFORM_LABELS = {
+  twitch: 'Twitch', youtube: 'YouTube Live',
+  facebook: 'Facebook Live', custom_rtmp: 'Custom RTMP'
+};
+
+var RTMP_URL_TEMPLATES = {
+  twitch:   'rtmp://live.twitch.tv/app/',
+  youtube:  'rtmp://a.rtmp.youtube.com/live2/',
+  facebook: 'rtmps://live-api-s.facebook.com:443/rtmp/',
+  custom_rtmp: ''
+};
+
+var _rtmpData = [];
+
+/* We load and render the RTMP target list */
+window.rtmpLoad = function() {
+  mc1Api('POST', '/app/api/rtmp.php', { action: 'list' }).then(function(d) {
+    var el = document.getElementById('rtmp-list');
+    if (!d.ok || !d.targets || d.targets.length === 0) {
+      el.innerHTML = '<div class="empty">'
+        + '<i class="fa-solid fa-tower-cell" style="font-size:28px;display:block;margin-bottom:10px;color:var(--border)"></i>'
+        + '<p>No RTMP streaming targets configured. Click <strong>Add Target</strong> to stream to Twitch, YouTube, or Facebook Live.</p></div>';
+      return;
+    }
+    _rtmpData = d.targets;
+    var html = '<div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Platform</th><th>Name</th><th>Slot</th><th>Stream Key</th>'
+      + '<th>Video</th><th>Status</th><th>Last Connected</th><th></th>'
+      + '</tr></thead><tbody>';
+    d.targets.forEach(function(t) {
+      var icon = RTMP_PLATFORM_ICONS[t.platform] || RTMP_PLATFORM_ICONS.custom_rtmp;
+      var label = RTMP_PLATFORM_LABELS[t.platform] || t.platform;
+      var running = t.relay_running;
+      var statusHtml = running
+        ? '<span style="display:inline-flex;align-items:center"><span class="srv-dot online"></span><span class="badge badge-green">Live</span></span>'
+        : (t.error_message
+          ? '<span style="display:inline-flex;align-items:center"><span class="srv-dot offline"></span><span class="badge badge-red" title="'+esc(t.error_message)+'">Error</span></span>'
+          : '<span style="display:inline-flex;align-items:center"><span class="srv-dot unknown"></span><span class="badge badge-gray">Stopped</span></span>');
+      var videoHtml = t.video_enabled
+        ? '<span class="badge badge-teal" style="font-size:10px">' + esc(t.video_resolution || '720p') + '</span>'
+        : '<span style="color:var(--muted);font-size:11px">Audio only</span>';
+      var lastConn = t.last_connected_at || 'Never';
+
+      html += '<tr id="rtmp-row-'+t.id+'">'
+        + '<td>' + icon + ' ' + esc(label) + '</td>'
+        + '<td style="font-weight:600;color:var(--text)">' + esc(t.name) + '</td>'
+        + '<td><span class="badge badge-teal">S' + t.slot_id + '</span></td>'
+        + '<td class="td-mono" style="font-size:11px">' + esc(t.stream_key_masked || '****') + '</td>'
+        + '<td>' + videoHtml + '</td>'
+        + '<td id="rtmp-status-'+t.id+'">' + statusHtml + '</td>'
+        + '<td style="font-size:11px;color:var(--muted)">' + esc(lastConn) + '</td>'
+        + '<td class="td-acts">';
+
+      if (running) {
+        html += '<button class="btn btn-danger btn-xs" onclick="rtmpStop('+t.id+')" title="Stop relay"><i class="fa-solid fa-stop"></i></button>';
+      } else {
+        html += '<button class="btn btn-success btn-xs" onclick="rtmpStart('+t.id+')" title="Start relay"><i class="fa-solid fa-play"></i></button>';
+      }
+      html += '<button class="btn btn-secondary btn-xs" onclick="rtmpEdit('+t.id+')" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+        + '<button class="btn btn-danger btn-xs" onclick="rtmpDel('+t.id+','+esc(JSON.stringify(t.name))+')" title="Delete"><i class="fa-solid fa-trash"></i></button>'
+        + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  }).catch(function() {
+    document.getElementById('rtmp-list').innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> Failed to load RTMP targets</div>';
+  });
+};
+
+/* We poll status for all RTMP targets and update in-place */
+window.rtmpPollStatus = function() {
+  mc1Api('POST', '/app/api/rtmp.php', { action: 'status' }).then(function(d) {
+    if (!d.ok || !d.targets) return;
+    d.targets.forEach(function(t) {
+      var el = document.getElementById('rtmp-status-' + t.id);
+      if (!el) return;
+      if (t.relay_running) {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot online"></span><span class="badge badge-green">Live</span></span>';
+      } else if (t.error_message) {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot offline"></span><span class="badge badge-red" title="'+esc(t.error_message)+'">Error</span></span>';
+      } else {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot unknown"></span><span class="badge badge-gray">Stopped</span></span>';
+      }
+    });
+  }).catch(function(){});
+};
+
+/* We open the RTMP modal in Add mode */
+window.rtmpNew = function() {
+  document.getElementById('rtmp-id').value = '0';
+  document.getElementById('rtmp-modal-title').textContent = 'Add RTMP Target';
+  document.getElementById('rtmp-platform').value = 'twitch';
+  document.getElementById('rtmp-name').value = '';
+  document.getElementById('rtmp-url').value = RTMP_URL_TEMPLATES.twitch;
+  document.getElementById('rtmp-key').value = '';
+  document.getElementById('rtmp-key').type = 'password';
+  document.getElementById('rtmp-key-icon').className = 'fa-solid fa-eye';
+  document.getElementById('rtmp-video').checked = false;
+  document.getElementById('rtmp-res').value = '1280x720';
+  if (document.getElementById('rtmp-slot').options.length > 0) {
+    document.getElementById('rtmp-slot').selectedIndex = 0;
+  }
+  document.getElementById('rtmp-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+};
+
+/* We update the URL template when the platform changes */
+window.rtmpPlatformChanged = function() {
+  var platform = document.getElementById('rtmp-platform').value;
+  var tpl = RTMP_URL_TEMPLATES[platform] || '';
+  document.getElementById('rtmp-url').value = tpl;
+  document.getElementById('rtmp-url').placeholder = tpl || 'rtmp://your-server/live/';
+};
+
+/* We toggle stream key visibility */
+window.rtmpToggleKey = function() {
+  var inp  = document.getElementById('rtmp-key');
+  var icon = document.getElementById('rtmp-key-icon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    inp.type = 'password';
+    icon.className = 'fa-solid fa-eye';
+  }
+};
+
+/* We open the RTMP modal in Edit mode */
+window.rtmpEdit = function(id) {
+  var t = (_rtmpData || []).find(function(r) { return r.id == id; });
+  if (!t) { mc1Toast('Target not found', 'err'); return; }
+  document.getElementById('rtmp-id').value = t.id;
+  document.getElementById('rtmp-modal-title').textContent = 'Edit RTMP Target — ' + t.name;
+  document.getElementById('rtmp-platform').value = t.platform || 'custom_rtmp';
+  document.getElementById('rtmp-name').value = t.name || '';
+  document.getElementById('rtmp-url').value = t.rtmp_url || '';
+  document.getElementById('rtmp-key').value = ''; /* We never pre-fill keys */
+  document.getElementById('rtmp-key').type = 'password';
+  document.getElementById('rtmp-key-icon').className = 'fa-solid fa-eye';
+  document.getElementById('rtmp-slot').value = t.slot_id || 1;
+  document.getElementById('rtmp-video').checked = !!t.video_enabled;
+  document.getElementById('rtmp-res').value = t.video_resolution || '1280x720';
+  document.getElementById('rtmp-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+};
+
+window.rtmpModalClose = function() {
+  document.getElementById('rtmp-modal').style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+/* We save (create or update) an RTMP target */
+window.rtmpSave = function() {
+  var id       = parseInt(document.getElementById('rtmp-id').value) || 0;
+  var platform = document.getElementById('rtmp-platform').value;
+  var name     = document.getElementById('rtmp-name').value.trim();
+  var url      = document.getElementById('rtmp-url').value.trim();
+  var key      = document.getElementById('rtmp-key').value.trim();
+  var slot     = parseInt(document.getElementById('rtmp-slot').value) || 1;
+  var video    = document.getElementById('rtmp-video').checked;
+  var res      = document.getElementById('rtmp-res').value;
+
+  if (!name) { mc1Toast('Name is required', 'warn'); return; }
+  if (!id && !key) { mc1Toast('Stream key is required for new targets', 'warn'); return; }
+
+  var payload = {
+    action:           id > 0 ? 'update' : 'create',
+    id:               id > 0 ? id : undefined,
+    platform:         platform,
+    name:             name,
+    rtmp_url:         url,
+    slot_id:          slot,
+    video_enabled:    video,
+    video_resolution: res,
+  };
+  if (key) payload.stream_key = key;
+
+  mc1Api('POST', '/app/api/rtmp.php', payload).then(function(d) {
+    if (d.ok) {
+      mc1Toast(id > 0 ? 'RTMP target updated' : 'RTMP target created', 'ok');
+      rtmpModalClose();
+      rtmpLoad();
+    } else {
+      mc1Toast(d.error || 'Save failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We start an RTMP relay */
+window.rtmpStart = function(id) {
+  mc1Toast('Starting RTMP relay...', 'ok');
+  mc1Api('POST', '/app/api/rtmp.php', { action: 'start', id: id }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('RTMP relay started (PID ' + (d.pid || '?') + ')', 'ok');
+      rtmpLoad();
+    } else {
+      mc1Toast(d.error || 'Start failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We stop an RTMP relay */
+window.rtmpStop = function(id) {
+  if (!confirm('Stop this RTMP relay? The platform stream will go offline.')) return;
+  mc1Api('POST', '/app/api/rtmp.php', { action: 'stop', id: id }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('RTMP relay stopped', 'ok');
+      rtmpLoad();
+    } else {
+      mc1Toast(d.error || 'Stop failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We delete an RTMP target */
+window.rtmpDel = function(id, name) {
+  if (!confirm('Delete RTMP target "' + name + '"? This will also stop any running relay.')) return;
+  mc1Api('POST', '/app/api/rtmp.php', { action: 'delete', id: id }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('RTMP target deleted', 'ok');
+      rtmpLoad();
+    } else {
+      mc1Toast(d.error || 'Delete failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We close RTMP modal on backdrop click or Escape */
+document.addEventListener('click', function(e) {
+  if (e.target === document.getElementById('rtmp-modal')) rtmpModalClose();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('rtmp-modal').style.display === 'block') rtmpModalClose();
+});
 
 /* ══════════════════════════════════════════════════════════════════════════
  * STREAMING SERVERS JS
