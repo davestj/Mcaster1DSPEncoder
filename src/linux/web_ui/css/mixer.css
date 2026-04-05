@@ -417,6 +417,58 @@
   border: 1px solid rgba(255,255,255,.15);
 }
 
+/* ── WebGL Fader Caps & Effects ──────────────────────── */
+.gl-fader-cap-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.ch-fader-cap.gl-cap-active {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.ch-fader-cap.gl-cap-active::before,
+.ch-fader-cap.gl-cap-active::after {
+  display: none;
+}
+.gl-master-spectrum-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.3;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 0;
+}
+.gl-grain-overlay-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+  border-radius: inherit;
+  mix-blend-mode: overlay;
+}
+.gl-neon-fill-canvas {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 12px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* ── Responsive ──────────────────────────────────────── */
 @media (max-width: 860px) {
   .mixer-channels {

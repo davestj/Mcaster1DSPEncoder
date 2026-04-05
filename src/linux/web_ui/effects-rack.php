@@ -590,6 +590,7 @@ require_once __DIR__ . '/app/inc/header.php';
 
 <!-- Pedalboard JS (order matters: svgs first, then configs, then engine) -->
 <script src="/js/pedal-svgs.js"></script>
+<script src="/js/webgl-pedals.js"></script>
 <script src="/js/pedal-configs.js"></script>
 <script src="/js/pedalboard.js"></script>
 

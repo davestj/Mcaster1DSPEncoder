@@ -125,6 +125,7 @@ require_once __DIR__ . '/app/inc/header.php';
 </div>
 
 <script src="/js/webgl-viz.js"></script>
+<script src="/js/webgl-mixer.js"></script>
 <script src="/js/mixer-console.js"></script>
 <script>
 (function() {

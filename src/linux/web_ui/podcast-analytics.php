@@ -125,6 +125,18 @@ require __DIR__ . '/app/inc/header.php';
   </div>
 </div>
 
+<!-- Download Globe (WebGL or fallback) -->
+<div class="card" id="pa-globe-card" style="display:none;margin-bottom:18px">
+  <div class="card-hdr" style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)">
+    <div style="font-size:14px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px">
+      <i class="fa-solid fa-earth-americas" style="color:var(--teal)"></i> Download Geography
+    </div>
+    <span class="badge badge-gray" id="pa-globe-count">0 regions</span>
+  </div>
+  <div id="pa-globe-container" style="position:relative;height:300px"></div>
+  <div id="pa-globe-fallback" style="display:none"></div>
+</div>
+
 <!-- Charts -->
 <div class="pa-charts">
 
@@ -524,6 +536,71 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 })();
+</script>
+
+<script src="/js/webgl-dashboard.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var WD = window.WebGLDashboard;
+    if (!WD) return;
+
+    var card = document.getElementById('pa-globe-card');
+    if (!card) return;
+    card.style.display = '';
+
+    var hasGL = WD.isWebGLAvailable() && WD.getWebGLPref();
+    var paGlobe = null;
+
+    if (hasGL) {
+        var gc = document.getElementById('pa-globe-container');
+        if (gc) paGlobe = new WD.Globe(gc);
+    } else {
+        var gcont = document.getElementById('pa-globe-container');
+        var gfb = document.getElementById('pa-globe-fallback');
+        if (gcont) gcont.style.display = 'none';
+        if (gfb) gfb.style.display = '';
+    }
+
+    function pollPaGlobe() {
+        if (!window.mc1Api) return;
+        mc1Api('POST', '/app/api/podcast.php', {
+            action: 'recent_downloads',
+            limit: 500,
+            show_id: parseInt(document.getElementById('pa-show').value) || 0,
+            days: parseInt(document.getElementById('pa-days').value) || 30
+        }).then(function(d) {
+            if (!d || !d.ok) return;
+            var rows = d.downloads || [];
+            var countMap = {};
+            for (var i = 0; i < rows.length; i++) {
+                var cc = (rows[i].country || '').toUpperCase();
+                if (!cc || cc === '--') continue;
+                countMap[cc] = (countMap[cc] || 0) + 1;
+            }
+            var geoData = [];
+            for (var cc in countMap) geoData.push({ country: cc, count: countMap[cc] });
+
+            if (paGlobe) {
+                paGlobe.updateListeners(geoData);
+            } else {
+                var fb = document.getElementById('pa-globe-fallback');
+                if (fb) WD.renderCountryFallback(fb, geoData);
+            }
+            var badge = document.getElementById('pa-globe-count');
+            if (badge) badge.textContent = geoData.length + ' region' + (geoData.length === 1 ? '' : 's');
+        }).catch(function() {});
+    }
+
+    pollPaGlobe();
+    setInterval(pollPaGlobe, 30000);
+
+    // Re-poll globe when filters change
+    var origPaReload = window.paReload;
+    window.paReload = function() {
+        if (origPaReload) origPaReload();
+        setTimeout(pollPaGlobe, 500);
+    };
+});
 </script>
 
 <?php require __DIR__ . '/app/inc/footer.php'; ?>

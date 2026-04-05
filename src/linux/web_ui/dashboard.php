@@ -95,13 +95,49 @@ require_once __DIR__ . '/app/inc/header.php';
   <?php endforeach; endif; ?>
 </div>
 
-<!-- Bandwidth chart -->
-<div class="card">
+<!-- View toggle: Cards / Rack -->
+<div id="view-toggle-wrap" style="display:none;margin-bottom:10px;text-align:right">
+  <button class="btn btn-secondary btn-sm" id="btn-view-cards" onclick="setView('cards')" style="opacity:1">
+    <i class="fa-solid fa-grip"></i> Cards
+  </button>
+  <button class="btn btn-secondary btn-sm" id="btn-view-rack" onclick="setView('rack')" style="opacity:.5">
+    <i class="fa-solid fa-server"></i> Rack
+  </button>
+</div>
+
+<!-- WebGL Encoder Rack (hidden by default) -->
+<div id="rack-view" class="card" style="display:none">
   <div class="card-hdr">
-    <div class="card-title"><i class="fa-solid fa-chart-area fa-fw"></i> Live Bandwidth</div>
-    <span class="badge badge-gray" id="total-bw">—</span>
+    <div class="card-title"><i class="fa-solid fa-server fa-fw" style="color:var(--teal)"></i> Encoder Rack</div>
   </div>
-  <div class="chart-wrap"><canvas id="bw-chart"></canvas></div>
+  <div style="position:relative;height:280px"><canvas id="rack-canvas" style="width:100%;height:100%"></canvas></div>
+</div>
+
+<!-- Listener Globe + Bandwidth row -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px" id="globe-bw-row">
+  <!-- Listener Globe -->
+  <div class="card" id="globe-card" style="display:none">
+    <div class="card-hdr">
+      <div class="card-title"><i class="fa-solid fa-earth-americas fa-fw" style="color:var(--teal)"></i> Listener Map</div>
+      <span class="badge badge-gray" id="globe-count">0 regions</span>
+    </div>
+    <div id="globe-container" style="position:relative;height:280px"></div>
+    <div id="globe-fallback" style="display:none"></div>
+  </div>
+
+  <!-- Bandwidth chart -->
+  <div class="card" id="bw-card">
+    <div class="card-hdr">
+      <div class="card-title"><i class="fa-solid fa-chart-area fa-fw"></i> Live Bandwidth</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="badge badge-gray" id="total-bw">—</span>
+        <button class="btn btn-secondary btn-xs" id="btn-bw-2d" onclick="setBwMode('2d')" style="font-size:10px;opacity:1">2D</button>
+        <button class="btn btn-secondary btn-xs" id="btn-bw-3d" onclick="setBwMode('3d')" style="font-size:10px;opacity:.5;display:none">3D</button>
+      </div>
+    </div>
+    <div class="chart-wrap" id="bw-2d-wrap"><canvas id="bw-chart"></canvas></div>
+    <div class="chart-wrap" id="bw-3d-wrap" style="display:none"><canvas id="bw-chart-3d" style="width:100%;height:100%"></canvas></div>
+  </div>
 </div>
 
 <!-- Slot Stats Modal -->
@@ -324,6 +360,17 @@ function poll() {
     if (tbw) tbw.textContent = fmtBw(totalBw);
     if (chartInst) { chartInst.data.labels = chartLabels.slice(); chartInst.update(); }
 
+    // Feed WebGL components from poll data
+    if (window._wglRack) {
+      window._wglRack.updateSlots(encoders);
+    }
+    if (window._wglBwChart) {
+      encoders.forEach(function(enc, idx) {
+        var id = enc.slot_id;
+        window._wglBwChart.updateData(enc.name || 'Slot '+id, bwHist[id] || [], idx);
+      });
+    }
+
   }).catch(function(){
     if (dot) dot.style.background = 'var(--red)';
     updateApiStatus(false);
@@ -467,6 +514,136 @@ document.getElementById('stats-modal').addEventListener('click', function(e) {
 });
 
 })();
+</script>
+
+<script src="/js/webgl-dashboard.js"></script>
+<script>
+// Initialize WebGL dashboard components after both the IIFE and webgl-dashboard.js are loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // The main dashboard IIFE runs poll() on DOMContentLoaded.
+    // We piggyback by patching the poll data flow.
+    // Since bwHist is closure-scoped, we use a MutationObserver on the total-bw badge
+    // to detect poll completions and feed WebGL components.
+
+    if (window.WebGLDashboard) {
+        var WD = WebGLDashboard;
+        var hasGL = WD.isWebGLAvailable() && WD.getWebGLPref();
+
+        // Show the globe card
+        var globeCard = document.getElementById('globe-card');
+        if (globeCard) globeCard.style.display = '';
+
+        if (hasGL) {
+            // Show view toggle
+            var toggleWrap = document.getElementById('view-toggle-wrap');
+            if (toggleWrap) toggleWrap.style.display = '';
+
+            // Show 3D bandwidth button
+            var btn3d = document.getElementById('btn-bw-3d');
+            if (btn3d) btn3d.style.display = '';
+
+            // Init globe
+            var gc = document.getElementById('globe-container');
+            if (gc && !gc._globeInit) {
+                gc._globeInit = true;
+                window._wglGlobe = new WD.Globe(gc);
+            }
+        } else {
+            // Fallback: show country list instead of globe
+            var gcont = document.getElementById('globe-container');
+            var gfb = document.getElementById('globe-fallback');
+            if (gcont) gcont.style.display = 'none';
+            if (gfb) gfb.style.display = '';
+        }
+
+        // Poll globe data every 30s
+        function pollGlobe() {
+            if (!window.mc1Api) return;
+            mc1Api('POST', '/app/api/metrics.php', { action: 'sessions', limit: 500 }).then(function(d) {
+                if (!d || !d.ok) return;
+                var sessions = d.sessions || d.rows || [];
+                var countMap = {};
+                for (var i = 0; i < sessions.length; i++) {
+                    var cc = sessions[i].country || sessions[i].country_code || '';
+                    if (!cc) continue;
+                    countMap[cc.toUpperCase()] = (countMap[cc.toUpperCase()] || 0) + 1;
+                }
+                var geoData = [];
+                for (var cc in countMap) geoData.push({ country: cc, count: countMap[cc] });
+
+                if (window._wglGlobe) {
+                    window._wglGlobe.updateListeners(geoData);
+                } else {
+                    var fb = document.getElementById('globe-fallback');
+                    if (fb) WD.renderCountryFallback(fb, geoData);
+                }
+                var badge = document.getElementById('globe-count');
+                if (badge) badge.textContent = geoData.length + ' region' + (geoData.length === 1 ? '' : 's');
+            }).catch(function() {});
+        }
+        pollGlobe();
+        setInterval(pollGlobe, 30000);
+    } else {
+        // No WebGL lib loaded: hide globe card, make bandwidth full width
+        var gc2 = document.getElementById('globe-card');
+        if (gc2) gc2.style.display = 'none';
+        var row = document.getElementById('globe-bw-row');
+        if (row) row.style.gridTemplateColumns = '1fr';
+    }
+});
+
+/* ── View and BW mode toggles ── */
+window.setView = function(mode) {
+    var slotsGrid = document.getElementById('slots-grid');
+    var rackView = document.getElementById('rack-view');
+    var btnCards = document.getElementById('btn-view-cards');
+    var btnRack = document.getElementById('btn-view-rack');
+
+    if (mode === 'rack') {
+        if (slotsGrid) slotsGrid.style.display = 'none';
+        if (rackView) rackView.style.display = '';
+        if (btnCards) btnCards.style.opacity = '0.5';
+        if (btnRack) btnRack.style.opacity = '1';
+        if (!window._wglRack && window.WebGLDashboard) {
+            var rc = document.getElementById('rack-canvas');
+            if (rc) {
+                window._wglRack = new WebGLDashboard.EncoderRack(rc, {
+                    onClick: function(slot) {
+                        if (slot && slot.id && window.showSlotStats) showSlotStats(slot.id);
+                    }
+                });
+            }
+        }
+    } else {
+        if (slotsGrid) slotsGrid.style.display = '';
+        if (rackView) rackView.style.display = 'none';
+        if (btnCards) btnCards.style.opacity = '1';
+        if (btnRack) btnRack.style.opacity = '0.5';
+    }
+};
+
+window.setBwMode = function(mode) {
+    var wrap2d = document.getElementById('bw-2d-wrap');
+    var wrap3d = document.getElementById('bw-3d-wrap');
+    var btn2d = document.getElementById('btn-bw-2d');
+    var btn3d = document.getElementById('btn-bw-3d');
+
+    if (mode === '3d') {
+        if (wrap2d) wrap2d.style.display = 'none';
+        if (wrap3d) wrap3d.style.display = '';
+        if (btn2d) btn2d.style.opacity = '0.5';
+        if (btn3d) btn3d.style.opacity = '1';
+        if (!window._wglBwChart && window.WebGLDashboard) {
+            var cv = document.getElementById('bw-chart-3d');
+            if (cv) window._wglBwChart = new WebGLDashboard.BandwidthChart(cv);
+        }
+    } else {
+        if (wrap2d) wrap2d.style.display = '';
+        if (wrap3d) wrap3d.style.display = 'none';
+        if (btn2d) btn2d.style.opacity = '1';
+        if (btn3d) btn3d.style.opacity = '0.5';
+    }
+};
 </script>
 
 <?php require_once __DIR__ . '/app/inc/footer.php'; ?>

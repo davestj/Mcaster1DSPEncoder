@@ -37,6 +37,7 @@ function MixerConsole() {
   this.skin       = 'broadcast_dark';
   this.glVUMeters = {};     // canvasId -> WebGLViz.VUMeter instance
   this.useWebGL   = false;  // WebGL VU meter rendering enabled
+  this.glMixer    = null;   // WebGLMixer.MixerWebGL instance
 }
 
 MixerConsole.prototype.init = function(containerId) {
@@ -50,6 +51,13 @@ MixerConsole.prototype.init = function(containerId) {
   // Check if WebGL VU meters should be enabled
   if (window.WebGLViz && WebGLViz.isWebGLAvailable() && WebGLViz.getWebGLPref()) {
     this.useWebGL = true;
+  }
+
+  // Initialize WebGL mixer enhancements (3D fader caps, spectrum, skin shaders)
+  if (window.WebGLMixer) {
+    this.glMixer = new WebGLMixer.MixerWebGL();
+    this.glMixer.activate();
+    this.glMixer.setSkin(this.skin);
   }
 
   // Load saved config from server
@@ -178,6 +186,11 @@ MixerConsole.prototype._tickVU = function() {
   else this.master.vu_peak = mc * decay;
   if (this.master.vu_peak < 0.01) this.master.vu_peak = 0;
   this._drawVU('vu-master', this.master.vu_peak);
+
+  // Feed master bus spectrum analyzer from VU level
+  if (this.glMixer && this.glMixer._active) {
+    this.glMixer.updateMasterSpectrumFromVU(this.master.vu_peak);
+  }
 };
 
 /* ── Draw VU Meter ─────────────────────────────────────── */
@@ -262,6 +275,12 @@ MixerConsole.prototype._buildStrips = function(wrap, ids) {
     self._attachStripEvents(id);
   });
   self._attachStripEvents('master');
+
+  // Initialize WebGL fader caps and skin effects after DOM is ready
+  if (self.glMixer && self.glMixer._active) {
+    self.glMixer.destroyAll();
+    self.glMixer.initAllCaps();
+  }
 };
 
 MixerConsole.prototype._stripHTML = function(id, ch) {
@@ -435,6 +454,13 @@ MixerConsole.prototype._updateFaderVisual = function(id, vol) {
   if (fill) fill.style.height = pct + '%';
   if (cap)  cap.style.top = (100 - pct) + '%';
   if (valEl) valEl.textContent = Math.round(vol * 100) + '%';
+
+  // Update WebGL fader cap specular highlight and neon fill
+  if (this.glMixer && this.glMixer._active) {
+    var normPos = vol / FADER_MAX;
+    this.glMixer.updateCapPosition(id, normPos);
+    this.glMixer.updateNeonFill(id, normPos);
+  }
 };
 
 /* ── Pan Visual Update ─────────────────────────────────── */
@@ -598,6 +624,11 @@ MixerConsole.prototype.setSkin = function(skinName, skipSave) {
 
   // Persist to localStorage
   localStorage.setItem('mc1_mixer_skin', skinName);
+
+  // Update WebGL mixer skin (recreates cap materials, grain, neon)
+  if (this.glMixer && this.glMixer._active) {
+    this.glMixer.setSkin(skinName);
+  }
 
   // If not a silent load, save to server config too
   if (!skipSave) this.saveConfig();

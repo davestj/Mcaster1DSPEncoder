@@ -354,6 +354,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
     <i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune
   </a>
 
+  <div class="nav-section">Producer</div>
+  <a class="nav-item <?= $active_nav === 'producer' ? 'active' : '' ?>" href="/producer.php">
+    <i class="fa-solid fa-tv fa-fw"></i> Video Producer
+  </a>
+  <a class="nav-item <?= $active_nav === 'daw' ? 'active' : '' ?>" href="/daw.php">
+    <i class="fa-solid fa-timeline fa-fw"></i> Multi-Track Editor
+  </a>
+  <a class="nav-item <?= $active_nav === 'forensic' ? 'active' : '' ?>" href="/forensic.php">
+    <i class="fa-solid fa-microscope fa-fw"></i> Forensic Analysis
+  </a>
+
   <div class="nav-section">Publish</div>
   <a class="nav-item <?= $active_nav === 'podcast' ? 'active' : '' ?>" href="/podcast.php">
     <i class="fa-solid fa-podcast fa-fw"></i> Podcast
@@ -442,6 +453,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <a href="/effects-rack.php"><i class="fa-solid fa-sliders fa-fw"></i> Effects Rack</a>
   <a href="/jack.php"><i class="fa-solid fa-plug fa-fw"></i> JACK Audio</a>
   <a href="/voictune.php"><i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune</a>
+  <a href="/producer.php"><i class="fa-solid fa-tv fa-fw"></i> Video Producer</a>
   <a href="/podcast.php"><i class="fa-solid fa-podcast fa-fw"></i> Podcast</a>
   <a href="/recording.php"><i class="fa-solid fa-circle fa-fw" style="color:#ef4444"></i> Recording</a>
   <a href="/schedule.php"><i class="fa-solid fa-clock fa-fw"></i> Schedule</a>

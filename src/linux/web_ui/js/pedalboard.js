@@ -103,6 +103,12 @@ Pedalboard.prototype.init = function(containerId, effects, versions, slotId) {
 
     // Load saved layout
     this.loadLayout();
+
+    // Hook WebGL cable overlay if available (webgl-pedals.js)
+    this._webglCables = null;
+    if (window.WebGLPedals && WebGLPedals.available()) {
+        this._webglCables = WebGLPedals.hookCables(this);
+    }
 };
 
 /* ── Add a pedal to the board ────────────────────────────────────────── */
@@ -197,8 +203,15 @@ Pedalboard.prototype.addPedal = function(effect, index) {
         unitId: unitId,
         enabled: effect.enabled !== false,
         params: effect.params || {},
-        isFixed: isFixed
+        isFixed: isFixed,
+        _eqCurve: null
     };
+
+    // Add WebGL EQ frequency response curve overlay for EQ pedals
+    if (type === 'eq' && window.WebGLPedals && WebGLPedals.available()) {
+        var eqGains = (effect.params && effect.params.band_gains) || null;
+        this.pedals[unitId]._eqCurve = WebGLPedals.createEQCurve(el, eqGains);
+    }
 
     // Button event handling (only for non-fixed pedals)
     if (!isFixed) {

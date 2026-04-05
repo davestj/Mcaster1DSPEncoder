@@ -141,6 +141,23 @@ static void login_rate_reset(const std::string& remote_addr)
     g_login_attempts.erase(remote_addr);
 }
 
+/* ── Producer (VP-1) in-memory store ──────────────────────────────────────── */
+
+struct ProducerScene {
+    int         id;
+    int         user_id;
+    std::string scene_name;
+    std::string sources_json;
+    int         active_source;
+    std::string transition_type;
+    int         transition_duration_ms;
+    time_t      updated_at;
+};
+static std::vector<ProducerScene> g_producer_scenes;
+static int                        g_producer_scene_next_id = 1;
+static std::mutex                 g_producer_mtx;
+static json                       g_producer_devices = json::array();
+
 /* ── Session store ────────────────────────────────────────────────────────── */
 
 struct MC1Session { time_t expires; std::string username; };
@@ -4230,6 +4247,109 @@ static void setup_routes(httplib::Server& svr)
         auto rct = result->get_header_value("Content-Type");
         res.set_content(result->body, rct.empty() ? "application/json" : rct);
     };
+
+    // ── GET /api/v1/producer/scenes — list saved scenes ─────────────────────
+    svr.Get("/api/v1/producer/scenes",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::lock_guard<std::mutex> lk(g_producer_mtx);
+                // Optional ?id=N to get a single scene
+                auto id_param = req.get_param_value("id");
+                if (!id_param.empty()) {
+                    int id = std::stoi(id_param);
+                    for (auto& sc : g_producer_scenes) {
+                        if (sc.id == id) {
+                            json j;
+                            j["ok"]    = true;
+                            j["scene"] = {
+                                {"id", sc.id},
+                                {"scene_name", sc.scene_name},
+                                {"sources_json", sc.sources_json},
+                                {"active_source", sc.active_source},
+                                {"transition_type", sc.transition_type},
+                                {"transition_duration_ms", sc.transition_duration_ms}
+                            };
+                            res.set_content(j.dump(), "application/json");
+                            return;
+                        }
+                    }
+                    res.status = 404;
+                    res.set_content(R"({"ok":false,"error":"Scene not found"})", "application/json");
+                    return;
+                }
+                json arr = json::array();
+                for (auto& sc : g_producer_scenes) {
+                    arr.push_back({
+                        {"id", sc.id},
+                        {"scene_name", sc.scene_name},
+                        {"active_source", sc.active_source},
+                        {"transition_type", sc.transition_type},
+                        {"transition_duration_ms", sc.transition_duration_ms},
+                        {"updated_at", (int64_t)sc.updated_at}
+                    });
+                }
+                json j; j["ok"] = true; j["scenes"] = arr;
+                res.set_content(j.dump(), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/producer/scenes — save/update a scene ────────────────────
+    svr.Put("/api/v1/producer/scenes",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"ok":false,"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                std::lock_guard<std::mutex> lk(g_producer_mtx);
+                ProducerScene sc;
+                sc.id                    = g_producer_scene_next_id++;
+                sc.user_id               = 0;  // TODO: extract from session
+                sc.scene_name            = body.value("scene_name", "Default");
+                sc.sources_json          = body.value("sources_json", "[]");
+                sc.active_source         = body.value("active_source", 0);
+                sc.transition_type       = body.value("transition_type", "cut");
+                sc.transition_duration_ms = body.value("transition_duration_ms", 500);
+                sc.updated_at            = time(nullptr);
+                g_producer_scenes.push_back(sc);
+                json j;
+                j["ok"] = true;
+                j["id"] = sc.id;
+                res.set_content(j.dump(), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/producer/devices — last-known browser video devices ──────
+    svr.Get("/api/v1/producer/devices",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::lock_guard<std::mutex> lk(g_producer_mtx);
+                json j;
+                j["ok"]      = true;
+                j["devices"] = g_producer_devices;
+                res.set_content(j.dump(), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/producer/devices — store browser-detected video devices ──
+    svr.Put("/api/v1/producer/devices",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json body;
+                try { body = json::parse(req.body); } catch (...) {
+                    res.status = 400;
+                    res.set_content(R"({"ok":false,"error":"Invalid JSON"})", "application/json");
+                    return;
+                }
+                std::lock_guard<std::mutex> lk(g_producer_mtx);
+                if (body.contains("devices") && body["devices"].is_array()) {
+                    g_producer_devices = body["devices"];
+                }
+                res.set_content(R"({"ok":true})", "application/json");
+            });
+        });
 
     // GET /api/v1/proxy/voictune/* → forward to VoicTune /api/v1/voictune/*
     svr.Get(R"(/api/v1/proxy/voictune/(.*))",

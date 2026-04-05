@@ -37,12 +37,29 @@ function debouncedUpdate(key, params) {
     }, 80);
 }
 
+/* ── Update WebGL EQ curve overlay on any EQ pedal ────────────────────── */
+function _updateEQCurve(gains) {
+    if (!window.pbBoard || !pbBoard.pedals) return;
+    var ids = Object.keys(pbBoard.pedals);
+    for (var i = 0; i < ids.length; i++) {
+        var p = pbBoard.pedals[ids[i]];
+        if (p && p.type === 'eq' && p._eqCurve) {
+            p._eqCurve.setGains(gains);
+        }
+    }
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
  * UI Component Generators
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Rotary Knob (CSS 3D with mouse drag) ────────────────────────────── */
+/* ── Rotary Knob (WebGL metallic if available, else CSS 3D) ──────────── */
 function createKnob(id, label, value, min, max, step, unit, onChange) {
+    /* Try WebGL metallic knob first (webgl-pedals.js) */
+    if (window.WebGLPedals && WebGLPedals.available()) {
+        return WebGLPedals.createKnob(id, label, value, min, max, step, unit, onChange);
+    }
+    /* Fallback: CSS 3D knob */
     var range = max - min;
     var pct = (value - min) / range;
     var angle = -135 + pct * 270;
@@ -233,6 +250,9 @@ configBuilders.eq = function(container, params) {
     var freqs = ['31Hz', '63Hz', '125Hz', '250Hz', '500Hz', '1kHz', '2kHz', '4kHz', '8kHz', '16kHz'];
     var gains = params.band_gains || [0,0,0,0,0,0,0,0,0,0];
 
+    /* Live gains array for WebGL EQ curve updates */
+    var liveGains = gains.slice();
+
     for (var i = 0; i < 10; i++) {
         (function(idx) {
             var gain = gains[idx] || 0;
@@ -240,6 +260,9 @@ configBuilders.eq = function(container, params) {
                 function(v) {
                     var g = {}; g['band_' + idx + '_gain'] = v;
                     debouncedUpdate('eq-b' + idx, g);
+                    /* Update WebGL EQ curve if active */
+                    liveGains[idx] = v;
+                    _updateEQCurve(liveGains);
                 }));
         })(i);
     }
