@@ -4,10 +4,15 @@
  * File:    src/linux/web_ui/js/daw-engine.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   DAW-1
+ * Phase:   DAW-2
  *
  * We provide a full multi-track DAW engine with:
- *   - Track and clip management (add, remove, move, split, duplicate)
+ *   - Track and clip management (add, remove, move, split, merge, duplicate)
+ *   - Clip copy/paste (Ctrl+C / Ctrl+V)
+ *   - Per-clip gain automation envelope with draggable points
+ *   - Crossfade between overlapping clips (linear / equal-power)
+ *   - Clip fade handles (drag top corners for fade in/out)
+ *   - Snap-to-grid with BPM-based beat grid (bar, beat, 1/2, 1/4, 1/8, 1/16)
  *   - Web Audio API playback with per-track gain + pan
  *   - WebGL waveform rendering via DawWaveformRenderer
  *   - Timeline interaction (zoom, scroll, drag clips, context menu)
@@ -53,6 +58,10 @@ function DawEngine(containerId) {
     self.selectedClip = null;
     self.selectedTrack = null;
     self.ctxClip      = null;  // clip for context menu
+    self.clipboard     = null; // copied clip data for paste
+    self.automationMode = false; // true when editing gain automation points
+    self.crossfadeMode = 'auto'; // 'auto' or 'manual'
+    self.clipPropsVisible = false; // clip properties panel state
 
     /* ── View state ── */
     self.pixelsPerSec = 100;
@@ -260,6 +269,7 @@ DawEngine.prototype.addClip = function(trackId, audioBuffer, name, startTime, pe
         offset: 0,
         fadeIn: 0,
         fadeOut: 0,
+        gainEnvelope: [],  // [{time, value}] — time relative to clip start, value 0.0-2.0
         color: track.color
     };
     track.clips.push(clip);
@@ -338,6 +348,20 @@ DawEngine.prototype.splitClip = function(clipId, atTime) {
     clip.duration = dur1;
     clip.fadeOut = 0;
 
+    // Split gain envelope between the two halves
+    var envA = [], envB = [];
+    if (clip.gainEnvelope) {
+        for (var ei = 0; ei < clip.gainEnvelope.length; ei++) {
+            var ep = clip.gainEnvelope[ei];
+            if (ep.time < splitOffset) {
+                envA.push({ time: ep.time, value: ep.value });
+            } else {
+                envB.push({ time: ep.time - splitOffset, value: ep.value });
+            }
+        }
+    }
+    clip.gainEnvelope = envA;
+
     // Create second clip
     var clip2 = {
         id: 'clip_' + self.nextClipId++,
@@ -349,6 +373,7 @@ DawEngine.prototype.splitClip = function(clipId, atTime) {
         offset: clip.offset + splitOffset,
         fadeIn: 0,
         fadeOut: clip.fadeOut,
+        gainEnvelope: envB,
         color: clip.color
     };
     found.track.clips.push(clip2);
@@ -370,6 +395,7 @@ DawEngine.prototype.duplicateClip = function(clipId) {
         offset: orig.offset,
         fadeIn: orig.fadeIn,
         fadeOut: orig.fadeOut,
+        gainEnvelope: orig.gainEnvelope ? orig.gainEnvelope.map(function(pt) { return { time: pt.time, value: pt.value }; }) : [],
         color: orig.color
     };
     found.track.clips.push(newClip);
@@ -377,6 +403,192 @@ DawEngine.prototype.duplicateClip = function(clipId) {
 
 DawEngine.prototype.deleteSelectedClip = function() {
     if (this.selectedClip) this.removeClip(this.selectedClip);
+};
+
+/* ── Merge Adjacent Clips ── */
+
+DawEngine.prototype.mergeAdjacentClips = function(clipIdA, clipIdB) {
+    var self = this;
+    var foundA = self._getClip(clipIdA);
+    var foundB = self._getClip(clipIdB);
+    if (!foundA || !foundB) return;
+    if (foundA.track.id !== foundB.track.id) { mc1Toast('Clips must be on the same track', 'warn'); return; }
+    if (foundA.clip.audioBuffer !== foundB.clip.audioBuffer) { mc1Toast('Can only merge clips from same source', 'warn'); return; }
+
+    self._pushUndo('mergeClips');
+
+    // Ensure A is the earlier clip
+    var a = foundA.clip, b = foundB.clip;
+    if (b.startTime < a.startTime) { var tmp = a; a = b; b = tmp; }
+
+    // Merge: extend A to cover both, remove B
+    var mergedEnd = Math.max(a.startTime + a.duration, b.startTime + b.duration);
+    a.duration = mergedEnd - a.startTime;
+    a.fadeOut = b.fadeOut;
+    a.gainEnvelope = a.gainEnvelope.concat(
+        b.gainEnvelope.map(function(pt) {
+            return { time: pt.time + (b.startTime - a.startTime), value: pt.value };
+        })
+    );
+    self.removeClip(b.id);
+};
+
+/* ── Copy / Paste ── */
+
+DawEngine.prototype.copyClip = function(clipId) {
+    var self = this;
+    var found = self._getClip(clipId || self.selectedClip);
+    if (!found) return;
+    var c = found.clip;
+    self.clipboard = {
+        name: c.name,
+        audioBuffer: c.audioBuffer,
+        peaks: c.peaks,
+        duration: c.duration,
+        offset: c.offset,
+        fadeIn: c.fadeIn,
+        fadeOut: c.fadeOut,
+        gainEnvelope: c.gainEnvelope.map(function(pt) { return { time: pt.time, value: pt.value }; }),
+        color: c.color
+    };
+    mc1Toast('Clip copied', 'ok');
+};
+
+DawEngine.prototype.pasteClip = function() {
+    var self = this;
+    if (!self.clipboard) { mc1Toast('Nothing to paste', 'warn'); return; }
+    var targetTrack = self.selectedTrack ? self._getTrack(self.selectedTrack) : self.tracks[0];
+    if (!targetTrack) { targetTrack = self.addTrack(); }
+
+    self._pushUndo('pasteClip');
+    var cb = self.clipboard;
+    var clip = {
+        id: 'clip_' + self.nextClipId++,
+        name: cb.name + ' (paste)',
+        audioBuffer: cb.audioBuffer,
+        peaks: cb.peaks,
+        startTime: self.snapTime(self.playPos),
+        duration: cb.duration,
+        offset: cb.offset,
+        fadeIn: cb.fadeIn,
+        fadeOut: cb.fadeOut,
+        gainEnvelope: cb.gainEnvelope.map(function(pt) { return { time: pt.time, value: pt.value }; }),
+        color: targetTrack.color
+    };
+    targetTrack.clips.push(clip);
+    self.selectedClip = clip.id;
+    mc1Toast('Clip pasted', 'ok');
+};
+
+/* ── Gain Envelope Operations ── */
+
+DawEngine.prototype.addGainPoint = function(clipId, time, value) {
+    var self = this;
+    var found = self._getClip(clipId);
+    if (!found) return;
+    self._pushUndo('addGainPoint');
+    found.clip.gainEnvelope.push({ time: time, value: Math.max(0, Math.min(2.0, value)) });
+    found.clip.gainEnvelope.sort(function(a, b) { return a.time - b.time; });
+};
+
+DawEngine.prototype.moveGainPoint = function(clipId, pointIndex, newTime, newValue) {
+    var self = this;
+    var found = self._getClip(clipId);
+    if (!found || pointIndex < 0 || pointIndex >= found.clip.gainEnvelope.length) return;
+    found.clip.gainEnvelope[pointIndex].time = Math.max(0, Math.min(found.clip.duration, newTime));
+    found.clip.gainEnvelope[pointIndex].value = Math.max(0, Math.min(2.0, newValue));
+    found.clip.gainEnvelope.sort(function(a, b) { return a.time - b.time; });
+};
+
+DawEngine.prototype.removeGainPoint = function(clipId, pointIndex) {
+    var self = this;
+    var found = self._getClip(clipId);
+    if (!found || pointIndex < 0 || pointIndex >= found.clip.gainEnvelope.length) return;
+    self._pushUndo('removeGainPoint');
+    found.clip.gainEnvelope.splice(pointIndex, 1);
+};
+
+/* ── Crossfade Detection ── */
+
+DawEngine.prototype._detectCrossfades = function(track) {
+    // Find overlapping clip pairs on the same track
+    var crossfades = [];
+    var clips = track.clips.slice().sort(function(a, b) { return a.startTime - b.startTime; });
+    for (var i = 0; i < clips.length - 1; i++) {
+        var a = clips[i];
+        var b = clips[i + 1];
+        var aEnd = a.startTime + a.duration;
+        if (aEnd > b.startTime) {
+            // Overlap detected
+            crossfades.push({
+                clipA: a,
+                clipB: b,
+                overlapStart: b.startTime,
+                overlapEnd: Math.min(aEnd, b.startTime + b.duration),
+                overlapDuration: Math.min(aEnd, b.startTime + b.duration) - b.startTime
+            });
+        }
+    }
+    return crossfades;
+};
+
+/* ── Fade Handle Hit Test ── */
+
+DawEngine.prototype._hitTestFadeHandle = function(mx, my) {
+    var self = this;
+    var trackIdx = Math.floor(my / self.TRACK_HEIGHT);
+    if (trackIdx < 0 || trackIdx >= self.tracks.length) return null;
+    var track = self.tracks[trackIdx];
+    var yBase = trackIdx * self.TRACK_HEIGHT;
+
+    for (var i = track.clips.length - 1; i >= 0; i--) {
+        var clip = track.clips[i];
+        var x1 = (clip.startTime * self.pixelsPerSec) - self.scrollX;
+        var x2 = ((clip.startTime + clip.duration) * self.pixelsPerSec) - self.scrollX;
+        var handleSize = 8;
+
+        // Fade-in handle (top-left corner)
+        var fadeInX = x1 + clip.fadeIn * self.pixelsPerSec;
+        if (Math.abs(mx - fadeInX) < handleSize && Math.abs(my - (yBase + 4)) < handleSize) {
+            return { clip: clip, type: 'fadeIn', track: track };
+        }
+        // Fade-out handle (top-right corner)
+        var fadeOutX = x2 - clip.fadeOut * self.pixelsPerSec;
+        if (Math.abs(mx - fadeOutX) < handleSize && Math.abs(my - (yBase + 4)) < handleSize) {
+            return { clip: clip, type: 'fadeOut', track: track };
+        }
+    }
+    return null;
+};
+
+/* ── Gain Automation Point Hit Test ── */
+
+DawEngine.prototype._hitTestGainPoint = function(mx, my) {
+    var self = this;
+    var trackIdx = Math.floor(my / self.TRACK_HEIGHT);
+    if (trackIdx < 0 || trackIdx >= self.tracks.length) return null;
+    var track = self.tracks[trackIdx];
+    var yBase = trackIdx * self.TRACK_HEIGHT;
+    var halfH = (self.TRACK_HEIGHT - 10) / 2;
+    var yMid = yBase + self.TRACK_HEIGHT / 2;
+
+    for (var i = track.clips.length - 1; i >= 0; i--) {
+        var clip = track.clips[i];
+        if (!clip.gainEnvelope || clip.gainEnvelope.length === 0) continue;
+        var x1 = (clip.startTime * self.pixelsPerSec) - self.scrollX;
+        var x2 = ((clip.startTime + clip.duration) * self.pixelsPerSec) - self.scrollX;
+        if (mx < x1 - 6 || mx > x2 + 6) continue;
+
+        for (var pi = 0; pi < clip.gainEnvelope.length; pi++) {
+            var pt = clip.gainEnvelope[pi];
+            var px = x1 + pt.time * self.pixelsPerSec;
+            var py = yBase + 4 + (1.0 - pt.value / 2.0) * (self.TRACK_HEIGHT - 8);
+            if (Math.abs(mx - px) < 6 && Math.abs(my - py) < 6) {
+                return { clip: clip, track: track, pointIndex: pi, point: pt };
+            }
+        }
+    }
+    return null;
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -489,9 +701,13 @@ DawEngine.prototype._schedulePlayback = function() {
             var source = self.audioCtx.createBufferSource();
             source.buffer = clip.audioBuffer;
 
-            // Apply fade in/out via gain envelope
+            // Apply fade in/out + gain automation via gain envelope
             var clipGain = self.audioCtx.createGain();
             clipGain.connect(nodes.pan);
+
+            // Crossfade gain node (for overlapping clips)
+            var xfadeGain = self.audioCtx.createGain();
+            xfadeGain.connect(clipGain);
 
             // Schedule
             var when, offset, dur;
@@ -507,20 +723,68 @@ DawEngine.prototype._schedulePlayback = function() {
                 dur = clip.duration;
             }
 
+            var absStart = self.audioCtx.currentTime + when;
+
             // Fade in
-            if (clip.fadeIn > 0 && curTime <= clip.startTime) {
-                var fadeStart = self.audioCtx.currentTime + when;
-                clipGain.gain.setValueAtTime(0, fadeStart);
-                clipGain.gain.linearRampToValueAtTime(1, fadeStart + clip.fadeIn);
+            if (clip.fadeIn > 0) {
+                var fadeInOffset = curTime > clip.startTime ? curTime - clip.startTime : 0;
+                if (fadeInOffset < clip.fadeIn) {
+                    clipGain.gain.setValueAtTime(fadeInOffset / clip.fadeIn, absStart);
+                    clipGain.gain.linearRampToValueAtTime(1, absStart + clip.fadeIn - fadeInOffset);
+                }
             }
             // Fade out
             if (clip.fadeOut > 0) {
-                var fadeOutStart = self.audioCtx.currentTime + when + dur - clip.fadeOut;
-                clipGain.gain.setValueAtTime(1, Math.max(fadeOutStart, self.audioCtx.currentTime));
-                clipGain.gain.linearRampToValueAtTime(0, fadeOutStart + clip.fadeOut);
+                var fadeOutStart = absStart + dur - clip.fadeOut;
+                if (fadeOutStart > self.audioCtx.currentTime) {
+                    clipGain.gain.setValueAtTime(1, Math.max(fadeOutStart, self.audioCtx.currentTime));
+                    clipGain.gain.linearRampToValueAtTime(0, fadeOutStart + clip.fadeOut);
+                }
             }
 
-            source.connect(clipGain);
+            // Gain automation envelope
+            if (clip.gainEnvelope && clip.gainEnvelope.length > 0) {
+                var envGain = self.audioCtx.createGain();
+                envGain.connect(xfadeGain);
+                var clipOffset = curTime > clip.startTime ? curTime - clip.startTime : 0;
+                for (var gi = 0; gi < clip.gainEnvelope.length; gi++) {
+                    var gp = clip.gainEnvelope[gi];
+                    var gpTime = absStart + gp.time - clipOffset;
+                    if (gpTime < self.audioCtx.currentTime) continue;
+                    if (gi === 0 || gpTime <= self.audioCtx.currentTime) {
+                        envGain.gain.setValueAtTime(gp.value, Math.max(gpTime, self.audioCtx.currentTime));
+                    } else {
+                        envGain.gain.linearRampToValueAtTime(gp.value, gpTime);
+                    }
+                }
+                source.connect(envGain);
+            } else {
+                source.connect(xfadeGain);
+            }
+
+            // Apply crossfade for overlapping clips
+            var crossfades = self._detectCrossfades(track);
+            for (var xfi = 0; xfi < crossfades.length; xfi++) {
+                var xf = crossfades[xfi];
+                if (xf.clipA.id === clip.id) {
+                    // This clip is fading out in the overlap
+                    var xfOutStart = self.audioCtx.currentTime + (xf.overlapStart - curTime);
+                    var xfOutEnd = self.audioCtx.currentTime + (xf.overlapEnd - curTime);
+                    if (xfOutEnd > self.audioCtx.currentTime) {
+                        xfadeGain.gain.setValueAtTime(1.0, Math.max(xfOutStart, self.audioCtx.currentTime));
+                        xfadeGain.gain.linearRampToValueAtTime(0.0, xfOutEnd);
+                    }
+                } else if (xf.clipB.id === clip.id) {
+                    // This clip is fading in during the overlap
+                    var xfInStart = self.audioCtx.currentTime + (xf.overlapStart - curTime);
+                    var xfInEnd = self.audioCtx.currentTime + (xf.overlapEnd - curTime);
+                    if (xfInEnd > self.audioCtx.currentTime) {
+                        xfadeGain.gain.setValueAtTime(0.0, Math.max(xfInStart, self.audioCtx.currentTime));
+                        xfadeGain.gain.linearRampToValueAtTime(1.0, xfInEnd);
+                    }
+                }
+            }
+            // source.connect already handled above (via envGain or xfadeGain)
             source.start(self.audioCtx.currentTime + when, offset, dur);
             self.activeSources.push({ source: source, clipId: clip.id, trackId: track.id });
         }
@@ -567,19 +831,52 @@ DawEngine.prototype.setZoom = function(pxPerSec) {
 DawEngine.prototype.snapTime = function(t) {
     var self = this;
     if (self.snapMode === '0') return t;
+    var beatLen = 60 / self.bpm;
+    var beatsPerBar = parseInt(self.timeSignature) || 4;
     if (self.snapMode === 'beat') {
-        var beatLen = 60 / self.bpm;
         return Math.round(t / beatLen) * beatLen;
     }
     if (self.snapMode === 'bar') {
-        var beatLen2 = 60 / self.bpm;
-        var beatsPerBar = parseInt(self.timeSignature) || 4;
-        var barLen = beatLen2 * beatsPerBar;
+        var barLen = beatLen * beatsPerBar;
         return Math.round(t / barLen) * barLen;
+    }
+    // Beat subdivisions: 1/2, 1/4, 1/8, 1/16
+    if (self.snapMode === '1/2') {
+        var half = beatLen / 2;
+        return Math.round(t / half) * half;
+    }
+    if (self.snapMode === '1/4') {
+        var quarter = beatLen / 4;
+        return Math.round(t / quarter) * quarter;
+    }
+    if (self.snapMode === '1/8') {
+        var eighth = beatLen / 8;
+        return Math.round(t / eighth) * eighth;
+    }
+    if (self.snapMode === '1/16') {
+        var sixteenth = beatLen / 16;
+        return Math.round(t / sixteenth) * sixteenth;
     }
     var snap = parseFloat(self.snapMode);
     if (snap > 0) return Math.round(t / snap) * snap;
     return t;
+};
+
+/* ── Beat Grid Spacing (pixels per grid line) ── */
+
+DawEngine.prototype._getGridStep = function() {
+    var self = this;
+    var beatLen = 60 / self.bpm;
+    if (self.snapMode === '0') return 0;
+    if (self.snapMode === 'bar') return beatLen * (parseInt(self.timeSignature) || 4);
+    if (self.snapMode === 'beat') return beatLen;
+    if (self.snapMode === '1/2') return beatLen / 2;
+    if (self.snapMode === '1/4') return beatLen / 4;
+    if (self.snapMode === '1/8') return beatLen / 8;
+    if (self.snapMode === '1/16') return beatLen / 16;
+    var snap = parseFloat(self.snapMode);
+    if (snap > 0) return snap;
+    return 0;
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -728,7 +1025,7 @@ DawEngine.prototype._drawRuler = function() {
 DawEngine.prototype._drawWaveforms = function() {
     var self = this;
     if (self.waveRenderer && self.waveRenderer.ok) {
-        self.waveRenderer.draw(self.tracks, self.pixelsPerSec, self.scrollX, self.TRACK_HEIGHT, self.selectedClip);
+        self.waveRenderer.draw(self.tracks, self.pixelsPerSec, self.scrollX, self.TRACK_HEIGHT, self.selectedClip, self._getGridStep(), self.bpm, self.timeSignature);
     } else {
         self._drawWaveformsFallback();
     }
@@ -835,20 +1132,173 @@ DawEngine.prototype._drawOverlay = function() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
 
-    // Beat grid lines
-    if (self.snapMode === 'beat' || self.snapMode === 'bar') {
+    // Beat grid lines (use _getGridStep for all snap modes)
+    var gridStep = self._getGridStep();
+    if (gridStep > 0) {
         var beatLen = 60 / self.bpm;
-        var step = self.snapMode === 'bar' ? beatLen * (parseInt(self.timeSignature) || 4) : beatLen;
-        var startSec = Math.floor(self.scrollX / self.pixelsPerSec / step) * step;
-        var endSec = startSec + (w / self.pixelsPerSec) + step;
-        ctx.strokeStyle = 'rgba(148,163,184,0.07)';
-        for (var s = startSec; s <= endSec; s += step) {
-            var x = (s * self.pixelsPerSec) - self.scrollX;
-            if (x < 0 || x > w) continue;
+        var beatsPerBar = parseInt(self.timeSignature) || 4;
+        var barLen = beatLen * beatsPerBar;
+        var minPxGap = 6; // don't draw if lines are less than 6px apart
+        var stepPx = gridStep * self.pixelsPerSec;
+
+        if (stepPx >= minPxGap) {
+            var startSec = Math.floor(self.scrollX / self.pixelsPerSec / gridStep) * gridStep;
+            var endSec = startSec + (w / self.pixelsPerSec) + gridStep;
+
+            for (var s = startSec; s <= endSec; s += gridStep) {
+                var x = (s * self.pixelsPerSec) - self.scrollX;
+                if (x < 0 || x > w) continue;
+                // Bar lines are brighter
+                var isBar = (Math.abs(s % barLen) < 0.001);
+                var isBeat = (Math.abs(s % beatLen) < 0.001);
+                if (isBar) {
+                    ctx.strokeStyle = 'rgba(148,163,184,0.15)';
+                    ctx.lineWidth = 1;
+                } else if (isBeat) {
+                    ctx.strokeStyle = 'rgba(148,163,184,0.08)';
+                    ctx.lineWidth = 1;
+                } else {
+                    ctx.strokeStyle = 'rgba(148,163,184,0.04)';
+                    ctx.lineWidth = 0.5;
+                }
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, h);
+                ctx.stroke();
+            }
+            ctx.lineWidth = 1;
+        }
+    }
+
+    // Draw per-track overlays: crossfades, fade handles, gain automation
+    for (var ti = 0; ti < self.tracks.length; ti++) {
+        var track = self.tracks[ti];
+        var yBase = ti * self.TRACK_HEIGHT;
+
+        // Crossfade regions
+        var crossfades = self._detectCrossfades(track);
+        for (var xfi = 0; xfi < crossfades.length; xfi++) {
+            var xf = crossfades[xfi];
+            var xfX1 = (xf.overlapStart * self.pixelsPerSec) - self.scrollX;
+            var xfX2 = (xf.overlapEnd * self.pixelsPerSec) - self.scrollX;
+            var xfW = xfX2 - xfX1;
+            if (xfX2 < 0 || xfX1 > w) continue;
+
+            // Semi-transparent crossfade overlay
+            ctx.fillStyle = 'rgba(234,179,8,0.08)';
+            ctx.fillRect(xfX1, yBase + 2, xfW, self.TRACK_HEIGHT - 4);
+
+            // X pattern (diagonal lines)
+            ctx.strokeStyle = 'rgba(234,179,8,0.3)';
+            ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(x, 0);
-            ctx.lineTo(x, h);
+            ctx.moveTo(xfX1, yBase + 2);
+            ctx.lineTo(xfX2, yBase + self.TRACK_HEIGHT - 2);
             ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(xfX1, yBase + self.TRACK_HEIGHT - 2);
+            ctx.lineTo(xfX2, yBase + 2);
+            ctx.stroke();
+
+            // "XF" label
+            if (xfW > 20) {
+                ctx.fillStyle = 'rgba(234,179,8,0.6)';
+                ctx.font = '9px -apple-system, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('XF', xfX1 + xfW / 2, yBase + self.TRACK_HEIGHT / 2 + 3);
+            }
+        }
+
+        // Per-clip overlays
+        for (var ci = 0; ci < track.clips.length; ci++) {
+            var clip = track.clips[ci];
+            var clipX1 = (clip.startTime * self.pixelsPerSec) - self.scrollX;
+            var clipX2 = ((clip.startTime + clip.duration) * self.pixelsPerSec) - self.scrollX;
+            if (clipX2 < 0 || clipX1 > w) continue;
+
+            // Fade-in curve
+            if (clip.fadeIn > 0) {
+                var fiX = clipX1 + clip.fadeIn * self.pixelsPerSec;
+                ctx.strokeStyle = 'rgba(20,184,166,0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(clipX1, yBase + self.TRACK_HEIGHT - 2);
+                ctx.quadraticCurveTo(clipX1 + (fiX - clipX1) * 0.5, yBase + 4, fiX, yBase + 4);
+                ctx.stroke();
+                // Fade-in handle triangle
+                ctx.fillStyle = 'rgba(20,184,166,0.8)';
+                ctx.beginPath();
+                ctx.moveTo(fiX - 4, yBase + 2);
+                ctx.lineTo(fiX + 4, yBase + 2);
+                ctx.lineTo(fiX, yBase + 8);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Fade-out curve
+            if (clip.fadeOut > 0) {
+                var foX = clipX2 - clip.fadeOut * self.pixelsPerSec;
+                ctx.strokeStyle = 'rgba(20,184,166,0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(foX, yBase + 4);
+                ctx.quadraticCurveTo(foX + (clipX2 - foX) * 0.5, yBase + 4, clipX2, yBase + self.TRACK_HEIGHT - 2);
+                ctx.stroke();
+                // Fade-out handle triangle
+                ctx.fillStyle = 'rgba(20,184,166,0.8)';
+                ctx.beginPath();
+                ctx.moveTo(foX - 4, yBase + 2);
+                ctx.lineTo(foX + 4, yBase + 2);
+                ctx.lineTo(foX, yBase + 8);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // Gain automation curve
+            if (clip.gainEnvelope && clip.gainEnvelope.length > 0) {
+                var envH = self.TRACK_HEIGHT - 8;
+                ctx.strokeStyle = 'rgba(249,115,22,0.7)'; // orange
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                // Start from beginning of clip at gain 1.0
+                var startY = yBase + 4 + (1.0 - 1.0 / 2.0) * envH;
+                ctx.moveTo(clipX1, startY);
+
+                for (var gi = 0; gi < clip.gainEnvelope.length; gi++) {
+                    var gp = clip.gainEnvelope[gi];
+                    var gpx = clipX1 + gp.time * self.pixelsPerSec;
+                    var gpy = yBase + 4 + (1.0 - gp.value / 2.0) * envH;
+                    ctx.lineTo(gpx, gpy);
+                }
+                // Continue to end of clip
+                var lastVal = clip.gainEnvelope[clip.gainEnvelope.length - 1].value;
+                var endY = yBase + 4 + (1.0 - lastVal / 2.0) * envH;
+                ctx.lineTo(clipX2, endY);
+                ctx.stroke();
+
+                // Draw automation points as circles
+                for (var gi2 = 0; gi2 < clip.gainEnvelope.length; gi2++) {
+                    var gp2 = clip.gainEnvelope[gi2];
+                    var gpx2 = clipX1 + gp2.time * self.pixelsPerSec;
+                    var gpy2 = yBase + 4 + (1.0 - gp2.value / 2.0) * envH;
+                    ctx.fillStyle = self.automationMode ? 'rgba(249,115,22,0.95)' : 'rgba(249,115,22,0.6)';
+                    ctx.beginPath();
+                    ctx.arc(gpx2, gpy2, self.automationMode ? 5 : 3.5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                }
+                ctx.lineWidth = 1;
+            }
+
+            // Selected clip highlight
+            if (self.selectedClip === clip.id) {
+                ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(clipX1 - 1, yBase + 1, clipX2 - clipX1 + 2, self.TRACK_HEIGHT - 2);
+                ctx.lineWidth = 1;
+            }
         }
     }
 };
@@ -984,8 +1434,10 @@ DawEngine.prototype._initInteraction = function() {
     var dragOffsetTrack = 0;
     var dragOrigStart = 0;
     var dragOrigTrack = null;
+    var dragFade = null;       // { clip, type: 'fadeIn'|'fadeOut' }
+    var dragGainPt = null;     // { clip, pointIndex }
 
-    // Click on timeline — select clip or seek
+    // Click on timeline — select clip, drag fade handle, or seek
     wrap.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
         var rect = wrap.getBoundingClientRect();
@@ -995,12 +1447,34 @@ DawEngine.prototype._initInteraction = function() {
         var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
         var trackIdx = Math.floor(my / self.TRACK_HEIGHT);
 
-        // Check if clicking on a clip
+        // Priority 1: Automation point drag (when in automation mode)
+        if (self.automationMode) {
+            var gpHit = self._hitTestGainPoint(mx, my);
+            if (gpHit) {
+                dragGainPt = { clip: gpHit.clip, pointIndex: gpHit.pointIndex };
+                self.selectedClip = gpHit.clip.id;
+                e.preventDefault();
+                return;
+            }
+        }
+
+        // Priority 2: Fade handle drag
+        var fadeHit = self._hitTestFadeHandle(mx, my);
+        if (fadeHit) {
+            dragFade = { clip: fadeHit.clip, type: fadeHit.type };
+            self.selectedClip = fadeHit.clip.id;
+            self._pushUndo('fadeDrag');
+            e.preventDefault();
+            return;
+        }
+
+        // Priority 3: Clip drag
         var hit = self._hitTestClip(mx, my);
         if (hit) {
             self.selectedClip = hit.clip.id;
             self.selectedTrack = hit.track.id;
             self._renderTrackList();
+            self._updateClipPropsPanel();
             // Start drag
             dragging = true;
             dragClip = hit.clip;
@@ -1010,7 +1484,22 @@ DawEngine.prototype._initInteraction = function() {
             dragOffsetTrack = trackIdx;
             e.preventDefault();
         } else {
+            // Automation mode: click on clip area to add point
+            if (self.automationMode) {
+                var clipHit = self._hitTestClip(mx, my);
+                if (clipHit) {
+                    var relTime = timeSec - clipHit.clip.startTime;
+                    var envH = self.TRACK_HEIGHT - 8;
+                    var yBase = Math.floor(my / self.TRACK_HEIGHT) * self.TRACK_HEIGHT;
+                    var normY = (my - yBase - 4) / envH;
+                    var gainVal = (1.0 - normY) * 2.0;
+                    self.addGainPoint(clipHit.clip.id, relTime, gainVal);
+                    e.preventDefault();
+                    return;
+                }
+            }
             self.selectedClip = null;
+            self._updateClipPropsPanel();
             // Seek to position
             self.seek(self.snapTime(timeSec));
         }
@@ -1020,9 +1509,35 @@ DawEngine.prototype._initInteraction = function() {
         var rect = wrap.getBoundingClientRect();
         var mx = e.clientX - rect.left;
         var my = e.clientY - rect.top;
+        var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
+
+        // Gain point dragging
+        if (dragGainPt) {
+            var relTime = timeSec - dragGainPt.clip.startTime;
+            var trackIdx2 = Math.floor(my / self.TRACK_HEIGHT);
+            var yBase = trackIdx2 * self.TRACK_HEIGHT;
+            var envH = self.TRACK_HEIGHT - 8;
+            var normY = (my - yBase - 4) / envH;
+            var gainVal = (1.0 - normY) * 2.0;
+            self.moveGainPoint(dragGainPt.clip.id, dragGainPt.pointIndex, relTime, gainVal);
+            wrap.style.cursor = 'ns-resize';
+            return;
+        }
+
+        // Fade handle dragging
+        if (dragFade) {
+            if (dragFade.type === 'fadeIn') {
+                var relT = timeSec - dragFade.clip.startTime;
+                dragFade.clip.fadeIn = Math.max(0, Math.min(dragFade.clip.duration * 0.5, relT));
+            } else {
+                var relFromEnd = (dragFade.clip.startTime + dragFade.clip.duration) - timeSec;
+                dragFade.clip.fadeOut = Math.max(0, Math.min(dragFade.clip.duration * 0.5, relFromEnd));
+            }
+            wrap.style.cursor = 'ew-resize';
+            return;
+        }
 
         if (dragging && dragClip) {
-            var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
             var newStart = self.snapTime(timeSec - dragOffsetX);
             var newTrackIdx = Math.floor(my / self.TRACK_HEIGHT);
             newTrackIdx = Math.max(0, Math.min(self.tracks.length - 1, newTrackIdx));
@@ -1033,10 +1548,34 @@ DawEngine.prototype._initInteraction = function() {
                 dragOrigTrack = newTrack;
             }
         } else {
-            // Tooltip on hover
-            var hit = self._hitTestClip(mx, my);
-            if (hit) {
-                self.tooltipEl.textContent = hit.clip.name + ' (' + self._fmtTimeFull(hit.clip.duration).substring(3) + ')';
+            // Check for fade handle hover
+            var fadeHover = self._hitTestFadeHandle(mx, my);
+            if (fadeHover) {
+                wrap.style.cursor = 'ew-resize';
+                self.tooltipEl.textContent = fadeHover.type === 'fadeIn'
+                    ? 'Fade In: ' + fadeHover.clip.fadeIn.toFixed(2) + 's'
+                    : 'Fade Out: ' + fadeHover.clip.fadeOut.toFixed(2) + 's';
+                self.tooltipEl.style.left = (mx + 10) + 'px';
+                self.tooltipEl.style.top = (my - 20) + 'px';
+                self.tooltipEl.style.display = 'block';
+                return;
+            }
+            // Check for gain point hover
+            if (self.automationMode) {
+                var gpHover = self._hitTestGainPoint(mx, my);
+                if (gpHover) {
+                    wrap.style.cursor = 'ns-resize';
+                    self.tooltipEl.textContent = 'Gain: ' + gpHover.point.value.toFixed(2) + ' @ ' + gpHover.point.time.toFixed(2) + 's';
+                    self.tooltipEl.style.left = (mx + 10) + 'px';
+                    self.tooltipEl.style.top = (my - 20) + 'px';
+                    self.tooltipEl.style.display = 'block';
+                    return;
+                }
+            }
+            // Tooltip on clip hover
+            var hit2 = self._hitTestClip(mx, my);
+            if (hit2) {
+                self.tooltipEl.textContent = hit2.clip.name + ' (' + self._fmtTimeFull(hit2.clip.duration).substring(3) + ')';
                 self.tooltipEl.style.left = (mx + 10) + 'px';
                 self.tooltipEl.style.top = (my - 20) + 'px';
                 self.tooltipEl.style.display = 'block';
@@ -1049,15 +1588,31 @@ DawEngine.prototype._initInteraction = function() {
     });
 
     wrap.addEventListener('mouseup', function() {
-        if (dragging) {
-            dragging = false;
-            dragClip = null;
-        }
+        if (dragGainPt) { dragGainPt = null; }
+        if (dragFade) { dragFade = null; }
+        if (dragging) { dragging = false; dragClip = null; }
     });
 
     wrap.addEventListener('mouseleave', function() {
         self.tooltipEl.style.display = 'none';
+        if (dragGainPt) { dragGainPt = null; }
+        if (dragFade) { dragFade = null; }
         if (dragging) { dragging = false; dragClip = null; }
+    });
+
+    // Double-click on automation point to delete
+    wrap.addEventListener('dblclick', function(e) {
+        if (self.automationMode) {
+            var rect2 = wrap.getBoundingClientRect();
+            var mx2 = e.clientX - rect2.left;
+            var my2 = e.clientY - rect2.top;
+            var gpDbl = self._hitTestGainPoint(mx2, my2);
+            if (gpDbl) {
+                self.removeGainPoint(gpDbl.clip.id, gpDbl.pointIndex);
+                e.stopPropagation();
+                return;
+            }
+        }
     });
 
     // Right-click context menu on clip
@@ -1100,16 +1655,19 @@ DawEngine.prototype._initInteraction = function() {
         }
     }, { passive: false });
 
-    // Double-click on empty track area to add clip
+    // Double-click on empty track area to open library (handled after automation dblclick above)
+    // Note: the first dblclick handler (above) checks automation mode first;
+    // this second handler opens the library for empty area clicks.
     wrap.addEventListener('dblclick', function(e) {
-        var rect = wrap.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-        var hit = self._hitTestClip(mx, my);
-        if (!hit) {
-            var trackIdx = Math.floor(my / self.TRACK_HEIGHT);
-            if (trackIdx >= 0 && trackIdx < self.tracks.length) {
-                self.selectedTrack = self.tracks[trackIdx].id;
+        if (self.automationMode) return; // handled above
+        var rect3 = wrap.getBoundingClientRect();
+        var mx3 = e.clientX - rect3.left;
+        var my3 = e.clientY - rect3.top;
+        var hit3 = self._hitTestClip(mx3, my3);
+        if (!hit3) {
+            var trackIdx3 = Math.floor(my3 / self.TRACK_HEIGHT);
+            if (trackIdx3 >= 0 && trackIdx3 < self.tracks.length) {
+                self.selectedTrack = self.tracks[trackIdx3].id;
                 document.getElementById('modal-library').classList.add('open');
                 document.getElementById('lib-search').focus();
             }
@@ -1150,12 +1708,30 @@ DawEngine.prototype.handleContextAction = function(action) {
         self.splitClip(clipId, self.playPos);
     } else if (action === 'duplicate') {
         self.duplicateClip(clipId);
+    } else if (action === 'copy') {
+        self.copyClip(clipId);
+    } else if (action === 'merge') {
+        // Merge with next adjacent clip on same track
+        var mfound = self._getClip(clipId);
+        if (mfound) {
+            var mtrack = mfound.track;
+            var sorted = mtrack.clips.slice().sort(function(a, b) { return a.startTime - b.startTime; });
+            var mIdx = sorted.findIndex(function(c) { return c.id === clipId; });
+            if (mIdx >= 0 && mIdx < sorted.length - 1) {
+                self.mergeAdjacentClips(clipId, sorted[mIdx + 1].id);
+            } else {
+                mc1Toast('No adjacent clip to merge with', 'warn');
+            }
+        }
     } else if (action === 'fadein') {
         var found = self._getClip(clipId);
         if (found) { self._pushUndo('fadeIn'); found.clip.fadeIn = 0.5; }
     } else if (action === 'fadeout') {
         var found2 = self._getClip(clipId);
         if (found2) { self._pushUndo('fadeOut'); found2.clip.fadeOut = 0.5; }
+    } else if (action === 'clearenv') {
+        var found3 = self._getClip(clipId);
+        if (found3) { self._pushUndo('clearEnvelope'); found3.clip.gainEnvelope = []; mc1Toast('Gain envelope cleared', 'ok'); }
     } else if (action === 'delete') {
         self.removeClip(clipId);
     }
@@ -1252,6 +1828,7 @@ DawEngine.prototype._serializeState = function() {
                 return {
                     id: c.id, name: c.name, startTime: c.startTime, duration: c.duration,
                     offset: c.offset, fadeIn: c.fadeIn, fadeOut: c.fadeOut, color: c.color,
+                    gainEnvelope: c.gainEnvelope ? c.gainEnvelope.map(function(pt) { return { time: pt.time, value: pt.value }; }) : [],
                     _bufRef: c.audioBuffer, _peaksRef: c.peaks
                 };
             })
@@ -1283,6 +1860,7 @@ DawEngine.prototype._restoreState = function(stateStr) {
                 return {
                     id: cd.id, name: cd.name, startTime: cd.startTime, duration: cd.duration,
                     offset: cd.offset, fadeIn: cd.fadeIn, fadeOut: cd.fadeOut, color: cd.color,
+                    gainEnvelope: cd.gainEnvelope || [],
                     audioBuffer: cd._bufRef || ref.audioBuffer || null,
                     peaks: cd._peaksRef || ref.peaks || null
                 };
@@ -1318,7 +1896,8 @@ DawEngine.prototype.saveProject = function() {
                     return {
                         id: c.id, name: c.name, startTime: c.startTime,
                         duration: c.duration, offset: c.offset,
-                        fadeIn: c.fadeIn, fadeOut: c.fadeOut
+                        fadeIn: c.fadeIn, fadeOut: c.fadeOut,
+                        gainEnvelope: c.gainEnvelope || []
                         // audioBuffer not serializable — user must re-add audio
                     };
                 })
@@ -1369,6 +1948,7 @@ DawEngine.prototype.loadProject = function(id) {
                             id: c.id, name: c.name, startTime: c.startTime || 0,
                             duration: c.duration || 0, offset: c.offset || 0,
                             fadeIn: c.fadeIn || 0, fadeOut: c.fadeOut || 0,
+                            gainEnvelope: c.gainEnvelope || [],
                             audioBuffer: null, peaks: null, color: t.color || '#14b8a6'
                         };
                     })
@@ -1495,6 +2075,84 @@ DawEngine.prototype.exportMixdown = function() {
     }).catch(function(e) {
         statusEl.textContent = 'Export error: ' + e.message;
     });
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  CLIP PROPERTIES PANEL
+ * ══════════════════════════════════════════════════════════════ */
+
+DawEngine.prototype._updateClipPropsPanel = function() {
+    var self = this;
+    var panel = document.getElementById('clip-props-panel');
+    if (!panel) return;
+
+    if (!self.selectedClip) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    var found = self._getClip(self.selectedClip);
+    if (!found) { panel.style.display = 'none'; return; }
+    var clip = found.clip;
+
+    panel.style.display = '';
+    var nameEl = document.getElementById('cp-name');
+    var gainEl = document.getElementById('cp-gain');
+    var fiEl = document.getElementById('cp-fadein');
+    var foEl = document.getElementById('cp-fadeout');
+    var colorEl = document.getElementById('cp-color');
+
+    if (nameEl) nameEl.value = clip.name;
+    if (gainEl) gainEl.value = '1.0';
+    if (fiEl) fiEl.value = clip.fadeIn.toFixed(2);
+    if (foEl) foEl.value = clip.fadeOut.toFixed(2);
+    if (colorEl) colorEl.value = clip.color.substring(0, 7);
+};
+
+DawEngine.prototype._applyClipProps = function() {
+    var self = this;
+    var found = self._getClip(self.selectedClip);
+    if (!found) return;
+    self._pushUndo('clipProps');
+    var clip = found.clip;
+
+    var nameEl = document.getElementById('cp-name');
+    var fiEl = document.getElementById('cp-fadein');
+    var foEl = document.getElementById('cp-fadeout');
+    var colorEl = document.getElementById('cp-color');
+
+    if (nameEl) clip.name = nameEl.value || 'Clip';
+    if (fiEl) clip.fadeIn = Math.max(0, parseFloat(fiEl.value) || 0);
+    if (foEl) clip.fadeOut = Math.max(0, parseFloat(foEl.value) || 0);
+    if (colorEl) clip.color = colorEl.value;
+    mc1Toast('Clip properties updated', 'ok');
+};
+
+/* ── Tap Tempo ── */
+
+DawEngine.prototype.tapTempo = function() {
+    var self = this;
+    var now = Date.now();
+    if (!self._tapTimes) self._tapTimes = [];
+    // Reset if gap > 2 seconds
+    if (self._tapTimes.length > 0 && now - self._tapTimes[self._tapTimes.length - 1] > 2000) {
+        self._tapTimes = [];
+    }
+    self._tapTimes.push(now);
+    if (self._tapTimes.length < 2) return;
+    // Keep last 8 taps
+    if (self._tapTimes.length > 8) self._tapTimes.shift();
+    // Average intervals
+    var total = 0;
+    for (var i = 1; i < self._tapTimes.length; i++) {
+        total += self._tapTimes[i] - self._tapTimes[i - 1];
+    }
+    var avgMs = total / (self._tapTimes.length - 1);
+    var bpm = Math.round(60000 / avgMs * 10) / 10;
+    bpm = Math.max(20, Math.min(300, bpm));
+    self.bpm = bpm;
+    document.getElementById('bpm-input').value = bpm;
+    mc1Toast('BPM: ' + bpm, 'ok');
 };
 
 /* ══════════════════════════════════════════════════════════════

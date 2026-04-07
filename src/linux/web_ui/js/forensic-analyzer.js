@@ -8,7 +8,9 @@
  * Purpose: We provide a complete forensic audio analysis engine with offline FFT
  *          computation, configurable window functions, multiple frequency scales,
  *          region selection, variable-speed playback with band-pass filtering,
- *          annotations, and AI analysis integration via Ollama.
+ *          annotations, AI analysis integration via Ollama, spectral noise
+ *          reduction, band isolation, amplitude envelope, WSOLA pitch-preserved
+ *          speed change, spectrum peak detection, and side-by-side compare mode.
  *
  * Standards:
  *  - We use Web Audio API for decoding, playback, and filtering
@@ -17,6 +19,7 @@
  *  - We render via HQSpectrogram (WebGL 2.0) from webgl-spectrogram-hq.js
  *  - We never call exit()/die() in associated PHP
  *  - We use mc1Api() for server communication
+ *  - All processing is non-destructive: original AudioBuffer always preserved
  */
 
 /* global mc1Api, mc1Toast, HQSpectrogram */
@@ -87,6 +90,37 @@ function ForensicAnalyzer(opts) {
 
     /* ── Compare mode ── */
     self.compareMode = false;
+    self.compareBuffer = null;      /* AudioBuffer for file B */
+    self.compareSpecData = null;    /* Float32Array spectrogram for file B */
+    self.compareSpecWidth = 0;
+    self.compareSpecHeight = 0;
+    self.compareHqSpec = null;      /* HQSpectrogram for file B panel */
+    self.diffHqSpec = null;         /* HQSpectrogram for difference panel */
+
+    /* ── Enhancement: Noise Reduction ── */
+    self.noisePrint = null;         /* Float32Array: average magnitude per bin */
+    self.cleanedBuffer = null;      /* AudioBuffer after noise reduction */
+    self.noiseStrength = 1.0;
+
+    /* ── Enhancement: Band Isolation ── */
+    self.isolatedBuffer = null;     /* AudioBuffer with isolated band */
+
+    /* ── Enhancement: Amplitude Envelope ── */
+    self.envelopeData = null;       /* Float32Array: RMS envelope */
+    self.envelopeWindowMs = 50;     /* Sliding window size in ms */
+    self.showEnvelope = false;
+
+    /* ── Enhancement: WSOLA ── */
+    self.preservePitch = false;
+    self.wsolaBuffer = null;        /* AudioBuffer from WSOLA processing */
+
+    /* ── Enhancement: Peak Detection ── */
+    self.detectedPeaks = [];        /* Array of {freq, dB, time} */
+    self.peakThreshold = -40;       /* dB threshold */
+    self.peakMinDistance = 100;     /* Hz minimum distance between peaks */
+
+    /* ── Active playback buffer selection ── */
+    self.activeBuffer = null;       /* Which buffer is currently active for playback */
 
     /* ── Initialize ── */
     self._initCanvases();
@@ -622,14 +656,28 @@ ForensicAnalyzer.prototype._startPlayback = function(reverse) {
     self.isPlaying = true;
     document.getElementById('btn-play').innerHTML = '<i class="fa-solid fa-pause"></i>';
 
-    var buffer = self.audioBuffer;
+    /* Select active buffer: cleaned/isolated/wsola or original */
+    var buffer = self.activeBuffer || self.audioBuffer;
+
+    /* WSOLA pitch preservation: pre-process buffer at target speed */
+    if (self.preservePitch && self.playbackRate !== 1.0) {
+        self._showLoading('WSOLA time-stretch...');
+        try {
+            buffer = self._wsola(buffer, self.playbackRate);
+        } catch (e) {
+            mc1Toast('WSOLA failed: ' + e.message, 'err');
+        }
+        self._hideLoading();
+    }
+
     if (self.isReverse) {
-        buffer = self._reverseBuffer(self.audioBuffer);
+        buffer = self._reverseBuffer(buffer);
     }
 
     self.sourceNode = self.audioCtx.createBufferSource();
     self.sourceNode.buffer = buffer;
-    self.sourceNode.playbackRate.value = self.playbackRate;
+    /* When using WSOLA, play at 1.0x since speed is already baked in */
+    self.sourceNode.playbackRate.value = (self.preservePitch && self.playbackRate !== 1.0) ? 1.0 : self.playbackRate;
 
     /* Build audio chain: source -> filter -> gain -> destination */
     self.gainNode = self.audioCtx.createGain();
@@ -904,6 +952,28 @@ ForensicAnalyzer.prototype._drawOverlay = function(playheadPos) {
             ctx.fillText(a.note.substring(0, 30), ax + 8, ay + 3);
         }
     }
+
+    /* Draw detected peaks */
+    for (var i = 0; i < self.detectedPeaks.length; i++) {
+        var pk = self.detectedPeaks[i];
+        var pkY = self.hqSpec.freqToCanvas(pk.freq);
+
+        /* Horizontal line across visible area */
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+        ctx.lineWidth = 0.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, pkY);
+        ctx.lineTo(canvas.width, pkY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        /* Label */
+        ctx.font = '9px "SF Mono", "Fira Code", monospace';
+        ctx.fillStyle = '#ef4444';
+        var peakLabel = Math.round(pk.freq) + ' Hz (' + pk.dB.toFixed(1) + ' dB)';
+        ctx.fillText(peakLabel, 4, pkY - 3);
+    }
 };
 
 ForensicAnalyzer.prototype._drawWaveform = function() {
@@ -945,6 +1015,40 @@ ForensicAnalyzer.prototype._drawWaveform = function() {
     ctx.moveTo(0, mid);
     ctx.lineTo(w, mid);
     ctx.stroke();
+
+    /* Envelope overlay */
+    if (self.showEnvelope && self.envelopeData) {
+        var envData = self.envelopeData;
+        var envStep = Math.floor(envData.length / w);
+        ctx.strokeStyle = 'rgba(234, 179, 8, 0.8)';
+        ctx.lineWidth = 1.5;
+
+        /* Upper envelope */
+        ctx.beginPath();
+        for (var i = 0; i < w; i++) {
+            var s = i * envStep;
+            var envVal = 0;
+            for (var j = 0; j < envStep && s + j < envData.length; j++) {
+                if (envData[s + j] > envVal) envVal = envData[s + j];
+            }
+            var y = mid - envVal * mid;
+            if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+
+        /* Lower envelope (mirror) */
+        ctx.beginPath();
+        for (var i = 0; i < w; i++) {
+            var s = i * envStep;
+            var envVal = 0;
+            for (var j = 0; j < envStep && s + j < envData.length; j++) {
+                if (envData[s + j] > envVal) envVal = envData[s + j];
+            }
+            var y = mid + envVal * mid;
+            if (i === 0) ctx.moveTo(i, y); else ctx.lineTo(i, y);
+        }
+        ctx.stroke();
+    }
 };
 
 ForensicAnalyzer.prototype._drawMinimap = function() {
@@ -1315,18 +1419,6 @@ ForensicAnalyzer.prototype._stopRecording = function() {
 };
 
 /* ══════════════════════════════════════════════════════════════
- *  COMPARE MODE
- * ══════════════════════════════════════════════════════════════ */
-
-ForensicAnalyzer.prototype.toggleCompare = function() {
-    this.compareMode = !this.compareMode;
-    var btn = document.getElementById('btn-compare');
-    btn.classList.toggle('btn-primary', this.compareMode);
-    btn.classList.toggle('btn-secondary', !this.compareMode);
-    mc1Toast(this.compareMode ? 'Compare mode: load a second file' : 'Compare mode off', 'ok');
-};
-
-/* ══════════════════════════════════════════════════════════════
  *  AI ANALYSIS (Ollama)
  * ══════════════════════════════════════════════════════════════ */
 
@@ -1385,6 +1477,800 @@ ForensicAnalyzer.prototype._callAI = function(prompt) {
     }).catch(function(e) {
         resultEl.textContent = 'AI unavailable: ' + e.message;
     });
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  SPECTRAL NOISE REDUCTION
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Capture noise print from the current selection region.
+ * Computes average magnitude per frequency bin across selected time frames.
+ */
+ForensicAnalyzer.prototype.captureNoisePrint = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+    if (self.selStartTime < 0 || self.selEndTime < 0) {
+        mc1Toast('Select a silence region on the spectrogram first', 'warn');
+        return;
+    }
+
+    var t0 = Math.min(self.selStartTime, self.selEndTime);
+    var t1 = Math.max(self.selStartTime, self.selEndTime);
+    var sr = self.sampleRate;
+    var fftSize = self.fftSize;
+    var hopSize = Math.floor(fftSize * self.hopRatio);
+    var freqBins = fftSize / 2;
+    var windowFn = self._computeWindow(fftSize, self.windowType);
+
+    /* Get mono data */
+    var rawData = self._getMonoData(self.audioBuffer);
+
+    var startSample = Math.floor(t0 * sr);
+    var endSample = Math.floor(t1 * sr);
+    startSample = Math.max(0, startSample);
+    endSample = Math.min(rawData.length, endSample);
+
+    var noiseMag = new Float64Array(freqBins);
+    var frameCount = 0;
+
+    for (var offset = startSample; offset + fftSize <= endSample; offset += hopSize) {
+        var windowed = new Float32Array(fftSize);
+        for (var i = 0; i < fftSize; i++) {
+            windowed[i] = rawData[offset + i] * windowFn[i];
+        }
+        var spectrum = self._fft(windowed);
+        for (var bin = 0; bin < freqBins; bin++) {
+            var re = spectrum[bin * 2];
+            var im = spectrum[bin * 2 + 1];
+            noiseMag[bin] += Math.sqrt(re * re + im * im) / fftSize;
+        }
+        frameCount++;
+    }
+
+    if (frameCount === 0) {
+        mc1Toast('Selection too small for noise print', 'warn');
+        return;
+    }
+
+    self.noisePrint = new Float32Array(freqBins);
+    for (var b = 0; b < freqBins; b++) {
+        self.noisePrint[b] = noiseMag[b] / frameCount;
+    }
+
+    mc1Toast('Noise print captured from ' + frameCount + ' frames (' + self._fmtTime(t1 - t0) + ')', 'ok');
+};
+
+/**
+ * Apply spectral subtraction noise reduction.
+ * For each FFT frame: cleaned_magnitude[bin] = max(0, original[bin] - noise[bin] * strength)
+ * Resynthesizes via inverse FFT with overlap-add.
+ */
+ForensicAnalyzer.prototype.applyNoiseReduction = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+    if (!self.noisePrint) {
+        mc1Toast('Capture a noise print first', 'warn');
+        return;
+    }
+
+    self._showLoading('Applying noise reduction...');
+    var strength = self.noiseStrength;
+    var fftSize = self.fftSize;
+    var hopSize = Math.floor(fftSize * self.hopRatio);
+    var freqBins = fftSize / 2;
+    var windowFn = self._computeWindow(fftSize, self.windowType);
+    var rawData = self._getMonoData(self.audioBuffer);
+    var outLength = rawData.length;
+    var output = new Float32Array(outLength);
+    var normBuf = new Float32Array(outLength);
+
+    var numFrames = Math.floor((rawData.length - fftSize) / hopSize) + 1;
+    var frame = 0;
+    var chunkSize = 64;
+
+    var processChunk = function() {
+        var end = Math.min(frame + chunkSize, numFrames);
+        for (; frame < end; frame++) {
+            var offset = frame * hopSize;
+
+            /* Forward FFT */
+            var windowed = new Float32Array(fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                var idx = offset + i;
+                windowed[i] = (idx < rawData.length ? rawData[idx] : 0) * windowFn[i];
+            }
+            var spectrum = self._fft(windowed);
+
+            /* Spectral subtraction */
+            for (var bin = 0; bin < freqBins; bin++) {
+                var re = spectrum[bin * 2];
+                var im = spectrum[bin * 2 + 1];
+                var mag = Math.sqrt(re * re + im * im) / fftSize;
+                var phase = Math.atan2(im, re);
+                var cleanMag = Math.max(0, mag - self.noisePrint[bin] * strength);
+                spectrum[bin * 2] = cleanMag * fftSize * Math.cos(phase);
+                spectrum[bin * 2 + 1] = cleanMag * fftSize * Math.sin(phase);
+                /* Mirror for conjugate symmetry */
+                if (bin > 0 && bin < freqBins) {
+                    var mirrorBin = fftSize - bin;
+                    spectrum[mirrorBin * 2] = spectrum[bin * 2];
+                    spectrum[mirrorBin * 2 + 1] = -spectrum[bin * 2 + 1];
+                }
+            }
+
+            /* Inverse FFT */
+            var timeDomain = self._ifft(spectrum, fftSize);
+
+            /* Overlap-add with window */
+            for (var i = 0; i < fftSize; i++) {
+                var idx = offset + i;
+                if (idx < outLength) {
+                    output[idx] += timeDomain[i] * windowFn[i];
+                    normBuf[idx] += windowFn[i] * windowFn[i];
+                }
+            }
+        }
+
+        var pct = Math.round((frame / numFrames) * 100);
+        document.getElementById('loading-text').textContent = 'Noise reduction... ' + pct + '%';
+
+        if (frame < numFrames) {
+            setTimeout(processChunk, 0);
+        } else {
+            /* Normalize by overlap-add window sum */
+            for (var i = 0; i < outLength; i++) {
+                if (normBuf[i] > 1e-8) output[i] /= normBuf[i];
+            }
+
+            /* Create cleaned AudioBuffer */
+            self.cleanedBuffer = self.audioCtx.createBuffer(1, outLength, self.sampleRate);
+            self.cleanedBuffer.getChannelData(0).set(output);
+            self.activeBuffer = self.cleanedBuffer;
+
+            self._hideLoading();
+            mc1Toast('Noise reduction applied (strength: ' + strength.toFixed(1) + '). Playing cleaned audio.', 'ok');
+
+            /* Recompute spectrogram from cleaned buffer */
+            self._recomputeFromBuffer(self.cleanedBuffer);
+        }
+    };
+
+    setTimeout(processChunk, 10);
+};
+
+/**
+ * Inverse FFT. Takes interleaved [re0, im0, re1, im1, ...] and returns time-domain Float32Array.
+ */
+ForensicAnalyzer.prototype._ifft = function(spectrum, n) {
+    /* IFFT = conjugate, FFT, conjugate, divide by N */
+    var m = 1;
+    while (m < n) m <<= 1;
+
+    var re = new Float32Array(m);
+    var im = new Float32Array(m);
+    for (var i = 0; i < m; i++) {
+        re[i] = spectrum[i * 2] || 0;
+        im[i] = -(spectrum[i * 2 + 1] || 0); /* conjugate */
+    }
+
+    /* Bit-reversal permutation */
+    var bits = Math.log2(m);
+    for (var j = 0; j < m; j++) {
+        var rev = 0;
+        for (var b = 0; b < bits; b++) {
+            rev = (rev << 1) | ((j >> b) & 1);
+        }
+        if (rev > j) {
+            var tmpR = re[j]; re[j] = re[rev]; re[rev] = tmpR;
+            var tmpI = im[j]; im[j] = im[rev]; im[rev] = tmpI;
+        }
+    }
+
+    /* FFT butterfly */
+    for (var size = 2; size <= m; size *= 2) {
+        var half = size / 2;
+        var angle = -2 * Math.PI / size;
+        var wRe = Math.cos(angle);
+        var wIm = Math.sin(angle);
+
+        for (var k = 0; k < m; k += size) {
+            var twRe = 1, twIm = 0;
+            for (var l = 0; l < half; l++) {
+                var idx1 = k + l;
+                var idx2 = k + l + half;
+                var tRe = twRe * re[idx2] - twIm * im[idx2];
+                var tIm = twRe * im[idx2] + twIm * re[idx2];
+                re[idx2] = re[idx1] - tRe;
+                im[idx2] = im[idx1] - tIm;
+                re[idx1] = re[idx1] + tRe;
+                im[idx1] = im[idx1] + tIm;
+                var newTwRe = twRe * wRe - twIm * wIm;
+                twIm = twRe * wIm + twIm * wRe;
+                twRe = newTwRe;
+            }
+        }
+    }
+
+    /* Conjugate and divide by N */
+    var result = new Float32Array(m);
+    for (var p = 0; p < m; p++) {
+        result[p] = re[p] / m; /* im is conjugated back, we only need real part */
+    }
+    return result;
+};
+
+/** Get mono Float32Array from an AudioBuffer */
+ForensicAnalyzer.prototype._getMonoData = function(buffer) {
+    if (buffer.numberOfChannels > 1) {
+        var ch0 = buffer.getChannelData(0);
+        var ch1 = buffer.getChannelData(1);
+        var mono = new Float32Array(ch0.length);
+        for (var i = 0; i < ch0.length; i++) {
+            mono[i] = (ch0[i] + ch1[i]) * 0.5;
+        }
+        return mono;
+    }
+    return buffer.getChannelData(0);
+};
+
+/** Recompute spectrogram from a different buffer (for cleaned/isolated audio) */
+ForensicAnalyzer.prototype._recomputeFromBuffer = function(buffer) {
+    var self = this;
+    var rawData = self._getMonoData(buffer);
+    var fftSize = self.fftSize;
+    var hopSize = Math.floor(fftSize * self.hopRatio);
+    var freqBins = fftSize / 2;
+    var numFrames = Math.floor((rawData.length - fftSize) / hopSize) + 1;
+    if (numFrames < 1) return;
+
+    var windowFn = self._computeWindow(fftSize, self.windowType);
+    self._computeSpectrogramManual(rawData, fftSize, hopSize, freqBins, numFrames, windowFn);
+};
+
+ForensicAnalyzer.prototype.setNoiseStrength = function(val) {
+    this.noiseStrength = val;
+};
+
+/** Restore original audio (undo noise reduction / isolation) */
+ForensicAnalyzer.prototype.restoreOriginal = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+    self.activeBuffer = null;
+    self.cleanedBuffer = null;
+    self.isolatedBuffer = null;
+    self.wsolaBuffer = null;
+    self._recomputeFromBuffer(self.audioBuffer);
+    mc1Toast('Original audio restored', 'ok');
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  BAND-PASS ISOLATION
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Isolate the selected frequency band by zeroing all FFT bins outside the range.
+ * Creates a new AudioBuffer with only the selected frequency content.
+ */
+ForensicAnalyzer.prototype.isolateBand = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+    if (self.selStartFreq < 0 || self.selEndFreq < 0) {
+        mc1Toast('Select a frequency range on the spectrogram first', 'warn');
+        return;
+    }
+
+    self._showLoading('Isolating frequency band...');
+    var loFreq = Math.min(self.selStartFreq, self.selEndFreq);
+    var hiFreq = Math.max(self.selStartFreq, self.selEndFreq);
+    var fftSize = self.fftSize;
+    var hopSize = Math.floor(fftSize * self.hopRatio);
+    var freqBins = fftSize / 2;
+    var windowFn = self._computeWindow(fftSize, self.windowType);
+    var rawData = self._getMonoData(self.audioBuffer);
+    var outLength = rawData.length;
+    var output = new Float32Array(outLength);
+    var normBuf = new Float32Array(outLength);
+    var nyquist = self.sampleRate / 2;
+    var loBin = Math.floor((loFreq / nyquist) * freqBins);
+    var hiBin = Math.ceil((hiFreq / nyquist) * freqBins);
+    loBin = Math.max(0, loBin);
+    hiBin = Math.min(freqBins - 1, hiBin);
+
+    var numFrames = Math.floor((rawData.length - fftSize) / hopSize) + 1;
+    var frame = 0;
+    var chunkSize = 64;
+
+    var processChunk = function() {
+        var end = Math.min(frame + chunkSize, numFrames);
+        for (; frame < end; frame++) {
+            var offset = frame * hopSize;
+            var windowed = new Float32Array(fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                var idx = offset + i;
+                windowed[i] = (idx < rawData.length ? rawData[idx] : 0) * windowFn[i];
+            }
+            var spectrum = self._fft(windowed);
+
+            /* Zero out bins outside the selected range */
+            for (var bin = 0; bin < freqBins; bin++) {
+                if (bin < loBin || bin > hiBin) {
+                    spectrum[bin * 2] = 0;
+                    spectrum[bin * 2 + 1] = 0;
+                    if (bin > 0) {
+                        var mirror = fftSize - bin;
+                        spectrum[mirror * 2] = 0;
+                        spectrum[mirror * 2 + 1] = 0;
+                    }
+                } else {
+                    /* Keep and set conjugate symmetry */
+                    if (bin > 0 && bin < freqBins) {
+                        var mirror = fftSize - bin;
+                        spectrum[mirror * 2] = spectrum[bin * 2];
+                        spectrum[mirror * 2 + 1] = -spectrum[bin * 2 + 1];
+                    }
+                }
+            }
+
+            var timeDomain = self._ifft(spectrum, fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                var idx = offset + i;
+                if (idx < outLength) {
+                    output[idx] += timeDomain[i] * windowFn[i];
+                    normBuf[idx] += windowFn[i] * windowFn[i];
+                }
+            }
+        }
+
+        var pct = Math.round((frame / numFrames) * 100);
+        document.getElementById('loading-text').textContent = 'Band isolation... ' + pct + '%';
+
+        if (frame < numFrames) {
+            setTimeout(processChunk, 0);
+        } else {
+            for (var i = 0; i < outLength; i++) {
+                if (normBuf[i] > 1e-8) output[i] /= normBuf[i];
+            }
+
+            self.isolatedBuffer = self.audioCtx.createBuffer(1, outLength, self.sampleRate);
+            self.isolatedBuffer.getChannelData(0).set(output);
+            self.activeBuffer = self.isolatedBuffer;
+
+            self._hideLoading();
+            mc1Toast('Band isolated: ' + Math.round(loFreq) + ' - ' + Math.round(hiFreq) + ' Hz', 'ok');
+            self._recomputeFromBuffer(self.isolatedBuffer);
+        }
+    };
+
+    setTimeout(processChunk, 10);
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  AMPLITUDE ENVELOPE
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Compute RMS amplitude envelope with a sliding window.
+ * Stores result in self.envelopeData and redraws the waveform with overlay.
+ */
+ForensicAnalyzer.prototype.computeEnvelope = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+
+    var rawData = self._getMonoData(self.audioBuffer);
+    var windowSamples = Math.floor(self.envelopeWindowMs * self.sampleRate / 1000);
+    if (windowSamples < 1) windowSamples = 1;
+    var halfWin = Math.floor(windowSamples / 2);
+    var len = rawData.length;
+    var env = new Float32Array(len);
+
+    /* Running sum of squares for efficiency */
+    var sumSq = 0;
+    for (var i = 0; i < Math.min(windowSamples, len); i++) {
+        sumSq += rawData[i] * rawData[i];
+    }
+
+    for (var i = 0; i < len; i++) {
+        var winStart = i - halfWin;
+        var winEnd = i + halfWin;
+
+        /* Slide window: add new sample, remove old */
+        if (i > 0) {
+            var addIdx = winEnd;
+            var remIdx = winStart - 1;
+            if (addIdx >= 0 && addIdx < len) sumSq += rawData[addIdx] * rawData[addIdx];
+            if (remIdx >= 0 && remIdx < len) sumSq -= rawData[remIdx] * rawData[remIdx];
+        }
+
+        var count = Math.min(winEnd, len - 1) - Math.max(winStart, 0) + 1;
+        env[i] = count > 0 ? Math.sqrt(Math.max(0, sumSq) / count) : 0;
+    }
+
+    self.envelopeData = env;
+    self.showEnvelope = true;
+    self._drawWaveform();
+    mc1Toast('Envelope computed (window: ' + self.envelopeWindowMs + ' ms)', 'ok');
+};
+
+ForensicAnalyzer.prototype.toggleEnvelope = function() {
+    var self = this;
+    if (!self.envelopeData) {
+        self.computeEnvelope();
+        return;
+    }
+    self.showEnvelope = !self.showEnvelope;
+    self._drawWaveform();
+};
+
+ForensicAnalyzer.prototype.setEnvelopeWindow = function(ms) {
+    this.envelopeWindowMs = ms;
+    if (this.showEnvelope && this.audioBuffer) {
+        this.computeEnvelope();
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  WSOLA — Pitch-Preserved Speed Change
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * WSOLA (Waveform Similarity Overlap-Add) time-stretching.
+ * Changes playback speed without changing pitch.
+ *
+ * @param {AudioBuffer} inputBuffer - Source audio
+ * @param {number} speed - Playback speed factor (0.25 to 4.0)
+ * @returns {AudioBuffer} Time-stretched audio at original sample rate
+ */
+ForensicAnalyzer.prototype._wsola = function(inputBuffer, speed) {
+    var sr = inputBuffer.sampleRate;
+    var input = this._getMonoData(inputBuffer);
+    var inputLen = input.length;
+    var windowSize = 2048;
+    var hopAnalysis = 512;
+    var hopSynthesis = Math.round(hopAnalysis / speed);
+    var searchRegion = 256;
+
+    /* Hann window */
+    var win = new Float32Array(windowSize);
+    for (var i = 0; i < windowSize; i++) {
+        win[i] = 0.5 * (1 - Math.cos(2 * Math.PI * i / (windowSize - 1)));
+    }
+
+    var outputLen = Math.round(inputLen / speed);
+    var output = new Float32Array(outputLen);
+    var normBuf = new Float32Array(outputLen);
+
+    var analysisPos = 0;
+    var synthesisPos = 0;
+
+    while (analysisPos + windowSize < inputLen && synthesisPos + windowSize < outputLen) {
+        /* Find best overlap point via cross-correlation in search region */
+        var bestOffset = 0;
+        var bestCorr = -Infinity;
+        var searchStart = Math.max(0, analysisPos - searchRegion);
+        var searchEnd = Math.min(inputLen - windowSize, analysisPos + searchRegion);
+
+        for (var s = searchStart; s <= searchEnd; s++) {
+            var corr = 0;
+            /* Sample-based correlation for speed (check every 4th sample) */
+            for (var i = 0; i < windowSize; i += 4) {
+                corr += input[s + i] * input[analysisPos + i];
+            }
+            if (corr > bestCorr) {
+                bestCorr = corr;
+                bestOffset = s;
+            }
+        }
+
+        /* Overlap-add with window at best position */
+        for (var i = 0; i < windowSize; i++) {
+            var outIdx = synthesisPos + i;
+            if (outIdx < outputLen && bestOffset + i < inputLen) {
+                output[outIdx] += input[bestOffset + i] * win[i];
+                normBuf[outIdx] += win[i] * win[i];
+            }
+        }
+
+        analysisPos += hopAnalysis;
+        synthesisPos += hopSynthesis;
+    }
+
+    /* Normalize */
+    for (var i = 0; i < outputLen; i++) {
+        if (normBuf[i] > 1e-8) output[i] /= normBuf[i];
+    }
+
+    var outBuffer = this.audioCtx.createBuffer(1, outputLen, sr);
+    outBuffer.getChannelData(0).set(output);
+    return outBuffer;
+};
+
+ForensicAnalyzer.prototype.setPreservePitch = function(enabled) {
+    this.preservePitch = enabled;
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  SPECTRUM PEAK DETECTION
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Find the N strongest frequency peaks in the selected region (or full spectrum).
+ * Uses a simple local maximum detection with threshold and minimum distance.
+ */
+ForensicAnalyzer.prototype.findPeaks = function() {
+    var self = this;
+    if (!self.spectrogramData || !self.specWidth || !self.specHeight) {
+        mc1Toast('No spectrogram data', 'warn');
+        return;
+    }
+
+    var threshold = self.peakThreshold;
+    var minDistHz = self.peakMinDistance;
+    var nyquist = self.sampleRate / 2;
+    var minDistBins = Math.max(1, Math.floor((minDistHz / nyquist) * self.specHeight));
+
+    /* Determine column range from time selection */
+    var colStart = 0;
+    var colEnd = self.specWidth - 1;
+    if (self.selStartTime >= 0 && self.selEndTime >= 0) {
+        var t0 = Math.min(self.selStartTime, self.selEndTime);
+        var t1 = Math.max(self.selStartTime, self.selEndTime);
+        colStart = Math.max(0, Math.floor((t0 / self.duration) * self.specWidth));
+        colEnd = Math.min(self.specWidth - 1, Math.ceil((t1 / self.duration) * self.specWidth));
+    }
+
+    /* Average spectrum across selected time range */
+    var avgSpectrum = new Float32Array(self.specHeight);
+    var numCols = colEnd - colStart + 1;
+    for (var r = 0; r < self.specHeight; r++) {
+        var sum = 0;
+        for (var c = colStart; c <= colEnd; c++) {
+            sum += self.spectrogramData[r * self.specWidth + c];
+        }
+        avgSpectrum[r] = sum / numCols;
+    }
+
+    /* Find local maxima above threshold */
+    var rawPeaks = [];
+    for (var r = 1; r < self.specHeight - 1; r++) {
+        if (avgSpectrum[r] > threshold
+            && avgSpectrum[r] > avgSpectrum[r - 1]
+            && avgSpectrum[r] > avgSpectrum[r + 1]) {
+            rawPeaks.push({ bin: r, dB: avgSpectrum[r] });
+        }
+    }
+
+    /* Sort by magnitude descending */
+    rawPeaks.sort(function(a, b) { return b.dB - a.dB; });
+
+    /* Apply minimum distance constraint (greedy) */
+    var peaks = [];
+    for (var i = 0; i < rawPeaks.length; i++) {
+        var p = rawPeaks[i];
+        var tooClose = false;
+        for (var j = 0; j < peaks.length; j++) {
+            if (Math.abs(p.bin - peaks[j].bin) < minDistBins) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (!tooClose) {
+            peaks.push(p);
+            if (peaks.length >= 20) break; /* Max 20 peaks */
+        }
+    }
+
+    /* Convert to frequency */
+    self.detectedPeaks = [];
+    var midCol = Math.floor((colStart + colEnd) / 2);
+    var midTime = (midCol / self.specWidth) * self.duration;
+    for (var i = 0; i < peaks.length; i++) {
+        var freq = (peaks[i].bin / self.specHeight) * nyquist;
+        self.detectedPeaks.push({
+            freq: freq,
+            dB: peaks[i].dB,
+            time: midTime,
+            bin: peaks[i].bin
+        });
+    }
+
+    self._drawOverlay();
+    mc1Toast('Found ' + peaks.length + ' peaks above ' + threshold + ' dB', 'ok');
+};
+
+ForensicAnalyzer.prototype.setPeakThreshold = function(dB) {
+    this.peakThreshold = dB;
+};
+
+ForensicAnalyzer.prototype.setPeakMinDistance = function(hz) {
+    this.peakMinDistance = hz;
+};
+
+ForensicAnalyzer.prototype.clearPeaks = function() {
+    this.detectedPeaks = [];
+    this._drawOverlay();
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  SIDE-BY-SIDE COMPARE MODE
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Toggle full compare mode with two spectrograms and a difference view.
+ */
+ForensicAnalyzer.prototype.toggleCompare = function() {
+    var self = this;
+    self.compareMode = !self.compareMode;
+    var btn = document.getElementById('btn-compare');
+    btn.classList.toggle('btn-primary', self.compareMode);
+    btn.classList.toggle('btn-secondary', !self.compareMode);
+
+    var container = document.getElementById('compare-container');
+    if (self.compareMode) {
+        if (container) container.classList.add('active');
+        mc1Toast('Compare mode: load a second file using the File B loader below', 'ok');
+    } else {
+        if (container) container.classList.remove('active');
+        self.compareBuffer = null;
+        self.compareSpecData = null;
+        mc1Toast('Compare mode off', 'ok');
+    }
+};
+
+/**
+ * Load the second file for comparison.
+ */
+ForensicAnalyzer.prototype.loadCompareFile = function(file) {
+    var self = this;
+    if (!self.audioCtx) {
+        self.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    self._showLoading('Decoding compare file...');
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+        self.audioCtx.decodeAudioData(ev.target.result, function(buffer) {
+            self.compareBuffer = buffer;
+
+            document.getElementById('compare-file-info').textContent =
+                self._esc(file.name) + ' | ' + buffer.sampleRate + 'Hz ' + buffer.numberOfChannels + 'ch | ' + self._fmtTime(buffer.duration);
+
+            /* Compute spectrogram for file B */
+            self._computeCompareSpectrogram(buffer);
+        }, function(err) {
+            self._hideLoading();
+            mc1Toast('Failed to decode compare file: ' + (err.message || err), 'err');
+        });
+    };
+    reader.readAsArrayBuffer(file);
+};
+
+ForensicAnalyzer.prototype._computeCompareSpectrogram = function(buffer) {
+    var self = this;
+    var rawData = self._getMonoData(buffer);
+    var fftSize = self.fftSize;
+    var hopSize = Math.floor(fftSize * self.hopRatio);
+    var freqBins = fftSize / 2;
+    var numFrames = Math.floor((rawData.length - fftSize) / hopSize) + 1;
+    if (numFrames < 1) {
+        self._hideLoading();
+        return;
+    }
+
+    var maxFrames = 8192;
+    if (numFrames > maxFrames) {
+        hopSize = Math.floor((rawData.length - fftSize) / maxFrames);
+        numFrames = maxFrames;
+    }
+
+    var windowFn = self._computeWindow(fftSize, self.windowType);
+    var specData = new Float32Array(freqBins * numFrames);
+    var frame = 0;
+    var chunkSize = 64;
+
+    var processChunk = function() {
+        var end = Math.min(frame + chunkSize, numFrames);
+        for (; frame < end; frame++) {
+            var offset = frame * hopSize;
+            var windowed = new Float32Array(fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                var idx = offset + i;
+                windowed[i] = (idx < rawData.length ? rawData[idx] : 0) * windowFn[i];
+            }
+            var spectrum = self._fft(windowed);
+            for (var bin = 0; bin < freqBins; bin++) {
+                var re = spectrum[bin * 2];
+                var im = spectrum[bin * 2 + 1];
+                var mag = Math.sqrt(re * re + im * im) / fftSize;
+                var dB = mag > 0 ? 20 * Math.log10(mag) : -120;
+                specData[bin * numFrames + frame] = dB;
+            }
+        }
+
+        document.getElementById('loading-text').textContent =
+            'Computing compare spectrogram... ' + Math.round((frame / numFrames) * 100) + '%';
+
+        if (frame < numFrames) {
+            setTimeout(processChunk, 0);
+        } else {
+            self.compareSpecData = specData;
+            self.compareSpecWidth = numFrames;
+            self.compareSpecHeight = freqBins;
+
+            /* Render file B spectrogram */
+            var canvasB = document.getElementById('compare-canvas-b');
+            if (canvasB) {
+                if (!self.compareHqSpec) {
+                    self.compareHqSpec = new HQSpectrogram(canvasB);
+                }
+                self.compareHqSpec.setSpectrogramData(specData);
+                self.compareHqSpec.uploadSpectrogram(specData, numFrames, freqBins, buffer.duration, buffer.sampleRate, fftSize);
+                self.compareHqSpec.draw();
+            }
+
+            /* Compute and render difference spectrogram */
+            self._computeDiffSpectrogram(numFrames, freqBins, buffer.duration, buffer.sampleRate);
+
+            self._hideLoading();
+            mc1Toast('Compare spectrogram ready', 'ok');
+        }
+    };
+
+    setTimeout(processChunk, 10);
+};
+
+ForensicAnalyzer.prototype._computeDiffSpectrogram = function(bFrames, freqBins, bDuration, bSampleRate) {
+    var self = this;
+    if (!self.spectrogramData || !self.compareSpecData) return;
+
+    /* Use the smaller dimensions */
+    var frames = Math.min(self.specWidth, bFrames);
+    var bins = Math.min(self.specHeight, freqBins);
+    var diffData = new Float32Array(bins * frames);
+
+    for (var r = 0; r < bins; r++) {
+        for (var c = 0; c < frames; c++) {
+            var valA = self.spectrogramData[r * self.specWidth + c];
+            var valB = self.compareSpecData[r * bFrames + c];
+            diffData[r * frames + c] = Math.abs(valA - valB);
+        }
+    }
+
+    var canvasDiff = document.getElementById('compare-canvas-diff');
+    if (canvasDiff) {
+        if (!self.diffHqSpec) {
+            self.diffHqSpec = new HQSpectrogram(canvasDiff);
+        }
+        self.diffHqSpec.setSpectrogramData(diffData);
+        var dur = Math.min(self.duration || 1, bDuration || 1);
+        var sr = bSampleRate || self.sampleRate;
+        self.diffHqSpec.uploadSpectrogram(diffData, frames, bins, dur, sr, self.fftSize);
+        self.diffHqSpec.setColormap('inferno');
+        self.diffHqSpec.draw();
+    }
+};
+
+ForensicAnalyzer.prototype.toggleDiffView = function() {
+    var diffPanel = document.getElementById('compare-diff-panel');
+    if (diffPanel) {
+        var visible = diffPanel.style.display !== 'none';
+        diffPanel.style.display = visible ? 'none' : 'block';
+    }
 };
 
 /* ══════════════════════════════════════════════════════════════

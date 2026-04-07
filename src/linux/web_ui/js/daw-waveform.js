@@ -4,7 +4,7 @@
  * File:    src/linux/web_ui/js/daw-waveform.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   DAW-1
+ * Phase:   DAW-2
  *
  * We provide a WebGL 2.0 renderer for multi-track waveform display.
  * We render all tracks and clips in a single WebGL draw pass using
@@ -129,7 +129,7 @@ DawWaveformRenderer.prototype._parseColor = function(hex) {
 
 /* ── Main Draw ── */
 
-DawWaveformRenderer.prototype.draw = function(tracks, pixelsPerSec, scrollX, trackHeight, selectedClipId) {
+DawWaveformRenderer.prototype.draw = function(tracks, pixelsPerSec, scrollX, trackHeight, selectedClipId, gridStep, bpm, timeSignature) {
     if (!this.ok) return;
     var gl = this.gl;
     var dpr = window.devicePixelRatio || 1;
@@ -156,6 +156,27 @@ DawWaveformRenderer.prototype.draw = function(tracks, pixelsPerSec, scrollX, tra
         }
         // Separator line
         this._pushLine(verts, 0, yBase + trackHeight, w, yBase + trackHeight, [0.2, 0.25, 0.33, 0.5]);
+    }
+
+    // Beat grid lines (rendered behind waveforms)
+    if (gridStep && gridStep > 0) {
+        var stepPx = gridStep * pixelsPerSec;
+        var totalH = tracks.length * trackHeight;
+        if (stepPx >= 6) {
+            var beatLen = bpm ? 60 / bpm : 0;
+            var beatsPerBar = (timeSignature ? parseInt(timeSignature) : 4) || 4;
+            var barLen = beatLen * beatsPerBar;
+            var gStartSec = Math.floor(scrollSec / gridStep) * gridStep;
+            var gEndSec = gStartSec + visSec + gridStep;
+            for (var gs = gStartSec; gs <= gEndSec; gs += gridStep) {
+                var gx = (gs * pixelsPerSec) - scrollX;
+                if (gx < 0 || gx > w) continue;
+                var isBar2 = barLen > 0 && (Math.abs(gs % barLen) < 0.001);
+                var isBeat2 = beatLen > 0 && (Math.abs(gs % beatLen) < 0.001);
+                var gridAlpha = isBar2 ? 0.12 : (isBeat2 ? 0.06 : 0.03);
+                this._pushLine(verts, gx, 0, gx, totalH, [0.58, 0.64, 0.72, gridAlpha]);
+            }
+        }
     }
 
     // Clips

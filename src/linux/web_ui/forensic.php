@@ -5,12 +5,14 @@
  * File:    src/linux/web_ui/forensic.php
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   FA-1
+ * Phase:   FA-2
  * Purpose: We provide a deep spectral analysis page targeting paranormal investigators,
  *          forensic analysts, and audio researchers. We use WebGL 2.0 for high-resolution
  *          spectrogram rendering with configurable FFT sizes up to 65536, multiple window
  *          functions, color maps, frequency scales, region selection, filtered playback,
- *          annotations, and optional Ollama AI analysis.
+ *          annotations, optional Ollama AI analysis, spectral noise reduction, band
+ *          isolation, amplitude envelope, WSOLA pitch-preserved speed change, spectrum
+ *          peak detection, and side-by-side compare mode with difference view.
  *
  * Standards:
  *  - We never call exit() or die() -- uopz extension is active on this server
@@ -108,9 +110,26 @@ require_once __DIR__ . '/app/inc/header.php';
 .anno-modal-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:380px;max-width:90vw}
 .anno-modal-box h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px}
 
+/* Enhancement panel */
+.enhance-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:14px}
+.enhance-panel .card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.enhance-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.enhance-row .enhance-label{font-size:11px;color:var(--muted);min-width:95px;font-weight:600}
+.enhance-row .btn{padding:4px 10px;font-size:11px}
+.enhance-slider{width:100px}
+.enhance-val{font-size:10px;color:var(--text-dim);font-family:'SF Mono','Fira Code',monospace;min-width:45px}
+.enhance-check{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim)}
+.enhance-check input[type=checkbox]{accent-color:var(--teal)}
+
 /* Compare mode */
-.compare-container{display:none;grid-template-columns:1fr 1fr;gap:14px}
+.compare-container{display:none;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
 .compare-container.active{display:grid}
+.compare-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;overflow:hidden}
+.compare-panel .panel-title{font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.compare-panel .panel-info{font-size:11px;color:var(--text-dim);margin-bottom:6px}
+.compare-panel canvas{width:100%;height:200px;background:#080c18;border:1px solid var(--border);border-radius:var(--radius-sm)}
+.compare-diff-panel{margin-top:14px;display:none}
+.compare-diff-panel.active{display:block}
 
 /* Loading overlay */
 .forensic-loading{position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(8,12,24,.85);display:none;align-items:center;justify-content:center;z-index:10;flex-direction:column;gap:10px}
@@ -296,12 +315,112 @@ require_once __DIR__ . '/app/inc/header.php';
                 <option value="highpass">High-pass</option>
                 <option value="notch">Notch</option>
             </select>
+            <label class="enhance-check">
+                <input type="checkbox" id="ctl-preserve-pitch" onchange="forensic.setPreservePitch(this.checked)">
+                Preserve Pitch
+            </label>
         </div>
         <div class="ai-row">
             <button class="btn btn-secondary btn-sm" onclick="forensic.aiAnalyze()"><i class="fa-solid fa-robot"></i> AI Analyze Selection</button>
             <button class="btn btn-secondary btn-sm" onclick="forensic.aiDescribe()"><i class="fa-solid fa-comment-dots"></i> Describe Audio</button>
         </div>
         <div id="ai-result" style="display:none;margin-top:8px;padding:8px;background:rgba(20,184,166,.06);border:1px solid rgba(20,184,166,.15);border-radius:var(--radius-xs);font-size:12px;color:var(--text-dim);max-height:120px;overflow-y:auto"></div>
+    </div>
+</div>
+
+<!-- Enhancement Tools -->
+<div class="enhance-panel">
+    <div class="card-title"><i class="fa-solid fa-wand-magic-sparkles fa-fw" style="color:var(--teal)"></i> Enhancement Tools</div>
+
+    <!-- Noise Reduction -->
+    <div class="enhance-row">
+        <span class="enhance-label">Noise Reduction</span>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.captureNoisePrint()" title="Select a silence region first, then capture its noise profile">
+            <i class="fa-solid fa-fingerprint"></i> Capture Print
+        </button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.applyNoiseReduction()" title="Subtract captured noise profile from the entire signal">
+            <i class="fa-solid fa-broom"></i> Apply
+        </button>
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">Strength:</span>
+        <input type="range" class="enhance-slider" id="ctl-noise-strength" min="0" max="2" value="1" step="0.1"
+            oninput="forensic.setNoiseStrength(+this.value); document.getElementById('noise-str-val').textContent=this.value+'x'">
+        <span class="enhance-val" id="noise-str-val">1.0x</span>
+    </div>
+
+    <!-- Band Isolation -->
+    <div class="enhance-row">
+        <span class="enhance-label">Band Isolation</span>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.isolateBand()" title="Select a frequency range on the spectrogram, then isolate it">
+            <i class="fa-solid fa-scissors"></i> Isolate Selected Range
+        </button>
+    </div>
+
+    <!-- Amplitude Envelope -->
+    <div class="enhance-row">
+        <span class="enhance-label">Envelope</span>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.toggleEnvelope()" title="Show/hide RMS amplitude envelope on waveform">
+            <i class="fa-solid fa-wave-square"></i> Show Envelope
+        </button>
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">Window:</span>
+        <input type="range" class="enhance-slider" id="ctl-env-window" min="10" max="500" value="50" step="10"
+            oninput="forensic.setEnvelopeWindow(+this.value); document.getElementById('env-win-val').textContent=this.value+' ms'">
+        <span class="enhance-val" id="env-win-val">50 ms</span>
+    </div>
+
+    <!-- Peak Detection -->
+    <div class="enhance-row">
+        <span class="enhance-label">Peak Detection</span>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.findPeaks()" title="Find strongest frequency peaks in selected region">
+            <i class="fa-solid fa-mountain-sun"></i> Find Peaks
+        </button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.clearPeaks()" title="Clear peak markers">
+            <i class="fa-solid fa-eraser"></i> Clear
+        </button>
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">Threshold:</span>
+        <input type="range" class="enhance-slider" id="ctl-peak-thresh" min="-96" max="0" value="-40" step="1"
+            oninput="forensic.setPeakThreshold(+this.value); document.getElementById('peak-thresh-val').textContent=this.value+' dB'">
+        <span class="enhance-val" id="peak-thresh-val">-40 dB</span>
+        <span style="font-size:10px;color:var(--muted);margin-left:4px">Min Dist:</span>
+        <input type="range" class="enhance-slider" id="ctl-peak-dist" min="10" max="2000" value="100" step="10"
+            oninput="forensic.setPeakMinDistance(+this.value); document.getElementById('peak-dist-val').textContent=this.value+' Hz'">
+        <span class="enhance-val" id="peak-dist-val">100 Hz</span>
+    </div>
+
+    <!-- Restore Original -->
+    <div class="enhance-row">
+        <span class="enhance-label">Original Audio</span>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.restoreOriginal()" title="Undo all processing and restore original audio">
+            <i class="fa-solid fa-rotate-left"></i> Restore Original
+        </button>
+    </div>
+</div>
+
+<!-- Compare Mode Panels -->
+<div class="compare-container" id="compare-container">
+    <div class="compare-panel">
+        <div class="panel-title"><i class="fa-solid fa-file-audio fa-fw" style="color:var(--teal)"></i> File A (Primary)</div>
+        <div class="panel-info" id="compare-file-a-info">Load a file above</div>
+        <canvas id="compare-canvas-a"></canvas>
+    </div>
+    <div class="compare-panel">
+        <div class="panel-title"><i class="fa-solid fa-file-audio fa-fw" style="color:var(--cyan)"></i> File B</div>
+        <div class="panel-info" id="compare-file-info">No file loaded</div>
+        <input type="file" id="compare-file-input" accept="audio/*" style="display:none">
+        <button class="btn btn-secondary btn-xs" onclick="document.getElementById('compare-file-input').click()" style="margin-bottom:6px">
+            <i class="fa-solid fa-folder-open"></i> Load File B
+        </button>
+        <canvas id="compare-canvas-b"></canvas>
+    </div>
+</div>
+<div class="compare-diff-panel" id="compare-diff-panel">
+    <div class="compare-panel" style="width:100%">
+        <div class="panel-title">
+            <i class="fa-solid fa-not-equal fa-fw" style="color:var(--orange)"></i> Difference (|A - B|)
+            <button class="btn btn-secondary btn-xs" style="margin-left:auto" onclick="forensic.toggleDiffView()">
+                <i class="fa-solid fa-eye-slash"></i> Toggle
+            </button>
+        </div>
+        <canvas id="compare-canvas-diff"></canvas>
     </div>
 </div>
 
@@ -359,6 +478,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    /* Compare file input */
+    document.getElementById('compare-file-input').addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+            forensic.loadCompareFile(e.target.files[0]);
+        }
+    });
+
     /* Keyboard shortcuts */
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
@@ -367,6 +493,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.code === 'KeyR') { forensic.playReverse(); }
         if (e.code === 'Escape') { forensic.closeAnnotationModal(); }
         if (e.code === 'Delete' || e.code === 'Backspace') { forensic.clearSelection(); }
+        if (e.code === 'KeyN') { forensic.captureNoisePrint(); }
+        if (e.code === 'KeyP') { forensic.findPeaks(); }
+        if (e.code === 'KeyE') { forensic.toggleEnvelope(); }
+        if (e.code === 'KeyO') { forensic.restoreOriginal(); }
     });
 });
 </script>

@@ -5,7 +5,7 @@
  * Cubasis/Audacity-style multi-track audio editor with WebGL waveform rendering,
  * Web Audio API playback, drag-drop clip management, and server-side ffmpeg mixdown.
  *
- * Phase:   DAW-1
+ * Phase:   DAW-2
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
  *
@@ -129,6 +129,20 @@ require_once __DIR__ . '/app/inc/header.php';
 /* ── Drop zone overlay ── */
 .daw-dropzone{position:absolute;inset:0;background:rgba(20,184,166,.08);border:2px dashed var(--teal);border-radius:var(--radius);display:none;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:var(--teal);z-index:100}
 .daw-dropzone.active{display:flex}
+
+/* ── Automation mode button ── */
+.btn-auto-active{background:rgba(249,115,22,.2) !important;color:#f97316 !important;border-color:rgba(249,115,22,.5) !important}
+
+/* ── Clip Properties Panel ── */
+.clip-props{position:fixed;bottom:60px;right:20px;width:240px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px;z-index:50;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+.clip-props-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.clip-props-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:11px;color:var(--text-dim)}
+.clip-props-row label{width:55px;flex-shrink:0;font-weight:600}
+.clip-props-row input.form-input{padding:3px 6px;font-size:11px}
+.clip-props-row .text-muted{color:var(--muted);font-size:10px}
+
+/* ── Tap Tempo button ── */
+#btn-tap-tempo{font-size:10px;font-weight:700;letter-spacing:.04em;padding:3px 8px;min-width:34px}
 </style>
 
 <!-- Toolbar -->
@@ -152,12 +166,23 @@ require_once __DIR__ . '/app/inc/header.php';
     <div class="daw-bpm">
       <span>BPM</span>
       <input type="number" id="bpm-input" value="120" min="20" max="300" step="0.1">
+      <button class="btn btn-secondary btn-xs" id="btn-tap-tempo" title="Tap Tempo (click 4+ times)">TAP</button>
     </div>
+    <div class="sep"></div>
+    <button class="btn btn-secondary btn-sm" id="btn-automation" title="Toggle Automation Mode"><i class="fa-solid fa-chart-line"></i> Auto</button>
+    <select class="form-select" id="xfade-mode" style="width:85px;padding:4px 6px;font-size:11px" title="Crossfade mode">
+      <option value="auto" selected>XF Auto</option>
+      <option value="manual">XF Manual</option>
+    </select>
     <div class="sep"></div>
     <select class="form-select" id="snap-select" style="width:90px;padding:4px 6px;font-size:11px" title="Snap to grid">
       <option value="0">No Snap</option>
+      <option value="bar">1 Bar</option>
       <option value="beat">Beat</option>
-      <option value="bar">Bar</option>
+      <option value="1/2">1/2</option>
+      <option value="1/4">1/4</option>
+      <option value="1/8">1/8</option>
+      <option value="1/16">1/16</option>
       <option value="0.5">0.5s</option>
       <option value="1" selected>1s</option>
       <option value="5">5s</option>
@@ -204,11 +229,36 @@ require_once __DIR__ . '/app/inc/header.php';
 <div class="daw-ctx" id="ctx-menu">
   <div class="daw-ctx-item" data-action="split"><i class="fa-solid fa-scissors fa-fw"></i> Split at Playhead</div>
   <div class="daw-ctx-item" data-action="duplicate"><i class="fa-solid fa-clone fa-fw"></i> Duplicate</div>
+  <div class="daw-ctx-item" data-action="copy"><i class="fa-solid fa-copy fa-fw"></i> Copy (Ctrl+C)</div>
+  <div class="daw-ctx-item" data-action="merge"><i class="fa-solid fa-compress fa-fw"></i> Merge with Next</div>
   <div class="daw-ctx-sep"></div>
   <div class="daw-ctx-item" data-action="fadein"><i class="fa-solid fa-arrow-trend-up fa-fw"></i> Fade In (0.5s)</div>
   <div class="daw-ctx-item" data-action="fadeout"><i class="fa-solid fa-arrow-trend-down fa-fw"></i> Fade Out (0.5s)</div>
+  <div class="daw-ctx-item" data-action="clearenv"><i class="fa-solid fa-eraser fa-fw"></i> Clear Gain Envelope</div>
   <div class="daw-ctx-sep"></div>
   <div class="daw-ctx-item danger" data-action="delete"><i class="fa-solid fa-trash fa-fw"></i> Delete Clip</div>
+</div>
+
+<!-- Clip Properties Panel -->
+<div id="clip-props-panel" class="clip-props" style="display:none">
+  <div class="clip-props-title"><i class="fa-solid fa-sliders fa-fw"></i> Clip Properties</div>
+  <div class="clip-props-row">
+    <label>Name</label>
+    <input class="form-input" id="cp-name" style="flex:1">
+  </div>
+  <div class="clip-props-row">
+    <label>Fade In</label>
+    <input class="form-input" id="cp-fadein" type="number" step="0.05" min="0" style="width:60px"> <span class="text-muted">s</span>
+  </div>
+  <div class="clip-props-row">
+    <label>Fade Out</label>
+    <input class="form-input" id="cp-fadeout" type="number" step="0.05" min="0" style="width:60px"> <span class="text-muted">s</span>
+  </div>
+  <div class="clip-props-row">
+    <label>Color</label>
+    <input type="color" id="cp-color" style="width:32px;height:22px;border:none;background:none;cursor:pointer">
+  </div>
+  <button class="btn btn-primary btn-xs" id="btn-apply-props"><i class="fa-solid fa-check"></i> Apply</button>
 </div>
 
 <!-- Project list modal -->
@@ -308,6 +358,28 @@ require_once __DIR__ . '/app/inc/header.php';
             daw.snapMode = this.value;
         });
 
+        // Tap Tempo
+        document.getElementById('btn-tap-tempo').addEventListener('click', function(){
+            daw.tapTempo();
+        });
+
+        // Automation mode toggle
+        document.getElementById('btn-automation').addEventListener('click', function(){
+            daw.automationMode = !daw.automationMode;
+            this.classList.toggle('btn-auto-active', daw.automationMode);
+            mc1Toast('Automation mode: ' + (daw.automationMode ? 'ON' : 'OFF'), 'ok');
+        });
+
+        // Crossfade mode
+        document.getElementById('xfade-mode').addEventListener('change', function(){
+            daw.crossfadeMode = this.value;
+        });
+
+        // Clip properties apply button
+        document.getElementById('btn-apply-props').addEventListener('click', function(){
+            daw._applyClipProps();
+        });
+
         // Add track buttons
         document.getElementById('btn-add-track').addEventListener('click', function(){ daw.addTrack(); });
         document.getElementById('btn-add-track2').addEventListener('click', function(){ daw.addTrack(); });
@@ -377,6 +449,8 @@ require_once __DIR__ . '/app/inc/header.php';
             if (e.code === 'Space') { e.preventDefault(); if (daw.playing) daw.pause(); else daw.play(); }
             if (e.code === 'Home') { e.preventDefault(); daw.seek(0); }
             if (e.code === 'Delete' || e.code === 'Backspace') { e.preventDefault(); daw.deleteSelectedClip(); }
+            if (e.ctrlKey && e.code === 'KeyC') { e.preventDefault(); daw.copyClip(); }
+            if (e.ctrlKey && e.code === 'KeyV') { e.preventDefault(); daw.pasteClip(); }
             if (e.ctrlKey && e.code === 'KeyS') { e.preventDefault(); daw.saveProject(); }
             if (e.ctrlKey && e.code === 'KeyZ') { e.preventDefault(); daw.undo(); }
             if (e.ctrlKey && e.code === 'KeyY') { e.preventDefault(); daw.redo(); }
