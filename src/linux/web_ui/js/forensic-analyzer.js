@@ -4,13 +4,17 @@
  * File:    src/linux/web_ui/js/forensic-analyzer.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   FA-1
+ * Phase:   FA-3
  * Purpose: We provide a complete forensic audio analysis engine with offline FFT
  *          computation, configurable window functions, multiple frequency scales,
  *          region selection, variable-speed playback with band-pass filtering,
  *          annotations, AI analysis integration via Ollama, spectral noise
  *          reduction, band isolation, amplitude envelope, WSOLA pitch-preserved
- *          speed change, spectrum peak detection, and side-by-side compare mode.
+ *          speed change, spectrum peak detection, side-by-side compare mode,
+ *          professional HTML report generation, AI spectrum analysis with
+ *          frequency distribution context, automatic event detection (silence,
+ *          transients, tonal, clicks/pops), and stereo phase correlation
+ *          goniometer display.
  *
  * Standards:
  *  - We use Web Audio API for decoding, playback, and filtering
@@ -121,6 +125,22 @@ function ForensicAnalyzer(opts) {
 
     /* ── Active playback buffer selection ── */
     self.activeBuffer = null;       /* Which buffer is currently active for playback */
+
+    /* ── Enhancement history (for reports) ── */
+    self.enhancementHistory = [];   /* Array of {action, timestamp, params} */
+
+    /* ── Event detection ── */
+    self.detectedEvents = [];       /* Array of {type, startTime, endTime, freq, magnitude, label} */
+
+    /* ── Goniometer (stereo phase correlation) ── */
+    self.goniometerCanvas = null;
+    self.goniometerGL = null;
+    self.goniometerActive = false;
+    self.goniometerAnimFrame = null;
+
+    /* ── SHA256 hash (computed from file bytes) ── */
+    self.fileArrayBuffer = null;    /* Original file bytes for hash computation */
+    self.fileSHA256 = '';
 
     /* ── Initialize ── */
     self._initCanvases();
@@ -313,12 +333,20 @@ ForensicAnalyzer.prototype.loadFile = function(file) {
 
     var reader = new FileReader();
     reader.onload = function(ev) {
-        self.audioCtx.decodeAudioData(ev.target.result, function(buffer) {
+        self.fileArrayBuffer = ev.target.result;
+
+        /* Compute SHA256 hash from raw file bytes */
+        self._computeSHA256(ev.target.result).then(function(hash) {
+            self.fileSHA256 = hash;
+        });
+
+        self.audioCtx.decodeAudioData(ev.target.result.slice(0), function(buffer) {
             self.audioBuffer = buffer;
             self.sampleRate = buffer.sampleRate;
             self.channels = buffer.numberOfChannels;
             self.duration = buffer.duration;
             self.bitDepth = 32; /* Web Audio always decodes to float32 */
+            self.enhancementHistory = [];
 
             /* Update file info display */
             document.getElementById('file-info').innerHTML =
@@ -327,6 +355,13 @@ ForensicAnalyzer.prototype.loadFile = function(file) {
                 + self._fmtTime(buffer.duration);
 
             self._computeSpectrogram();
+
+            /* Initialize goniometer if stereo */
+            if (buffer.numberOfChannels >= 2) {
+                self._initGoniometer();
+            } else {
+                self._hideGoniometer();
+            }
         }, function(err) {
             self._hideLoading();
             mc1Toast('Failed to decode audio: ' + (err.message || err), 'err');
@@ -1223,45 +1258,229 @@ ForensicAnalyzer.prototype.exportAnnotations = function() {
     mc1Toast('Annotations exported', 'ok');
 };
 
+/**
+ * Export Report — opens the report config dialog. The actual generation
+ * happens in generateReport() after the user fills in analyst info.
+ */
 ForensicAnalyzer.prototype.exportReport = function() {
-    var self = this;
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
-        + '<title>Forensic Report — ' + self._esc(self.fileName) + '</title>'
-        + '<style>body{font-family:sans-serif;max-width:900px;margin:40px auto;color:#333}'
-        + 'h1{color:#0d9488}table{border-collapse:collapse;width:100%;margin:16px 0}'
-        + 'th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f0f0f0}'
-        + '.meta{color:#666;margin-bottom:20px}</style></head><body>'
-        + '<h1>Forensic Audio Analysis Report</h1>'
-        + '<div class="meta">Generated: ' + new Date().toLocaleString() + '</div>'
-        + '<h2>File Information</h2>'
-        + '<table><tr><th>File</th><td>' + self._esc(self.fileName) + '</td></tr>'
-        + '<tr><th>Sample Rate</th><td>' + self.sampleRate + ' Hz</td></tr>'
-        + '<tr><th>Channels</th><td>' + self.channels + '</td></tr>'
-        + '<tr><th>Duration</th><td>' + self._fmtTime(self.duration) + '</td></tr>'
-        + '<tr><th>FFT Size</th><td>' + self.fftSize + '</td></tr>'
-        + '<tr><th>Window</th><td>' + self._esc(self.windowType) + '</td></tr></table>';
+    var modal = document.getElementById('report-modal');
+    if (modal) modal.classList.add('show');
+};
 
-    if (self.annotations.length > 0) {
-        html += '<h2>Annotations (' + self.annotations.length + ')</h2><table>'
-            + '<tr><th>#</th><th>Time</th><th>Frequency</th><th>Note</th></tr>';
+/**
+ * Generate a professional self-contained HTML forensic report.
+ * Includes file metadata, SHA256 hash, spectrogram screenshot, waveform,
+ * annotations, enhancement history, detected events, and signature block.
+ */
+ForensicAnalyzer.prototype.generateReport = function(opts) {
+    var self = this;
+    opts = opts || {};
+    var analystName = opts.analystName || 'Unknown';
+    var caseNumber = opts.caseNumber || 'N/A';
+    var includeSpec = opts.includeSpectrogram !== false;
+    var includeWave = opts.includeWaveform !== false;
+    var includeAnnotations = opts.includeAnnotations !== false;
+    var includeMeta = opts.includeMetadata !== false;
+    var includeEnhanceLog = opts.includeEnhanceLog !== false;
+    var includeEvents = opts.includeEvents !== false;
+
+    /* Build self-contained HTML */
+    var css = 'body{font-family:"Segoe UI",Helvetica,Arial,sans-serif;max-width:960px;margin:40px auto;color:#1e293b;line-height:1.6;padding:0 20px}'
+        + 'h1{color:#0d9488;border-bottom:3px solid #0d9488;padding-bottom:12px;font-size:24px}'
+        + 'h2{color:#334155;margin-top:32px;font-size:18px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}'
+        + 'table{border-collapse:collapse;width:100%;margin:16px 0;font-size:13px}'
+        + 'th,td{border:1px solid #cbd5e1;padding:8px 12px;text-align:left}'
+        + 'th{background:#f1f5f9;font-weight:600;color:#334155}'
+        + 'tr:nth-child(even){background:#f8fafc}'
+        + '.meta{color:#64748b;margin-bottom:24px;font-size:14px}'
+        + '.header-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}'
+        + '.sig-block{margin-top:40px;padding:20px;border:2px solid #0d9488;border-radius:8px;background:#f0fdfa}'
+        + '.sig-block h3{color:#0d9488;margin:0 0 12px 0}'
+        + '.sig-row{display:flex;gap:40px;margin-top:12px}'
+        + '.sig-row .sig-field{flex:1}'
+        + '.sig-field label{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em}'
+        + '.sig-field .sig-val{font-size:14px;font-weight:600;margin-top:2px;border-bottom:1px solid #334155;padding-bottom:4px;min-height:20px}'
+        + '.severity-info{color:#0284c7}.severity-warn{color:#d97706}.severity-critical{color:#dc2626}'
+        + '.event-icon{display:inline-block;width:18px;text-align:center}'
+        + 'img.screenshot{max-width:100%;border:1px solid #cbd5e1;border-radius:4px;margin:8px 0}'
+        + '.chain-hash{font-family:"SF Mono","Fira Code",monospace;font-size:12px;word-break:break-all;background:#f1f5f9;padding:8px;border-radius:4px}'
+        + '.enhance-item{padding:4px 0;border-bottom:1px solid #f1f5f9}'
+        + '@media print{body{margin:20px}h1{font-size:20px}.sig-block{break-inside:avoid}}';
+
+    var html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        + '<title>Forensic Audio Report - ' + self._esc(self.fileName) + '</title>'
+        + '<style>' + css + '</style></head><body>';
+
+    /* Header */
+    html += '<h1>Forensic Audio Analysis Report</h1>';
+    html += '<div class="header-grid">';
+    html += '<div><strong>Case Number:</strong> ' + self._esc(caseNumber) + '</div>';
+    html += '<div><strong>Analyst:</strong> ' + self._esc(analystName) + '</div>';
+    html += '<div><strong>Generated:</strong> ' + new Date().toLocaleString() + '</div>';
+    html += '<div><strong>Tool:</strong> Mcaster1 Forensic Audio Analyzer v1.8</div>';
+    html += '</div>';
+
+    /* File Metadata */
+    if (includeMeta) {
+        html += '<h2>File Metadata</h2>';
+        html += '<table>';
+        html += '<tr><th>File Name</th><td>' + self._esc(self.fileName) + '</td></tr>';
+        html += '<tr><th>SHA-256 Hash</th><td><span class="chain-hash">' + (self.fileSHA256 || 'Not computed') + '</span></td></tr>';
+        html += '<tr><th>Sample Rate</th><td>' + self.sampleRate + ' Hz</td></tr>';
+        html += '<tr><th>Bit Depth</th><td>' + self.bitDepth + '-bit (float32 decoded)</td></tr>';
+        html += '<tr><th>Channels</th><td>' + self.channels + '</td></tr>';
+        html += '<tr><th>Duration</th><td>' + self._fmtTime(self.duration) + ' (' + self.duration.toFixed(6) + ' seconds)</td></tr>';
+        html += '</table>';
+
+        html += '<h2>Analysis Settings</h2>';
+        html += '<table>';
+        html += '<tr><th>FFT Size</th><td>' + self.fftSize + '</td></tr>';
+        html += '<tr><th>Window Function</th><td>' + self._esc(self.windowType) + '</td></tr>';
+        html += '<tr><th>Color Map</th><td>' + (document.getElementById('ctl-colormap') ? document.getElementById('ctl-colormap').value : 'heat') + '</td></tr>';
+        html += '<tr><th>Frequency Scale</th><td>' + self.freqScale + '</td></tr>';
+        html += '<tr><th>Hop Ratio</th><td>' + self.hopRatio + '</td></tr>';
+        html += '<tr><th>Gain</th><td>' + (document.getElementById('ctl-gain') ? document.getElementById('ctl-gain').value : '0') + ' dB</td></tr>';
+        html += '<tr><th>Floor</th><td>' + (document.getElementById('ctl-floor') ? document.getElementById('ctl-floor').value : '-96') + ' dB</td></tr>';
+        html += '</table>';
+    }
+
+    /* Spectrogram screenshot */
+    if (includeSpec && self.specCanvas) {
+        html += '<h2>Spectrogram</h2>';
+        try {
+            var specUrl = self.specCanvas.toDataURL('image/png');
+            html += '<img class="screenshot" src="' + specUrl + '" alt="Spectrogram">';
+        } catch (e) {
+            html += '<p><em>Spectrogram screenshot unavailable (WebGL context lost)</em></p>';
+        }
+    }
+
+    /* Waveform screenshot */
+    if (includeWave && self.waveCanvas) {
+        html += '<h2>Waveform Overview</h2>';
+        try {
+            var waveUrl = self.waveCanvas.toDataURL('image/png');
+            html += '<img class="screenshot" src="' + waveUrl + '" alt="Waveform">';
+        } catch (e) {
+            html += '<p><em>Waveform screenshot unavailable</em></p>';
+        }
+    }
+
+    /* Annotations */
+    if (includeAnnotations && self.annotations.length > 0) {
+        html += '<h2>Annotations (' + self.annotations.length + ')</h2>';
+        html += '<table><tr><th>#</th><th>Timestamp</th><th>Frequency</th><th>Note</th><th>Severity</th></tr>';
         for (var i = 0; i < self.annotations.length; i++) {
             var a = self.annotations[i];
-            html += '<tr><td>' + (i + 1) + '</td><td>' + self._fmtTime(a.time)
-                + '</td><td>' + Math.round(a.freq) + ' Hz</td><td>'
-                + self._esc(a.note) + '</td></tr>';
+            var severity = a.severity || 'info';
+            var sevClass = 'severity-' + severity;
+            html += '<tr><td>' + (i + 1) + '</td>'
+                + '<td>' + self._fmtTime(a.time) + '</td>'
+                + '<td>' + Math.round(a.freq) + ' Hz</td>'
+                + '<td>' + self._esc(a.note) + '</td>'
+                + '<td class="' + sevClass + '">' + severity + '</td></tr>';
         }
         html += '</table>';
     }
 
+    /* Detected Events */
+    if (includeEvents && self.detectedEvents.length > 0) {
+        html += '<h2>Detected Events (' + self.detectedEvents.length + ')</h2>';
+        html += '<table><tr><th>#</th><th>Type</th><th>Start</th><th>End</th><th>Frequency</th><th>Magnitude</th></tr>';
+        var eventIcons = { silence: 'Silence', transient: 'Transient', tonal: 'Tonal', click: 'Click/Pop' };
+        for (var i = 0; i < self.detectedEvents.length; i++) {
+            var ev = self.detectedEvents[i];
+            html += '<tr><td>' + (i + 1) + '</td>'
+                + '<td>' + (eventIcons[ev.type] || ev.type) + '</td>'
+                + '<td>' + self._fmtTime(ev.startTime) + '</td>'
+                + '<td>' + self._fmtTime(ev.endTime) + '</td>'
+                + '<td>' + (ev.freq > 0 ? Math.round(ev.freq) + ' Hz' : '-') + '</td>'
+                + '<td>' + (ev.magnitude !== undefined ? ev.magnitude.toFixed(1) + ' dB' : '-') + '</td></tr>';
+        }
+        html += '</table>';
+    }
+
+    /* Enhancement History */
+    if (includeEnhanceLog && self.enhancementHistory.length > 0) {
+        html += '<h2>Enhancement History</h2>';
+        html += '<table><tr><th>#</th><th>Action</th><th>Timestamp</th><th>Parameters</th></tr>';
+        for (var i = 0; i < self.enhancementHistory.length; i++) {
+            var eh = self.enhancementHistory[i];
+            var paramStr = '';
+            if (eh.params) {
+                var keys = Object.keys(eh.params);
+                for (var k = 0; k < keys.length; k++) {
+                    if (k > 0) paramStr += ', ';
+                    paramStr += keys[k] + ': ' + eh.params[keys[k]];
+                }
+            }
+            html += '<tr><td>' + (i + 1) + '</td>'
+                + '<td>' + self._esc(eh.action) + '</td>'
+                + '<td>' + eh.timestamp + '</td>'
+                + '<td>' + self._esc(paramStr) + '</td></tr>';
+        }
+        html += '</table>';
+    }
+
+    /* Signature block */
+    html += '<div class="sig-block">';
+    html += '<h3>Chain of Custody / Certification</h3>';
+    html += '<p>I certify that this analysis was performed using the above-described methods and tools, '
+        + 'and the findings presented in this report accurately reflect my observations.</p>';
+    html += '<div class="sig-row">';
+    html += '<div class="sig-field"><label>Analyst Name</label><div class="sig-val">' + self._esc(analystName) + '</div></div>';
+    html += '<div class="sig-field"><label>Date</label><div class="sig-val">' + new Date().toLocaleDateString() + '</div></div>';
+    html += '<div class="sig-field"><label>Case Number</label><div class="sig-val">' + self._esc(caseNumber) + '</div></div>';
+    html += '</div>';
+    html += '<div style="margin-top:16px"><label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">File Hash (SHA-256)</label>';
+    html += '<div class="chain-hash">' + (self.fileSHA256 || 'Not computed') + '</div></div>';
+    html += '<div style="margin-top:20px;border-top:1px solid #0d9488;padding-top:12px">';
+    html += '<label style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.05em">Signature</label>';
+    html += '<div style="height:60px;border-bottom:1px solid #334155"></div></div>';
+    html += '</div>';
+
     html += '</body></html>';
 
+    /* Open in new window for printing + download as file */
     var blob = new Blob([html], { type: 'text/html' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (self.fileName || 'forensic') + '_report.html';
-    a.click();
-    URL.revokeObjectURL(a.href);
-    mc1Toast('Report exported', 'ok');
+    var url = URL.createObjectURL(blob);
+
+    /* Also offer download */
+    var dlLink = document.createElement('a');
+    dlLink.href = url;
+    dlLink.download = (self.fileName || 'forensic') + '_report.html';
+    dlLink.click();
+
+    /* Open in new window for Ctrl+P */
+    var win = window.open('', '_blank', 'width=1000,height=800');
+    if (win) {
+        win.document.write(html);
+        win.document.close();
+    }
+
+    URL.revokeObjectURL(url);
+    mc1Toast('Report generated and downloaded', 'ok');
+};
+
+/**
+ * Export the current spectrogram view as a high-resolution PNG.
+ */
+ForensicAnalyzer.prototype.exportSpecPNG = function() {
+    var self = this;
+    if (!self.specCanvas) {
+        mc1Toast('No spectrogram to export', 'warn');
+        return;
+    }
+    try {
+        var url = self.specCanvas.toDataURL('image/png');
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (self.fileName || 'spectrogram') + '_spectrogram.png';
+        a.click();
+        mc1Toast('Spectrogram PNG exported', 'ok');
+    } catch (e) {
+        mc1Toast('PNG export failed: ' + e.message, 'err');
+    }
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -1422,26 +1641,65 @@ ForensicAnalyzer.prototype._stopRecording = function() {
  *  AI ANALYSIS (Ollama)
  * ══════════════════════════════════════════════════════════════ */
 
+/**
+ * AI Analyze Selection — sends selected region's averaged spectrum data
+ * as frequency distribution context to Ollama for detailed analysis.
+ */
 ForensicAnalyzer.prototype.aiAnalyze = function() {
     var self = this;
     if (!self.spectrogramData) {
         mc1Toast('No spectrogram data to analyze', 'warn');
         return;
     }
-
-    var prompt = 'Analyze this audio spectrum region. ';
-    if (self.selStartTime >= 0 && self.selEndTime >= 0) {
-        prompt += 'Time range: ' + self._fmtTime(Math.min(self.selStartTime, self.selEndTime))
-            + ' to ' + self._fmtTime(Math.max(self.selStartTime, self.selEndTime)) + '. ';
-        prompt += 'Frequency range: ' + Math.round(Math.min(self.selStartFreq, self.selEndFreq))
-            + ' Hz to ' + Math.round(Math.max(self.selStartFreq, self.selEndFreq)) + ' Hz. ';
+    if (self.selStartTime < 0 || self.selEndTime < 0) {
+        mc1Toast('Select a region on the spectrogram first', 'warn');
+        return;
     }
-    prompt += 'File: ' + self.fileName + ', Sample rate: ' + self.sampleRate + ' Hz. ';
-    prompt += 'Identify any anomalous frequencies, patterns, or artifacts. Is there anything unusual about this spectrum?';
+
+    /* Compute average magnitude per frequency bin in selected region */
+    var t0 = Math.min(self.selStartTime, self.selEndTime);
+    var t1 = Math.max(self.selStartTime, self.selEndTime);
+    var f0 = Math.min(self.selStartFreq, self.selEndFreq);
+    var f1 = Math.max(self.selStartFreq, self.selEndFreq);
+    var nyquist = self.sampleRate / 2;
+
+    var colStart = Math.max(0, Math.floor((t0 / self.duration) * self.specWidth));
+    var colEnd = Math.min(self.specWidth - 1, Math.ceil((t1 / self.duration) * self.specWidth));
+    var rowStart = Math.max(0, Math.floor((f0 / nyquist) * self.specHeight));
+    var rowEnd = Math.min(self.specHeight - 1, Math.ceil((f1 / nyquist) * self.specHeight));
+    var numCols = colEnd - colStart + 1;
+
+    /* Build frequency distribution string (sample up to 40 bins for brevity) */
+    var totalRows = rowEnd - rowStart + 1;
+    var step = Math.max(1, Math.floor(totalRows / 40));
+    var freqDist = '';
+    for (var r = rowStart; r <= rowEnd; r += step) {
+        var sum = 0;
+        for (var c = colStart; c <= colEnd; c++) {
+            sum += self.spectrogramData[r * self.specWidth + c];
+        }
+        var avgDB = sum / numCols;
+        var freq = Math.round((r / self.specHeight) * nyquist);
+        if (freqDist) freqDist += ', ';
+        freqDist += freq + 'Hz=' + avgDB.toFixed(1) + 'dB';
+    }
+
+    var prompt = 'You are a forensic audio analyst. Analyze this audio spectrum selection.\n\n'
+        + 'File: ' + self.fileName + '\n'
+        + 'Sample rate: ' + self.sampleRate + ' Hz, Channels: ' + self.channels + '\n'
+        + 'Time range: ' + self._fmtTime(t0) + ' to ' + self._fmtTime(t1) + '\n'
+        + 'Frequency range: ' + Math.round(f0) + ' Hz to ' + Math.round(f1) + ' Hz\n\n'
+        + 'Frequency distribution (average dB per bin in selected region):\n'
+        + freqDist + '\n\n'
+        + 'Describe what you observe: identify dominant frequencies, harmonics, anomalies, '
+        + 'possible sound sources, and any artifacts or unusual patterns.';
 
     self._callAI(prompt);
 };
 
+/**
+ * AI Describe Full Audio — sends overall statistics for a general description.
+ */
 ForensicAnalyzer.prototype.aiDescribe = function() {
     var self = this;
     if (!self.spectrogramData) {
@@ -1449,34 +1707,110 @@ ForensicAnalyzer.prototype.aiDescribe = function() {
         return;
     }
 
-    var prompt = 'Describe the audio content of this file: ' + self.fileName + '. '
-        + 'Duration: ' + self._fmtTime(self.duration) + ', '
-        + 'Sample rate: ' + self.sampleRate + ' Hz, '
-        + 'Channels: ' + self.channels + '. '
-        + 'The spectrogram shows ' + self.specWidth + ' time frames and ' + self.specHeight + ' frequency bins. '
-        + 'What type of audio is this likely to be? Describe the spectral characteristics.';
+    /* Compute overall statistics */
+    var totalBins = self.specWidth * self.specHeight;
+    var peak = -120, sum = 0, silenceCount = 0;
+    var noiseFloor = -96;
+    for (var i = 0; i < totalBins; i++) {
+        var val = self.spectrogramData[i];
+        if (val > peak) peak = val;
+        sum += val;
+        if (val < noiseFloor) silenceCount++;
+    }
+    var avg = totalBins > 0 ? sum / totalBins : -120;
+    var silenceRatio = totalBins > 0 ? (silenceCount / totalBins * 100).toFixed(1) : '0';
+    var dynamicRange = (peak - avg).toFixed(1);
+
+    /* Find dominant frequencies (top 5 from average spectrum) */
+    var nyquist = self.sampleRate / 2;
+    var avgSpec = new Float32Array(self.specHeight);
+    for (var r = 0; r < self.specHeight; r++) {
+        var s = 0;
+        for (var c = 0; c < self.specWidth; c++) {
+            s += self.spectrogramData[r * self.specWidth + c];
+        }
+        avgSpec[r] = s / self.specWidth;
+    }
+    var domFreqs = [];
+    for (var r = 1; r < self.specHeight - 1; r++) {
+        if (avgSpec[r] > avgSpec[r - 1] && avgSpec[r] > avgSpec[r + 1] && avgSpec[r] > -60) {
+            domFreqs.push({ freq: Math.round((r / self.specHeight) * nyquist), dB: avgSpec[r].toFixed(1) });
+        }
+    }
+    domFreqs.sort(function(a, b) { return parseFloat(b.dB) - parseFloat(a.dB); });
+    domFreqs = domFreqs.slice(0, 5);
+    var domStr = domFreqs.map(function(d) { return d.freq + 'Hz (' + d.dB + 'dB)'; }).join(', ');
+
+    var prompt = 'You are a forensic audio analyst. Provide a general description of this audio file.\n\n'
+        + 'File: ' + self.fileName + '\n'
+        + 'Duration: ' + self._fmtTime(self.duration) + ' (' + self.duration.toFixed(3) + 's)\n'
+        + 'Sample rate: ' + self.sampleRate + ' Hz\n'
+        + 'Channels: ' + self.channels + '\n'
+        + 'Dynamic range: ' + dynamicRange + ' dB\n'
+        + 'Noise floor ratio: ' + silenceRatio + '% of bins below ' + noiseFloor + 'dB\n'
+        + 'Peak magnitude: ' + peak.toFixed(1) + ' dB\n'
+        + 'Average magnitude: ' + avg.toFixed(1) + ' dB\n'
+        + 'Dominant frequencies: ' + (domStr || 'none detected') + '\n\n'
+        + 'What type of audio is this likely to be? Describe the spectral characteristics, '
+        + 'probable content (speech, music, environmental, mechanical), and any notable features.';
 
     self._callAI(prompt);
 };
 
+/**
+ * Call AI with typing animation in the result area.
+ */
 ForensicAnalyzer.prototype._callAI = function(prompt) {
     var self = this;
     var resultEl = document.getElementById('ai-result');
     resultEl.style.display = 'block';
-    resultEl.textContent = 'Analyzing...';
+    resultEl.innerHTML = '<span style="color:var(--teal)">Analyzing...</span>';
 
     mc1Api('POST', '/app/api/forensic.php', {
         action: 'ai_analyze',
         prompt: prompt
     }).then(function(d) {
-        if (d && d.ok) {
-            resultEl.textContent = d.response || 'No response from AI';
+        if (d && d.ok && d.response) {
+            /* Typing animation */
+            self._typeText(resultEl, d.response);
         } else {
             resultEl.textContent = 'AI error: ' + (d.error || 'unknown');
         }
     }).catch(function(e) {
         resultEl.textContent = 'AI unavailable: ' + e.message;
     });
+};
+
+/**
+ * Typing animation for AI responses.
+ */
+ForensicAnalyzer.prototype._typeText = function(el, text) {
+    var self = this;
+    el.textContent = '';
+    var idx = 0;
+    var speed = 12; /* ms per character */
+    var timer = setInterval(function() {
+        if (idx < text.length) {
+            var chunk = text.substring(idx, Math.min(idx + 3, text.length));
+            el.textContent += chunk;
+            idx += 3;
+            el.scrollTop = el.scrollHeight;
+        } else {
+            clearInterval(timer);
+            /* Add copy button */
+            var copyBtn = document.createElement('button');
+            copyBtn.className = 'btn btn-secondary btn-xs';
+            copyBtn.style.cssText = 'position:absolute;top:4px;right:4px;font-size:10px';
+            copyBtn.innerHTML = '<i class="fa-solid fa-copy"></i> Copy';
+            copyBtn.onclick = function() {
+                navigator.clipboard.writeText(text).then(function() {
+                    mc1Toast('AI response copied', 'ok');
+                });
+            };
+            el.style.position = 'relative';
+            el.appendChild(copyBtn);
+        }
+    }, speed);
 };
 
 /* ══════════════════════════════════════════════════════════════
@@ -1541,6 +1875,11 @@ ForensicAnalyzer.prototype.captureNoisePrint = function() {
         self.noisePrint[b] = noiseMag[b] / frameCount;
     }
 
+    self.enhancementHistory.push({
+        action: 'Noise print captured',
+        timestamp: new Date().toISOString(),
+        params: { frames: frameCount, duration: self._fmtTime(t1 - t0), timeRange: t0.toFixed(3) + '-' + t1.toFixed(3) + 's' }
+    });
     mc1Toast('Noise print captured from ' + frameCount + ' frames (' + self._fmtTime(t1 - t0) + ')', 'ok');
 };
 
@@ -1633,6 +1972,12 @@ ForensicAnalyzer.prototype.applyNoiseReduction = function() {
             self.cleanedBuffer = self.audioCtx.createBuffer(1, outLength, self.sampleRate);
             self.cleanedBuffer.getChannelData(0).set(output);
             self.activeBuffer = self.cleanedBuffer;
+
+            self.enhancementHistory.push({
+                action: 'Noise reduction applied',
+                timestamp: new Date().toISOString(),
+                params: { strength: strength.toFixed(1) }
+            });
 
             self._hideLoading();
             mc1Toast('Noise reduction applied (strength: ' + strength.toFixed(1) + '). Playing cleaned audio.', 'ok');
@@ -1847,6 +2192,12 @@ ForensicAnalyzer.prototype.isolateBand = function() {
             self.isolatedBuffer = self.audioCtx.createBuffer(1, outLength, self.sampleRate);
             self.isolatedBuffer.getChannelData(0).set(output);
             self.activeBuffer = self.isolatedBuffer;
+
+            self.enhancementHistory.push({
+                action: 'Band isolation',
+                timestamp: new Date().toISOString(),
+                params: { lowFreq: Math.round(loFreq) + ' Hz', highFreq: Math.round(hiFreq) + ' Hz' }
+            });
 
             self._hideLoading();
             mc1Toast('Band isolated: ' + Math.round(loFreq) + ' - ' + Math.round(hiFreq) + ' Hz', 'ok');
@@ -2300,4 +2651,580 @@ ForensicAnalyzer.prototype._showLoading = function(text) {
 
 ForensicAnalyzer.prototype._hideLoading = function() {
     document.getElementById('loading-overlay').classList.remove('show');
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  SHA-256 HASH COMPUTATION (Web Crypto API)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Compute SHA-256 hash of an ArrayBuffer using the Web Crypto API.
+ * Returns a Promise resolving to a hex string.
+ */
+ForensicAnalyzer.prototype._computeSHA256 = function(arrayBuffer) {
+    if (!window.crypto || !window.crypto.subtle) {
+        return Promise.resolve('SHA-256 unavailable (no Web Crypto API)');
+    }
+    return window.crypto.subtle.digest('SHA-256', arrayBuffer).then(function(hashBuffer) {
+        var hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+    }).catch(function() {
+        return 'SHA-256 computation failed';
+    });
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  EVENT DETECTION
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Detect notable audio events: silence gaps, transients, tonal events, clicks/pops.
+ * Client-side implementation using the decoded audio buffer.
+ */
+ForensicAnalyzer.prototype.detectEvents = function() {
+    var self = this;
+    if (!self.audioBuffer) {
+        mc1Toast('No audio loaded', 'warn');
+        return;
+    }
+
+    self._showLoading('Detecting events...');
+    self.detectedEvents = [];
+
+    var rawData = self._getMonoData(self.audioBuffer);
+    var sr = self.sampleRate;
+    var len = rawData.length;
+
+    /* Parameters */
+    var silenceThresholdDB = -50;
+    var silenceMinDurationMs = 500;
+    var transientThresholdDB = 12;
+    var tonalMinDurationMs = 2000;
+    var clickMaxDurationMs = 10;
+
+    var silenceThreshold = Math.pow(10, silenceThresholdDB / 20);
+    var blockSize = Math.floor(sr * 0.01); /* 10ms blocks */
+    var numBlocks = Math.floor(len / blockSize);
+
+    /* Compute block RMS values */
+    var blockRMS = new Float32Array(numBlocks);
+    for (var b = 0; b < numBlocks; b++) {
+        var sumSq = 0;
+        var start = b * blockSize;
+        for (var i = 0; i < blockSize; i++) {
+            var s = rawData[start + i];
+            sumSq += s * s;
+        }
+        blockRMS[b] = Math.sqrt(sumSq / blockSize);
+    }
+
+    /* Detect silence gaps */
+    var silenceMinBlocks = Math.ceil(silenceMinDurationMs / 10);
+    var inSilence = false;
+    var silenceStart = 0;
+    for (var b = 0; b < numBlocks; b++) {
+        if (blockRMS[b] < silenceThreshold) {
+            if (!inSilence) {
+                inSilence = true;
+                silenceStart = b;
+            }
+        } else {
+            if (inSilence) {
+                var durBlocks = b - silenceStart;
+                if (durBlocks >= silenceMinBlocks) {
+                    self.detectedEvents.push({
+                        type: 'silence',
+                        startTime: (silenceStart * blockSize) / sr,
+                        endTime: (b * blockSize) / sr,
+                        freq: 0,
+                        magnitude: -96,
+                        label: 'Silence (' + (durBlocks * 10) + 'ms)'
+                    });
+                }
+                inSilence = false;
+            }
+        }
+    }
+    if (inSilence) {
+        var durBlocks = numBlocks - silenceStart;
+        if (durBlocks >= silenceMinBlocks) {
+            self.detectedEvents.push({
+                type: 'silence',
+                startTime: (silenceStart * blockSize) / sr,
+                endTime: (numBlocks * blockSize) / sr,
+                freq: 0,
+                magnitude: -96,
+                label: 'Silence (' + (durBlocks * 10) + 'ms)'
+            });
+        }
+    }
+
+    /* Detect transients (sudden amplitude spikes >12dB) */
+    for (var b = 1; b < numBlocks; b++) {
+        var prevDB = blockRMS[b - 1] > 0 ? 20 * Math.log10(blockRMS[b - 1]) : -120;
+        var currDB = blockRMS[b] > 0 ? 20 * Math.log10(blockRMS[b]) : -120;
+        var jump = currDB - prevDB;
+        if (jump > transientThresholdDB) {
+            self.detectedEvents.push({
+                type: 'transient',
+                startTime: (b * blockSize) / sr,
+                endTime: ((b + 1) * blockSize) / sr,
+                freq: 0,
+                magnitude: currDB,
+                label: 'Transient (+' + jump.toFixed(1) + 'dB)'
+            });
+        }
+    }
+
+    /* Detect clicks/pops (very short impulses <10ms) */
+    var clickMinBlocks = 1;
+    var clickMaxBlocks = Math.ceil(clickMaxDurationMs / 10);
+    var medianRMS = self._computeMedianRMS(blockRMS);
+    var clickThreshold = medianRMS * 8; /* 8x the median RMS */
+    var inClick = false;
+    var clickStart = 0;
+    for (var b = 0; b < numBlocks; b++) {
+        if (blockRMS[b] > clickThreshold) {
+            if (!inClick) {
+                inClick = true;
+                clickStart = b;
+            }
+        } else {
+            if (inClick) {
+                var dur = b - clickStart;
+                if (dur >= clickMinBlocks && dur <= clickMaxBlocks) {
+                    var peakDB = 0;
+                    for (var bb = clickStart; bb < b; bb++) {
+                        var db = blockRMS[bb] > 0 ? 20 * Math.log10(blockRMS[bb]) : -120;
+                        if (db > peakDB) peakDB = db;
+                    }
+                    self.detectedEvents.push({
+                        type: 'click',
+                        startTime: (clickStart * blockSize) / sr,
+                        endTime: (b * blockSize) / sr,
+                        freq: 0,
+                        magnitude: peakDB,
+                        label: 'Click/Pop (' + (dur * 10) + 'ms)'
+                    });
+                }
+                inClick = false;
+            }
+        }
+    }
+
+    /* Detect tonal events (sustained frequency components >2s) using spectrogram data */
+    if (self.spectrogramData && self.specWidth > 0 && self.specHeight > 0) {
+        var tonalMinFrames = Math.ceil((tonalMinDurationMs / 1000) / (self.duration / self.specWidth));
+        var nyquist = sr / 2;
+
+        /* For each frequency bin, find runs where magnitude > -40dB */
+        for (var r = 1; r < self.specHeight; r += 4) { /* Step by 4 for speed */
+            var inTone = false;
+            var toneStart = 0;
+            for (var c = 0; c < self.specWidth; c++) {
+                var val = self.spectrogramData[r * self.specWidth + c];
+                if (val > -40) {
+                    if (!inTone) {
+                        inTone = true;
+                        toneStart = c;
+                    }
+                } else {
+                    if (inTone) {
+                        var dur = c - toneStart;
+                        if (dur >= tonalMinFrames) {
+                            var freq = (r / self.specHeight) * nyquist;
+                            var startT = (toneStart / self.specWidth) * self.duration;
+                            var endT = (c / self.specWidth) * self.duration;
+                            /* Avoid duplicates near same frequency */
+                            var hasDup = false;
+                            for (var d = 0; d < self.detectedEvents.length; d++) {
+                                var de = self.detectedEvents[d];
+                                if (de.type === 'tonal' && Math.abs(de.freq - freq) < 50 &&
+                                    Math.abs(de.startTime - startT) < 0.5) {
+                                    hasDup = true;
+                                    break;
+                                }
+                            }
+                            if (!hasDup) {
+                                self.detectedEvents.push({
+                                    type: 'tonal',
+                                    startTime: startT,
+                                    endTime: endT,
+                                    freq: freq,
+                                    magnitude: -40,
+                                    label: 'Tonal ' + Math.round(freq) + 'Hz (' + (endT - startT).toFixed(1) + 's)'
+                                });
+                            }
+                        }
+                        inTone = false;
+                    }
+                }
+            }
+        }
+    }
+
+    /* Sort by start time */
+    self.detectedEvents.sort(function(a, b) { return a.startTime - b.startTime; });
+
+    self._hideLoading();
+    self._renderEventList();
+    self._drawOverlay();
+    mc1Toast('Detected ' + self.detectedEvents.length + ' events', 'ok');
+};
+
+/**
+ * Compute median of a Float32Array (for click detection baseline).
+ */
+ForensicAnalyzer.prototype._computeMedianRMS = function(arr) {
+    var sorted = Array.from(arr).filter(function(v) { return v > 0; }).sort(function(a, b) { return a - b; });
+    if (sorted.length === 0) return 0.001;
+    return sorted[Math.floor(sorted.length / 2)];
+};
+
+/**
+ * Render the event list panel in the UI.
+ */
+ForensicAnalyzer.prototype._renderEventList = function() {
+    var self = this;
+    var list = document.getElementById('event-list');
+    if (!list) return;
+
+    if (self.detectedEvents.length === 0) {
+        list.innerHTML = '<div class="empty" style="padding:12px;font-size:12px;color:var(--muted)">'
+            + '<i class="fa-solid fa-magnifying-glass fa-fw"></i> No events detected</div>';
+        return;
+    }
+
+    var eventIcons = {
+        silence: { icon: '&#x1f507;', cls: 'evt-silence' },
+        transient: { icon: '&#x26a1;', cls: 'evt-transient' },
+        tonal: { icon: '&#x1f3b5;', cls: 'evt-tonal' },
+        click: { icon: '&#x1f4a5;', cls: 'evt-click' }
+    };
+
+    var html = '';
+    for (var i = 0; i < self.detectedEvents.length; i++) {
+        var ev = self.detectedEvents[i];
+        var meta = eventIcons[ev.type] || { icon: '?', cls: '' };
+        html += '<div class="event-item ' + meta.cls + '" onclick="forensic.jumpToEvent(' + i + ')">'
+            + '<span class="event-icon">' + meta.icon + '</span>'
+            + '<span class="event-time">' + self._fmtTime(ev.startTime) + '</span>'
+            + '<span class="event-label">' + self._esc(ev.label) + '</span>'
+            + '</div>';
+    }
+    list.innerHTML = html;
+};
+
+/**
+ * Jump to a detected event's position on the spectrogram.
+ */
+ForensicAnalyzer.prototype.jumpToEvent = function(idx) {
+    var ev = this.detectedEvents[idx];
+    if (!ev || !this.hqSpec) return;
+    var viewW = this.hqSpec._viewW;
+    this.hqSpec._viewX = Math.max(0, ev.startTime - viewW / 4);
+    this.hqSpec._clampView();
+    this.hqSpec.draw();
+    this._drawOverlay();
+    this._updateAxes();
+    this._drawMinimap();
+};
+
+/**
+ * Filter events by type in the list.
+ */
+ForensicAnalyzer.prototype.filterEvents = function(type) {
+    var list = document.getElementById('event-list');
+    if (!list) return;
+    var items = list.querySelectorAll('.event-item');
+    for (var i = 0; i < items.length; i++) {
+        if (type === 'all') {
+            items[i].style.display = '';
+        } else {
+            items[i].style.display = items[i].classList.contains('evt-' + type) ? '' : 'none';
+        }
+    }
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  GONIOMETER (Stereo Phase Correlation)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Initialize the Lissajous goniometer display for stereo files.
+ * Uses WebGL point cloud rendering (GL_POINTS).
+ */
+ForensicAnalyzer.prototype._initGoniometer = function() {
+    var self = this;
+    var canvas = document.getElementById('goniometer-canvas');
+    if (!canvas) return;
+
+    canvas.parentElement.style.display = 'block';
+    self.goniometerCanvas = canvas;
+    canvas.width = 200;
+    canvas.height = 200;
+
+    var gl = canvas.getContext('webgl', { antialias: true, alpha: true });
+    if (!gl) {
+        /* Fallback to 2D canvas */
+        self.goniometerGL = null;
+        self._drawGoniometer2D();
+        return;
+    }
+    self.goniometerGL = gl;
+
+    /* Compile shaders */
+    var vsSource = 'attribute vec2 aPos;void main(){gl_PointSize=1.5;gl_Position=vec4(aPos,0.0,1.0);}';
+    var fsSource = 'precision mediump float;void main(){gl_FragColor=vec4(0.08,0.72,0.65,0.4);}';
+
+    function compileShader(src, type) {
+        var s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        return s;
+    }
+
+    var vs = compileShader(vsSource, gl.VERTEX_SHADER);
+    var fs = compileShader(fsSource, gl.FRAGMENT_SHADER);
+    var prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+
+    self._gonioProgram = prog;
+    self._gonioPosLoc = gl.getAttribLocation(prog, 'aPos');
+    self._gonioVBO = gl.createBuffer();
+
+    gl.viewport(0, 0, 200, 200);
+    gl.clearColor(0.03, 0.05, 0.09, 1.0);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+
+    self._drawGoniometerStatic();
+};
+
+/**
+ * Draw static goniometer overview from the full audio buffer.
+ */
+ForensicAnalyzer.prototype._drawGoniometerStatic = function() {
+    var self = this;
+    if (!self.audioBuffer || self.audioBuffer.numberOfChannels < 2) return;
+
+    var left = self.audioBuffer.getChannelData(0);
+    var right = self.audioBuffer.getChannelData(1);
+    var len = left.length;
+
+    /* Downsample to max 50000 points */
+    var maxPts = 50000;
+    var step = Math.max(1, Math.floor(len / maxPts));
+    var pts = [];
+
+    for (var i = 0; i < len; i += step) {
+        var l = left[i];
+        var r = right[i];
+        /* Lissajous: X = (L+R)/2, Y = (L-R)/2 */
+        var x = (l + r) * 0.5;
+        var y = (l - r) * 0.5;
+        /* Clamp to [-1, 1] */
+        pts.push(Math.max(-1, Math.min(1, x)));
+        pts.push(Math.max(-1, Math.min(1, y)));
+    }
+
+    var gl = self.goniometerGL;
+    if (gl) {
+        var data = new Float32Array(pts);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+
+        /* Draw crosshair guides */
+        self._drawGonioCrosshair(gl);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, self._gonioVBO);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        gl.enableVertexAttribArray(self._gonioPosLoc);
+        gl.vertexAttribPointer(self._gonioPosLoc, 2, gl.FLOAT, false, 0, 0);
+        gl.useProgram(self._gonioProgram);
+        gl.drawArrays(gl.POINTS, 0, data.length / 2);
+    } else {
+        self._drawGoniometer2D();
+    }
+};
+
+/**
+ * Draw crosshair on goniometer via WebGL lines overlay.
+ */
+ForensicAnalyzer.prototype._drawGonioCrosshair = function(gl) {
+    /* We skip WebGL crosshair; the 2D canvas fallback and CSS border handles visual cues */
+};
+
+/**
+ * 2D canvas fallback for goniometer when WebGL is unavailable.
+ */
+ForensicAnalyzer.prototype._drawGoniometer2D = function() {
+    var self = this;
+    var canvas = document.getElementById('goniometer-canvas');
+    if (!canvas || !self.audioBuffer || self.audioBuffer.numberOfChannels < 2) return;
+
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width;
+    var h = canvas.height;
+    var cx = w / 2;
+    var cy = h / 2;
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(8, 12, 24, 1)';
+    ctx.fillRect(0, 0, w, h);
+
+    /* Crosshair */
+    ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, h);
+    ctx.moveTo(0, cy); ctx.lineTo(w, cy);
+    /* Diagonal */
+    ctx.moveTo(0, 0); ctx.lineTo(w, h);
+    ctx.moveTo(w, 0); ctx.lineTo(0, h);
+    ctx.stroke();
+
+    /* Labels */
+    ctx.font = '9px sans-serif';
+    ctx.fillStyle = 'rgba(100, 116, 139, 0.6)';
+    ctx.fillText('L', 2, cy - 4);
+    ctx.fillText('R', w - 10, cy - 4);
+    ctx.fillText('+', cx + 4, 12);
+    ctx.fillText('-', cx + 4, h - 4);
+
+    /* Plot points */
+    var left = self.audioBuffer.getChannelData(0);
+    var right = self.audioBuffer.getChannelData(1);
+    var len = left.length;
+    var maxPts = 40000;
+    var step = Math.max(1, Math.floor(len / maxPts));
+
+    ctx.fillStyle = 'rgba(20, 184, 166, 0.15)';
+    for (var i = 0; i < len; i += step) {
+        var x = (left[i] + right[i]) * 0.5;
+        var y = (left[i] - right[i]) * 0.5;
+        var px = cx + x * cx;
+        var py = cy - y * cy;
+        ctx.fillRect(px, py, 1.5, 1.5);
+    }
+};
+
+/**
+ * Update goniometer during playback (real-time mode).
+ */
+ForensicAnalyzer.prototype._updateGoniometerRealtime = function(leftSamples, rightSamples) {
+    var self = this;
+    var canvas = document.getElementById('goniometer-canvas');
+    if (!canvas) return;
+
+    var ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    var w = canvas.width;
+    var h = canvas.height;
+    var cx = w / 2;
+    var cy = h / 2;
+
+    /* Fade previous frame */
+    ctx.fillStyle = 'rgba(8, 12, 24, 0.3)';
+    ctx.fillRect(0, 0, w, h);
+
+    /* Plot new samples */
+    ctx.fillStyle = 'rgba(20, 184, 166, 0.5)';
+    var len = Math.min(leftSamples.length, rightSamples.length);
+    var step = Math.max(1, Math.floor(len / 2000));
+    for (var i = 0; i < len; i += step) {
+        var x = (leftSamples[i] + rightSamples[i]) * 0.5;
+        var y = (leftSamples[i] - rightSamples[i]) * 0.5;
+        ctx.fillRect(cx + x * cx, cy - y * cy, 2, 2);
+    }
+};
+
+/**
+ * Hide the goniometer panel (mono files).
+ */
+ForensicAnalyzer.prototype._hideGoniometer = function() {
+    var panel = document.getElementById('goniometer-panel');
+    if (panel) panel.style.display = 'none';
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  EVENT MARKERS ON OVERLAY
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * We extend _drawOverlay to also render event markers on the timeline.
+ * Store reference to original and wrap it.
+ */
+(function() {
+    var origDrawOverlay = ForensicAnalyzer.prototype._drawOverlay;
+    ForensicAnalyzer.prototype._drawOverlay = function(playheadPos) {
+        /* Call original overlay drawing */
+        origDrawOverlay.call(this, playheadPos);
+
+        /* Draw event markers */
+        var self = this;
+        if (!self.detectedEvents.length || !self.hqSpec || !self.duration) return;
+
+        var canvas = self.overlayCanvas;
+        var ctx = canvas.getContext('2d');
+
+        var eventColors = {
+            silence: 'rgba(148, 163, 184, 0.6)',
+            transient: 'rgba(234, 179, 8, 0.7)',
+            tonal: 'rgba(59, 130, 246, 0.6)',
+            click: 'rgba(239, 68, 68, 0.7)'
+        };
+
+        for (var i = 0; i < self.detectedEvents.length; i++) {
+            var ev = self.detectedEvents[i];
+            var x0 = self.hqSpec.timeToCanvas(ev.startTime);
+            var x1 = self.hqSpec.timeToCanvas(ev.endTime);
+            var color = eventColors[ev.type] || 'rgba(255,255,255,0.4)';
+
+            /* Draw a thin colored strip at the bottom */
+            ctx.fillStyle = color;
+            var stripH = 4;
+            var stripY = canvas.height - stripH - 22; /* above cursor readout */
+            ctx.fillRect(x0, stripY, Math.max(2, x1 - x0), stripH);
+
+            /* Small triangle marker */
+            ctx.beginPath();
+            ctx.moveTo(x0, stripY);
+            ctx.lineTo(x0 + 4, stripY - 5);
+            ctx.lineTo(x0 - 4, stripY - 5);
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+    };
+})();
+
+/* ══════════════════════════════════════════════════════════════
+ *  REPORT MODAL CLOSE
+ * ══════════════════════════════════════════════════════════════ */
+
+ForensicAnalyzer.prototype.closeReportModal = function() {
+    var modal = document.getElementById('report-modal');
+    if (modal) modal.classList.remove('show');
+};
+
+ForensicAnalyzer.prototype.confirmReport = function() {
+    var self = this;
+    var analystName = document.getElementById('report-analyst').value.trim() || 'Analyst';
+    var caseNumber = document.getElementById('report-case').value.trim() || 'N/A';
+
+    self.generateReport({
+        analystName: analystName,
+        caseNumber: caseNumber,
+        includeSpectrogram: document.getElementById('rpt-inc-spec').checked,
+        includeWaveform: document.getElementById('rpt-inc-wave').checked,
+        includeAnnotations: document.getElementById('rpt-inc-anno').checked,
+        includeMetadata: document.getElementById('rpt-inc-meta').checked,
+        includeEnhanceLog: document.getElementById('rpt-inc-enhance').checked,
+        includeEvents: document.getElementById('rpt-inc-events').checked
+    });
+
+    self.closeReportModal();
 };

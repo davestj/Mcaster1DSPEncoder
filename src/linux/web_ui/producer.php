@@ -781,13 +781,108 @@ input[type="color"].sm-color {
         <button class="rec-btn rec-off" id="rec-btn" onclick="toggleRecord()">
             <i class="fa-solid fa-circle"></i> Record
         </button>
-        <button class="stream-btn" id="stream-btn" onclick="toggleStream()">
-            <i class="fa-solid fa-tower-broadcast"></i> Stream
-        </button>
+        <div style="position:relative;display:inline-block">
+            <button class="stream-btn" id="stream-btn" onclick="toggleStreamPanel()">
+                <i class="fa-solid fa-tower-broadcast"></i> Stream <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>
+            </button>
+            <span id="stream-live-badge" style="display:none;background:var(--red);color:#fff;font-size:9px;font-weight:800;
+                  padding:2px 6px;border-radius:8px;letter-spacing:.06em;position:absolute;top:-6px;right:-8px;
+                  animation:rec-pulse 1.2s ease-in-out infinite">LIVE</span>
+        </div>
     </div>
     <div style="flex:1"></div>
     <div class="ctrl-group">
         <span id="rec-timer" style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums"></span>
+    </div>
+</div>
+
+<!-- Stream Panel (dropdown) -->
+<div id="stream-panel" style="display:none;margin-top:12px">
+    <div class="sw-panel" style="border-color:rgba(20,184,166,.3)">
+        <div class="sec-title"><i class="fa-solid fa-tower-broadcast"></i> Live Stream Configuration</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <!-- Left: target selection + settings -->
+            <div>
+                <div class="sw-row">
+                    <label>Target</label>
+                    <select class="form-select" id="stream-target" style="flex:1;font-size:11px;padding:4px 8px"
+                            onchange="onStreamTargetChange()">
+                        <option value="">-- Select RTMP Target --</option>
+                    </select>
+                </div>
+                <div class="sw-row">
+                    <label>Audio Src</label>
+                    <select class="form-select" id="stream-audio-slot" style="flex:1;font-size:11px;padding:4px 8px">
+                        <option value="0">No Audio</option>
+                        <option value="1">Encoder Slot 1</option>
+                        <option value="2">Encoder Slot 2</option>
+                        <option value="3">Encoder Slot 3</option>
+                    </select>
+                </div>
+                <div class="sw-row">
+                    <label>Codec</label>
+                    <select class="form-select" id="stream-codec" style="flex:1;font-size:11px;padding:4px 8px">
+                        <option value="webm">VP9 + Opus (WebM / Icecast)</option>
+                        <option value="rtmp" selected>H264 + AAC (RTMP / Twitch / YouTube)</option>
+                    </select>
+                </div>
+                <div class="sw-row">
+                    <label>Bitrate</label>
+                    <select class="form-select" id="stream-bitrate" style="flex:1;font-size:11px;padding:4px 8px">
+                        <option value="1000000">480p @ 1000 kbps</option>
+                        <option value="2500000" selected>720p @ 2500 kbps</option>
+                        <option value="4500000">1080p @ 4500 kbps</option>
+                    </select>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                    <button class="auto-btn" id="stream-start-btn" onclick="startVideoStream()"
+                            style="padding:6px 16px;font-size:12px">
+                        <i class="fa-solid fa-play"></i> Start Stream
+                    </button>
+                    <button class="cut-btn" id="stream-stop-btn" onclick="stopVideoStream()" style="display:none;padding:6px 16px;font-size:12px">
+                        <i class="fa-solid fa-stop"></i> Stop Stream
+                    </button>
+                </div>
+            </div>
+            <!-- Right: stream health / status -->
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--teal);margin-bottom:8px">
+                    Stream Health
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px">
+                    <div>
+                        <span style="color:var(--muted)">Status:</span>
+                        <span id="stream-status-label" style="color:var(--text-dim)">Idle</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted)">Duration:</span>
+                        <span id="stream-duration-label" style="color:var(--text-dim);font-variant-numeric:tabular-nums">00:00:00</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted)">Uploaded:</span>
+                        <span id="stream-bytes-label" style="color:var(--text-dim)">0 MB</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted)">Chunks:</span>
+                        <span id="stream-chunks-label" style="color:var(--text-dim);font-variant-numeric:tabular-nums">0</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted)">Target:</span>
+                        <span id="stream-target-label" style="color:var(--text-dim)">--</span>
+                    </div>
+                    <div>
+                        <span style="color:var(--muted)">Server:</span>
+                        <span id="stream-server-status" style="color:var(--text-dim)">--</span>
+                    </div>
+                </div>
+                <div style="margin-top:10px">
+                    <div style="font-size:10px;color:var(--muted);margin-bottom:4px">Buffer (estimated)</div>
+                    <div style="background:rgba(30,41,59,.8);border-radius:3px;height:8px;overflow:hidden;border:1px solid var(--border)">
+                        <div id="stream-buffer-bar" style="height:100%;background:var(--teal);width:0%;transition:width .3s"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1509,21 +1604,189 @@ function updateRecTimer() {
     document.getElementById('rec-timer').textContent = txt;
 }
 
-/* -- Stream (placeholder) -------------------------------------------- */
+/* -- Stream Engine --------------------------------------------------- */
 
-function toggleStream() {
-    var btn = document.getElementById('stream-btn');
-    if (!producer.isStreaming) {
-        producer.isStreaming = true;
-        btn.classList.add('streaming');
-        btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> Live';
-        mc1Toast('Streaming started (browser-side capture active)');
+var streamEngine = null;
+var streamStatusTimer = null;
+var streamTargets = [];
+
+function toggleStreamPanel() {
+    var panel = document.getElementById('stream-panel');
+    if (panel.style.display === 'none') {
+        panel.style.display = '';
+        loadStreamTargets();
     } else {
-        producer.isStreaming = false;
-        btn.classList.remove('streaming');
-        btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> Stream';
-        mc1Toast('Streaming stopped');
+        panel.style.display = 'none';
     }
+}
+
+function loadStreamTargets() {
+    mc1Api('POST', '/app/api/rtmp.php', { action: 'list' }).then(function(d) {
+        if (!d || !d.targets) return;
+        streamTargets = d.targets.filter(function(t) { return t.video_enabled; });
+        var sel = document.getElementById('stream-target');
+        var current = sel.value;
+        sel.innerHTML = '<option value="">-- Select RTMP Target --</option>';
+        for (var i = 0; i < streamTargets.length; i++) {
+            var t = streamTargets[i];
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name + ' (' + t.platform + ') - Slot ' + t.slot_id;
+            sel.appendChild(opt);
+        }
+        if (current) sel.value = current;
+    }).catch(function() {
+        mc1Toast('Failed to load RTMP targets', 'err');
+    });
+}
+
+function onStreamTargetChange() {
+    var sel = document.getElementById('stream-target');
+    var tid = parseInt(sel.value);
+    var label = document.getElementById('stream-target-label');
+    if (!tid) {
+        label.textContent = '--';
+        return;
+    }
+    for (var i = 0; i < streamTargets.length; i++) {
+        if (streamTargets[i].id === tid) {
+            label.textContent = streamTargets[i].name;
+            return;
+        }
+    }
+    label.textContent = '--';
+}
+
+function startVideoStream() {
+    var targetId = parseInt(document.getElementById('stream-target').value);
+    if (!targetId) {
+        mc1Toast('Select an RTMP target first', 'warn');
+        return;
+    }
+
+    var audioSlotId = parseInt(document.getElementById('stream-audio-slot').value) || 0;
+    var codec = document.getElementById('stream-codec').value;
+    var bitrate = parseInt(document.getElementById('stream-bitrate').value) || 2500000;
+
+    if (!streamEngine) {
+        streamEngine = new Mc1VideoProducer.StreamEngine(producer);
+    }
+
+    document.getElementById('stream-start-btn').disabled = true;
+    document.getElementById('stream-status-label').textContent = 'Connecting...';
+    document.getElementById('stream-status-label').style.color = 'var(--yellow)';
+
+    streamEngine.startStreaming(targetId, {
+        audioSlotId: audioSlotId,
+        codec: codec,
+        videoBitrate: bitrate
+    }).then(function(d) {
+        mc1Toast('Video stream started');
+        document.getElementById('stream-start-btn').style.display = 'none';
+        document.getElementById('stream-stop-btn').style.display = '';
+        document.getElementById('stream-start-btn').disabled = false;
+        document.getElementById('stream-status-label').textContent = 'LIVE';
+        document.getElementById('stream-status-label').style.color = 'var(--red)';
+        document.getElementById('stream-live-badge').style.display = '';
+        document.getElementById('stream-server-status').textContent = 'PID ' + (d.pid || '?');
+        document.getElementById('stream-server-status').style.color = 'var(--teal)';
+
+        var btn = document.getElementById('stream-btn');
+        btn.classList.add('streaming');
+        btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> LIVE <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>';
+
+        /* We start polling stream status */
+        streamStatusTimer = setInterval(updateStreamStatus, 2000);
+    }).catch(function(e) {
+        mc1Toast('Stream start failed: ' + (e.message || e), 'err');
+        document.getElementById('stream-start-btn').disabled = false;
+        document.getElementById('stream-status-label').textContent = 'Error';
+        document.getElementById('stream-status-label').style.color = 'var(--red)';
+    });
+}
+
+function stopVideoStream() {
+    if (!streamEngine) return;
+
+    document.getElementById('stream-stop-btn').disabled = true;
+
+    streamEngine.stopStreaming().then(function() {
+        mc1Toast('Video stream stopped');
+        resetStreamUI();
+    }).catch(function(e) {
+        mc1Toast('Stream stop error: ' + (e.message || e), 'err');
+        resetStreamUI();
+    });
+}
+
+function resetStreamUI() {
+    if (streamStatusTimer) {
+        clearInterval(streamStatusTimer);
+        streamStatusTimer = null;
+    }
+    document.getElementById('stream-start-btn').style.display = '';
+    document.getElementById('stream-start-btn').disabled = false;
+    document.getElementById('stream-stop-btn').style.display = 'none';
+    document.getElementById('stream-stop-btn').disabled = false;
+    document.getElementById('stream-status-label').textContent = 'Idle';
+    document.getElementById('stream-status-label').style.color = 'var(--text-dim)';
+    document.getElementById('stream-duration-label').textContent = '00:00:00';
+    document.getElementById('stream-bytes-label').textContent = '0 MB';
+    document.getElementById('stream-chunks-label').textContent = '0';
+    document.getElementById('stream-server-status').textContent = '--';
+    document.getElementById('stream-server-status').style.color = 'var(--text-dim)';
+    document.getElementById('stream-buffer-bar').style.width = '0%';
+    document.getElementById('stream-live-badge').style.display = 'none';
+
+    var btn = document.getElementById('stream-btn');
+    btn.classList.remove('streaming');
+    btn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> Stream <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>';
+}
+
+function updateStreamStatus() {
+    if (!streamEngine || !streamEngine.streaming) return;
+
+    var st = streamEngine.getStreamStatus();
+
+    /* We update duration */
+    var elapsed = Math.floor(st.duration / 1000);
+    var hh = Math.floor(elapsed / 3600);
+    var mm = Math.floor((elapsed % 3600) / 60);
+    var ss = elapsed % 60;
+    var durStr = (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+    document.getElementById('stream-duration-label').textContent = durStr;
+
+    /* We update bytes */
+    var mb = (st.bytesUploaded / 1048576).toFixed(1);
+    document.getElementById('stream-bytes-label').textContent = mb + ' MB';
+
+    /* We update chunk count */
+    document.getElementById('stream-chunks-label').textContent = String(st.chunkIndex);
+
+    /* We estimate buffer fullness as a fraction of the 2s chunk interval */
+    var timeSinceLast = st.duration % 2000;
+    var bufPct = Math.min(100, (timeSinceLast / 2000) * 100);
+    document.getElementById('stream-buffer-bar').style.width = bufPct.toFixed(0) + '%';
+
+    /* We also poll the server for ffmpeg process health */
+    mc1Api('POST', '/app/api/producer.php', {
+        action: 'stream_status',
+        target_id: st.targetId
+    }).then(function(d) {
+        if (d && d.targets && d.targets.length > 0) {
+            var t = d.targets[0];
+            if (t.relay_running) {
+                document.getElementById('stream-server-status').textContent = 'PID ' + t.relay_pid;
+                document.getElementById('stream-server-status').style.color = 'var(--teal)';
+            } else {
+                document.getElementById('stream-server-status').textContent = 'Process Died';
+                document.getElementById('stream-server-status').style.color = 'var(--red)';
+                if (t.error_message) {
+                    mc1Toast('Stream relay died: ' + t.error_message.substring(0, 100), 'err');
+                }
+            }
+        }
+    }).catch(function() {});
 }
 
 /* -- Scene save/load ------------------------------------------------- */

@@ -4,7 +4,7 @@
  * File:    src/linux/web_ui/js/daw-engine.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   DAW-2
+ * Phase:   DAW-3
  *
  * We provide a full multi-track DAW engine with:
  *   - Track and clip management (add, remove, move, split, merge, duplicate)
@@ -19,6 +19,10 @@
  *   - Project save/load via server API
  *   - Undo/redo stack
  *   - Export mixdown via server-side ffmpeg
+ *   - Per-track effects chain (EQ, Compressor, Reverb, Delay, Gain)
+ *   - Aux send buses with shared effects
+ *   - Master bus metering (AnalyserNode) + limiter + LUFS estimation
+ *   - Multi-format export: MP3, WAV 16/24, FLAC, OGG, AAC, Opus + stem export
  *
  * Standards:
  *   - We use Web Audio API AudioBufferSourceNode for clip playback
@@ -71,8 +75,25 @@ function DawEngine(containerId) {
     /* ── Audio ── */
     self.audioCtx     = null;
     self.masterGain   = null;
-    self.trackNodes   = {};    // trackId -> { gain: GainNode, pan: StereoPannerNode }
+    self.masterLimiter = null;  // DynamicsCompressorNode as brick-wall limiter
+    self.masterAnalyser = null; // AnalyserNode for metering
+    self.masterLimiterBypass = false;
+    self.trackNodes   = {};    // trackId -> { gain: GainNode, pan: StereoPannerNode, effectChain: [] }
     self.activeSources = [];   // { source, clipId, trackId }
+
+    /* ── Per-Track Effects ── */
+    // trackEffects[trackId] = [ { type, node, params, id } ]
+    self.trackEffects = {};
+    self.nextEffectId = 1;
+
+    /* ── Aux Buses ── */
+    // auxBuses = [ { id, name, effectType, effectParams, effectNode, returnGain, sendGains: {trackId: level} } ]
+    self.auxBuses    = [];
+    self.nextAuxId   = 1;
+
+    /* ── Metering Data ── */
+    self.meterData   = { peak: 0, rms: 0, lufs: -70 };
+    self._lufsWindow = []; // rolling window for LUFS estimation
 
     /* ── Undo/Redo ── */
     self.undoStack    = [];
@@ -115,9 +136,28 @@ DawEngine.prototype._initAudio = function() {
     var self = this;
     try {
         self.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Master chain: masterGain → masterLimiter → masterAnalyser → destination
         self.masterGain = self.audioCtx.createGain();
         self.masterGain.gain.value = 1.0;
-        self.masterGain.connect(self.audioCtx.destination);
+
+        // Master limiter (DynamicsCompressorNode as brick-wall)
+        self.masterLimiter = self.audioCtx.createDynamicsCompressor();
+        self.masterLimiter.threshold.value = -1;
+        self.masterLimiter.knee.value = 0;
+        self.masterLimiter.ratio.value = 20;
+        self.masterLimiter.attack.value = 0.001;
+        self.masterLimiter.release.value = 0.05;
+
+        // Master analyser for metering
+        self.masterAnalyser = self.audioCtx.createAnalyser();
+        self.masterAnalyser.fftSize = 2048;
+        self.masterAnalyser.smoothingTimeConstant = 0.8;
+
+        // Connect chain
+        self.masterGain.connect(self.masterLimiter);
+        self.masterLimiter.connect(self.masterAnalyser);
+        self.masterAnalyser.connect(self.audioCtx.destination);
     } catch (e) {
         console.error('DAW: Failed to create AudioContext:', e);
     }
@@ -134,9 +174,15 @@ DawEngine.prototype._createTrackNodes = function(trackId) {
     if (self.trackNodes[trackId]) return;
     var gain = self.audioCtx.createGain();
     var pan = self.audioCtx.createStereoPanner();
+    // Default routing: pan → gain → masterGain
+    // Effects are inserted between pan and gain via _rebuildTrackEffectChain
     pan.connect(gain);
     gain.connect(self.masterGain);
-    self.trackNodes[trackId] = { gain: gain, pan: pan };
+    self.trackNodes[trackId] = { gain: gain, pan: pan, effectsInput: pan, effectsOutput: gain };
+    // Rebuild effect chain if effects exist for this track
+    if (self.trackEffects[trackId] && self.trackEffects[trackId].length > 0) {
+        self._rebuildTrackEffectChain(trackId);
+    }
 };
 
 DawEngine.prototype._removeTrackNodes = function(trackId) {
@@ -198,6 +244,467 @@ DawEngine.prototype._resizeCanvases = function() {
 };
 
 /* ══════════════════════════════════════════════════════════════
+ *  PER-TRACK EFFECTS CHAIN
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Create a Web Audio node for a given effect type + params.
+ * Returns { node, type, params, id } or null on error.
+ */
+DawEngine.prototype._createEffectNode = function(type, params) {
+    var self = this;
+    var ctx = self.audioCtx;
+    if (!ctx) return null;
+
+    if (type === 'eq') {
+        // 3-band EQ: low shelf + peaking mid + high shelf
+        var low = ctx.createBiquadFilter();
+        low.type = 'lowshelf';
+        low.frequency.value = params.lowFreq || 200;
+        low.gain.value = params.lowGain || 0;
+
+        var mid = ctx.createBiquadFilter();
+        mid.type = 'peaking';
+        mid.frequency.value = params.midFreq || 1000;
+        mid.gain.value = params.midGain || 0;
+        mid.Q.value = params.midQ || 1.0;
+
+        var high = ctx.createBiquadFilter();
+        high.type = 'highshelf';
+        high.frequency.value = params.highFreq || 5000;
+        high.gain.value = params.highGain || 0;
+
+        low.connect(mid);
+        mid.connect(high);
+        // Expose input/output for chain wiring
+        return {
+            _input: low, _output: high,
+            _nodes: [low, mid, high],
+            type: type, params: params
+        };
+    }
+
+    if (type === 'compressor') {
+        var comp = ctx.createDynamicsCompressor();
+        comp.threshold.value = params.threshold !== undefined ? params.threshold : -18;
+        comp.knee.value = params.knee !== undefined ? params.knee : 10;
+        comp.ratio.value = params.ratio !== undefined ? params.ratio : 4;
+        comp.attack.value = params.attack !== undefined ? params.attack : 0.01;
+        comp.release.value = params.release !== undefined ? params.release : 0.15;
+        return { _input: comp, _output: comp, _nodes: [comp], type: type, params: params };
+    }
+
+    if (type === 'reverb') {
+        // ConvolverNode with algorithmic impulse response
+        var convolver = ctx.createConvolver();
+        var mix = params.mix !== undefined ? params.mix : 0.3;
+        var decay = params.decay !== undefined ? params.decay : 2.0;
+        convolver.buffer = self._generateReverbIR(decay);
+
+        // Dry/wet mix via parallel gain nodes
+        var dryGain = ctx.createGain();
+        dryGain.gain.value = 1.0 - mix;
+        var wetGain = ctx.createGain();
+        wetGain.gain.value = mix;
+        var merger = ctx.createGain(); // mix point
+
+        // Input splits to dry + convolver
+        var splitter = ctx.createGain();
+        splitter.connect(dryGain);
+        splitter.connect(convolver);
+        convolver.connect(wetGain);
+        dryGain.connect(merger);
+        wetGain.connect(merger);
+
+        return {
+            _input: splitter, _output: merger,
+            _nodes: [splitter, dryGain, wetGain, convolver, merger],
+            _wetGain: wetGain, _dryGain: dryGain, _convolver: convolver,
+            type: type, params: params
+        };
+    }
+
+    if (type === 'delay') {
+        var delayTime = params.time !== undefined ? params.time : 0.3;
+        var feedback = params.feedback !== undefined ? params.feedback : 0.4;
+        var dMix = params.mix !== undefined ? params.mix : 0.3;
+
+        var delayNode = ctx.createDelay(5.0);
+        delayNode.delayTime.value = delayTime;
+        var fbGain = ctx.createGain();
+        fbGain.gain.value = feedback;
+        var dDryGain = ctx.createGain();
+        dDryGain.gain.value = 1.0 - dMix;
+        var dWetGain = ctx.createGain();
+        dWetGain.gain.value = dMix;
+        var dMerger = ctx.createGain();
+        var dSplitter = ctx.createGain();
+
+        dSplitter.connect(dDryGain);
+        dSplitter.connect(delayNode);
+        delayNode.connect(fbGain);
+        fbGain.connect(delayNode); // feedback loop
+        delayNode.connect(dWetGain);
+        dDryGain.connect(dMerger);
+        dWetGain.connect(dMerger);
+
+        return {
+            _input: dSplitter, _output: dMerger,
+            _nodes: [dSplitter, dDryGain, dWetGain, delayNode, fbGain, dMerger],
+            _delayNode: delayNode, _fbGain: fbGain,
+            type: type, params: params
+        };
+    }
+
+    if (type === 'gain') {
+        var gNode = ctx.createGain();
+        gNode.gain.value = params.gain !== undefined ? params.gain : 1.0;
+        return { _input: gNode, _output: gNode, _nodes: [gNode], type: type, params: params };
+    }
+
+    return null;
+};
+
+/**
+ * Generate a simple algorithmic impulse response for reverb.
+ */
+DawEngine.prototype._generateReverbIR = function(decay) {
+    var self = this;
+    var ctx = self.audioCtx;
+    var sampleRate = ctx.sampleRate;
+    var length = Math.floor(sampleRate * decay);
+    var buffer = ctx.createBuffer(2, length, sampleRate);
+    for (var ch = 0; ch < 2; ch++) {
+        var data = buffer.getChannelData(ch);
+        for (var i = 0; i < length; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2);
+        }
+    }
+    return buffer;
+};
+
+/**
+ * Add an effect to a track's effect chain.
+ */
+DawEngine.prototype.addTrackEffect = function(trackId, type, params) {
+    var self = this;
+    params = params || {};
+    self._pushUndo('addEffect');
+
+    var fx = self._createEffectNode(type, params);
+    if (!fx) { console.warn('DAW: Unknown effect type:', type); return null; }
+    fx.id = 'fx_' + self.nextEffectId++;
+
+    if (!self.trackEffects[trackId]) self.trackEffects[trackId] = [];
+    self.trackEffects[trackId].push(fx);
+    self._rebuildTrackEffectChain(trackId);
+    return fx;
+};
+
+/**
+ * Remove an effect from a track's chain by index.
+ */
+DawEngine.prototype.removeTrackEffect = function(trackId, effectIndex) {
+    var self = this;
+    var chain = self.trackEffects[trackId];
+    if (!chain || effectIndex < 0 || effectIndex >= chain.length) return;
+    self._pushUndo('removeEffect');
+
+    // Disconnect removed effect nodes
+    var fx = chain[effectIndex];
+    if (fx._nodes) { fx._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} }); }
+    chain.splice(effectIndex, 1);
+    self._rebuildTrackEffectChain(trackId);
+};
+
+/**
+ * Reorder the track's effect chain.
+ * newOrder is an array of indices in the desired new order.
+ */
+DawEngine.prototype.reorderTrackEffects = function(trackId, newOrder) {
+    var self = this;
+    var chain = self.trackEffects[trackId];
+    if (!chain) return;
+    self._pushUndo('reorderEffects');
+
+    var reordered = newOrder.map(function(idx) { return chain[idx]; }).filter(Boolean);
+    self.trackEffects[trackId] = reordered;
+    self._rebuildTrackEffectChain(trackId);
+};
+
+/**
+ * Update effect parameters live (no audio glitch).
+ */
+DawEngine.prototype.updateTrackEffect = function(trackId, effectIndex, params) {
+    var self = this;
+    var chain = self.trackEffects[trackId];
+    if (!chain || effectIndex < 0 || effectIndex >= chain.length) return;
+    var fx = chain[effectIndex];
+    var ctx = self.audioCtx;
+    var now = ctx.currentTime;
+
+    // Merge params
+    for (var k in params) { fx.params[k] = params[k]; }
+
+    if (fx.type === 'eq') {
+        var nodes = fx._nodes;
+        if (nodes[0]) { nodes[0].frequency.value = fx.params.lowFreq || 200; nodes[0].gain.value = fx.params.lowGain || 0; }
+        if (nodes[1]) { nodes[1].frequency.value = fx.params.midFreq || 1000; nodes[1].gain.value = fx.params.midGain || 0; nodes[1].Q.value = fx.params.midQ || 1.0; }
+        if (nodes[2]) { nodes[2].frequency.value = fx.params.highFreq || 5000; nodes[2].gain.value = fx.params.highGain || 0; }
+    } else if (fx.type === 'compressor') {
+        var comp = fx._nodes[0];
+        if (params.threshold !== undefined) comp.threshold.value = params.threshold;
+        if (params.knee !== undefined) comp.knee.value = params.knee;
+        if (params.ratio !== undefined) comp.ratio.value = params.ratio;
+        if (params.attack !== undefined) comp.attack.value = params.attack;
+        if (params.release !== undefined) comp.release.value = params.release;
+    } else if (fx.type === 'reverb') {
+        if (params.mix !== undefined) {
+            fx._dryGain.gain.setValueAtTime(1.0 - params.mix, now);
+            fx._wetGain.gain.setValueAtTime(params.mix, now);
+        }
+        if (params.decay !== undefined) {
+            fx._convolver.buffer = self._generateReverbIR(params.decay);
+        }
+    } else if (fx.type === 'delay') {
+        if (params.time !== undefined) fx._delayNode.delayTime.setValueAtTime(params.time, now);
+        if (params.feedback !== undefined) fx._fbGain.gain.setValueAtTime(params.feedback, now);
+        if (params.mix !== undefined) {
+            // Re-find dry/wet gains from _nodes
+            fx._nodes[1].gain.setValueAtTime(1.0 - params.mix, now); // dDryGain
+            fx._nodes[2].gain.setValueAtTime(params.mix, now);       // dWetGain
+        }
+    } else if (fx.type === 'gain') {
+        fx._nodes[0].gain.setValueAtTime(params.gain !== undefined ? params.gain : 1.0, now);
+    }
+};
+
+/**
+ * Rebuild audio routing for a track's effect chain.
+ * Disconnects old wiring and reconnects: pan → [fx1 → fx2 → ...] → gain → masterGain
+ */
+DawEngine.prototype._rebuildTrackEffectChain = function(trackId) {
+    var self = this;
+    var nodes = self.trackNodes[trackId];
+    if (!nodes) return;
+    var chain = self.trackEffects[trackId] || [];
+
+    // Disconnect pan from everything
+    try { nodes.pan.disconnect(); } catch(e) {}
+    // Disconnect each effect from everything
+    chain.forEach(function(fx) {
+        if (fx._nodes) { fx._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} }); }
+        // Re-connect internal nodes for multi-node effects
+        if (fx.type === 'eq') {
+            fx._nodes[0].connect(fx._nodes[1]);
+            fx._nodes[1].connect(fx._nodes[2]);
+        } else if (fx.type === 'reverb') {
+            fx._nodes[0].connect(fx._nodes[1]); // splitter → dryGain
+            fx._nodes[0].connect(fx._nodes[3]); // splitter → convolver
+            fx._nodes[3].connect(fx._nodes[2]); // convolver → wetGain
+            fx._nodes[1].connect(fx._nodes[4]); // dryGain → merger
+            fx._nodes[2].connect(fx._nodes[4]); // wetGain → merger
+        } else if (fx.type === 'delay') {
+            fx._nodes[0].connect(fx._nodes[1]); // splitter → dryGain
+            fx._nodes[0].connect(fx._nodes[3]); // splitter → delayNode
+            fx._nodes[3].connect(fx._nodes[4]); // delayNode → fbGain
+            fx._nodes[4].connect(fx._nodes[3]); // fbGain → delayNode (feedback)
+            fx._nodes[3].connect(fx._nodes[2]); // delayNode → wetGain
+            fx._nodes[1].connect(fx._nodes[5]); // dryGain → merger
+            fx._nodes[2].connect(fx._nodes[5]); // wetGain → merger
+        }
+    });
+
+    if (chain.length === 0) {
+        // No effects: pan → gain
+        nodes.pan.connect(nodes.gain);
+    } else {
+        // pan → first effect input
+        nodes.pan.connect(chain[0]._input);
+        // Chain effects together
+        for (var i = 0; i < chain.length - 1; i++) {
+            chain[i]._output.connect(chain[i + 1]._input);
+        }
+        // Last effect → gain
+        chain[chain.length - 1]._output.connect(nodes.gain);
+    }
+
+    // Re-connect aux sends from this track
+    self._rebuildAuxSends(trackId);
+};
+
+/**
+ * Get the serializable list of effects for a track (for save/load).
+ */
+DawEngine.prototype.getTrackEffects = function(trackId) {
+    var chain = this.trackEffects[trackId] || [];
+    return chain.map(function(fx) {
+        return { id: fx.id, type: fx.type, params: JSON.parse(JSON.stringify(fx.params)) };
+    });
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  AUX SEND BUSES
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Create an aux bus with a shared effect.
+ */
+DawEngine.prototype.createAuxBus = function(name, effectType, params) {
+    var self = this;
+    params = params || {};
+    self._pushUndo('createAuxBus');
+
+    var fx = self._createEffectNode(effectType, params);
+    if (!fx) return null;
+
+    var returnGain = self.audioCtx.createGain();
+    returnGain.gain.value = 1.0;
+    fx._output.connect(returnGain);
+    returnGain.connect(self.masterGain);
+
+    var bus = {
+        id: 'aux_' + self.nextAuxId++,
+        name: name || 'Aux ' + self.auxBuses.length,
+        effectType: effectType,
+        effectParams: params,
+        effectNode: fx,
+        returnGain: returnGain,
+        sendGains: {} // trackId → { gain: GainNode, level: float }
+    };
+    self.auxBuses.push(bus);
+    return bus;
+};
+
+/**
+ * Remove an aux bus.
+ */
+DawEngine.prototype.removeAuxBus = function(auxId) {
+    var self = this;
+    var idx = self.auxBuses.findIndex(function(b) { return b.id === auxId; });
+    if (idx < 0) return;
+    self._pushUndo('removeAuxBus');
+
+    var bus = self.auxBuses[idx];
+    // Disconnect all send gains
+    for (var tid in bus.sendGains) {
+        try { bus.sendGains[tid].gain.disconnect(); } catch(e) {}
+    }
+    // Disconnect effect and return
+    if (bus.effectNode._nodes) { bus.effectNode._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} }); }
+    try { bus.returnGain.disconnect(); } catch(e) {}
+    self.auxBuses.splice(idx, 1);
+};
+
+/**
+ * Set the send level from a track to an aux bus.
+ */
+DawEngine.prototype.setAuxSend = function(trackId, auxId, level) {
+    var self = this;
+    var bus = self.auxBuses.find(function(b) { return b.id === auxId; });
+    if (!bus) return;
+    var nodes = self.trackNodes[trackId];
+    if (!nodes) return;
+
+    level = Math.max(0, Math.min(1.0, level));
+
+    if (!bus.sendGains[trackId]) {
+        // Create a new send gain node
+        var sendGain = self.audioCtx.createGain();
+        sendGain.gain.value = level;
+        // Connect from track's gain output to aux input
+        nodes.gain.connect(sendGain);
+        sendGain.connect(bus.effectNode._input);
+        bus.sendGains[trackId] = { node: sendGain, level: level };
+    } else {
+        bus.sendGains[trackId].node.gain.value = level;
+        bus.sendGains[trackId].level = level;
+    }
+};
+
+/**
+ * Rebuild aux sends for a specific track (called when effect chain changes).
+ */
+DawEngine.prototype._rebuildAuxSends = function(trackId) {
+    var self = this;
+    var nodes = self.trackNodes[trackId];
+    if (!nodes) return;
+    self.auxBuses.forEach(function(bus) {
+        var send = bus.sendGains[trackId];
+        if (send) {
+            try { send.node.disconnect(); } catch(e) {}
+            nodes.gain.connect(send.node);
+            send.node.connect(bus.effectNode._input);
+        }
+    });
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  MASTER BUS METERING
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Toggle master limiter bypass.
+ */
+DawEngine.prototype.setMasterLimiterBypass = function(bypass) {
+    var self = this;
+    self.masterLimiterBypass = !!bypass;
+    if (!self.audioCtx) return;
+    try { self.masterGain.disconnect(); } catch(e) {}
+    if (bypass) {
+        // Skip limiter: masterGain → analyser → destination
+        self.masterGain.connect(self.masterAnalyser);
+    } else {
+        // Normal: masterGain → limiter → analyser → destination
+        self.masterGain.connect(self.masterLimiter);
+    }
+};
+
+/**
+ * Set master volume (0.0 - 2.0).
+ */
+DawEngine.prototype.setMasterVolume = function(vol) {
+    if (this.masterGain) {
+        this.masterGain.gain.value = Math.max(0, Math.min(2.0, vol));
+    }
+};
+
+/**
+ * Read current metering data from the master analyser.
+ * Called from the render loop.
+ */
+DawEngine.prototype._updateMetering = function() {
+    var self = this;
+    if (!self.masterAnalyser) return;
+
+    var bufLen = self.masterAnalyser.frequencyBinCount;
+    var dataArray = new Float32Array(bufLen);
+    self.masterAnalyser.getFloatTimeDomainData(dataArray);
+
+    // Calculate peak and RMS
+    var peak = 0, sumSq = 0;
+    for (var i = 0; i < bufLen; i++) {
+        var v = Math.abs(dataArray[i]);
+        if (v > peak) peak = v;
+        sumSq += dataArray[i] * dataArray[i];
+    }
+    var rms = Math.sqrt(sumSq / bufLen);
+
+    self.meterData.peak = peak;
+    self.meterData.rms = rms;
+
+    // Simplified LUFS estimation (ITU-R BS.1770-4 simplified)
+    // True LUFS needs K-weighting + gating; this is an approximation
+    var rmsDb = rms > 0 ? 20 * Math.log10(rms) : -70;
+    self._lufsWindow.push(rmsDb);
+    // 400ms window at ~60fps = ~24 frames
+    if (self._lufsWindow.length > 24) self._lufsWindow.shift();
+    var sum = 0;
+    for (var li = 0; li < self._lufsWindow.length; li++) sum += self._lufsWindow[li];
+    self.meterData.lufs = self._lufsWindow.length > 0 ? sum / self._lufsWindow.length : -70;
+};
+
+/* ══════════════════════════════════════════════════════════════
  *  TRACK MANAGEMENT
  * ══════════════════════════════════════════════════════════════ */
 
@@ -230,6 +737,21 @@ DawEngine.prototype.removeTrack = function(trackId) {
     self._pushUndo('removeTrack');
     // Stop any playing sources for this track
     self._stopTrackSources(trackId);
+    // Clean up effects chain
+    var chain = self.trackEffects[trackId];
+    if (chain) {
+        chain.forEach(function(fx) {
+            if (fx._nodes) { fx._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} }); }
+        });
+        delete self.trackEffects[trackId];
+    }
+    // Clean up aux sends
+    self.auxBuses.forEach(function(bus) {
+        if (bus.sendGains[trackId]) {
+            try { bus.sendGains[trackId].node.disconnect(); } catch(e) {}
+            delete bus.sendGains[trackId];
+        }
+    });
     self._removeTrackNodes(trackId);
     self.tracks.splice(idx, 1);
     self._renderTrackList();
@@ -887,9 +1409,11 @@ DawEngine.prototype._startRenderLoop = function() {
     var self = this;
     function frame() {
         self._updatePlayPos();
+        self._updateMetering();
         self._drawRuler();
         self._drawWaveforms();
         self._drawOverlay();
+        self._drawMasterMeter();
         self._updateTimeDisplay();
         self._updatePlayhead();
         requestAnimationFrame(frame);
@@ -1329,6 +1853,7 @@ DawEngine.prototype._renderTrackList = function() {
             '  <div class="track-btns">' +
             '    <button class="track-btn' + (track.muted ? ' muted' : '') + '" data-action="mute" data-track="' + track.id + '" title="Mute">M</button>' +
             '    <button class="track-btn' + (track.solo ? ' soloed' : '') + '" data-action="solo" data-track="' + track.id + '" title="Solo">S</button>' +
+            '    <button class="track-fx-btn' + ((self.trackEffects[track.id] && self.trackEffects[track.id].length > 0) ? ' has-fx' : '') + '" data-track="' + track.id + '" title="Effects"><i class="fa-solid fa-sliders fa-xs"></i></button>' +
             '  </div>' +
             '  <span class="track-del" data-track="' + track.id + '" title="Delete track"><i class="fa-solid fa-trash"></i></span>' +
             '</div>' +
@@ -1417,6 +1942,16 @@ DawEngine.prototype._renderTrackList = function() {
             self.selectedTrack = panel.dataset.trackId;
             container.querySelectorAll('.track-panel').forEach(function(p) { p.classList.remove('selected'); });
             panel.classList.add('selected');
+        });
+    });
+
+    // FX button opens effects panel
+    container.querySelectorAll('.track-fx-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window._openFxPanel === 'function') {
+                window._openFxPanel(btn.dataset.track);
+            }
         });
     });
 };
@@ -1885,13 +2420,14 @@ DawEngine.prototype.saveProject = function() {
     }
 
     var projectJson = {
-        version: 1,
+        version: 2,
         bpm: self.bpm,
         timeSignature: self.timeSignature,
         tracks: self.tracks.map(function(t) {
             return {
                 id: t.id, name: t.name, muted: t.muted, solo: t.solo,
                 volume: t.volume, pan: t.pan, color: t.color,
+                effects: self.getTrackEffects(t.id),
                 clips: t.clips.map(function(c) {
                     return {
                         id: c.id, name: c.name, startTime: c.startTime,
@@ -1902,7 +2438,18 @@ DawEngine.prototype.saveProject = function() {
                     };
                 })
             };
-        })
+        }),
+        auxBuses: self.auxBuses.map(function(bus) {
+            var sends = {};
+            for (var tid in bus.sendGains) { sends[tid] = bus.sendGains[tid].level || 0; }
+            return {
+                id: bus.id, name: bus.name,
+                effectType: bus.effectType, effectParams: bus.effectParams,
+                sendGains: sends
+            };
+        }),
+        masterVolume: self.masterGain ? self.masterGain.gain.value : 1.0,
+        masterLimiterBypass: self.masterLimiterBypass
     };
 
     mc1Api('POST', '/app/api/daw.php', {
@@ -1938,8 +2485,29 @@ DawEngine.prototype.loadProject = function(id) {
 
         var json = typeof p.project_json === 'string' ? JSON.parse(p.project_json) : p.project_json;
         if (json && json.tracks) {
+            // Clear existing effects and aux buses
+            self.trackEffects = {};
+            self.auxBuses.forEach(function(bus) {
+                for (var tid in bus.sendGains) { try { bus.sendGains[tid].node.disconnect(); } catch(e) {} }
+                if (bus.effectNode._nodes) { bus.effectNode._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} }); }
+                try { bus.returnGain.disconnect(); } catch(e) {}
+            });
+            self.auxBuses = [];
+
             self.tracks = json.tracks.map(function(t) {
                 self._createTrackNodes(t.id);
+                // Restore effects chain
+                if (t.effects && t.effects.length > 0) {
+                    self.trackEffects[t.id] = [];
+                    t.effects.forEach(function(fxData) {
+                        var fx = self._createEffectNode(fxData.type, fxData.params || {});
+                        if (fx) {
+                            fx.id = fxData.id || ('fx_' + self.nextEffectId++);
+                            self.trackEffects[t.id].push(fx);
+                        }
+                    });
+                    self._rebuildTrackEffectChain(t.id);
+                }
                 return {
                     id: t.id, name: t.name, muted: t.muted || false, solo: t.solo || false,
                     volume: t.volume || 1.0, pan: t.pan || 0.0, color: t.color || '#14b8a6',
@@ -1954,6 +2522,24 @@ DawEngine.prototype.loadProject = function(id) {
                     })
                 };
             });
+            // Restore aux buses
+            if (json.auxBuses) {
+                json.auxBuses.forEach(function(abData) {
+                    var bus = self.createAuxBus(abData.name, abData.effectType, abData.effectParams);
+                    if (bus && abData.sendGains) {
+                        for (var tid in abData.sendGains) {
+                            self.setAuxSend(tid, bus.id, abData.sendGains[tid]);
+                        }
+                    }
+                });
+            }
+            // Restore master settings
+            if (json.masterVolume !== undefined && self.masterGain) {
+                self.masterGain.gain.value = json.masterVolume;
+            }
+            if (json.masterLimiterBypass !== undefined) {
+                self.setMasterLimiterBypass(json.masterLimiterBypass);
+            }
             // Update nextTrackId/nextClipId
             self.tracks.forEach(function(t) {
                 var num = parseInt(t.id.replace('track_', ''));
@@ -2018,6 +2604,21 @@ DawEngine.prototype.newProject = function() {
     self.projectName = 'Untitled';
     self.bpm = 120;
     self.timeSignature = '4/4';
+    // Clean up effects
+    for (var tid in self.trackEffects) {
+        var chain = self.trackEffects[tid];
+        if (chain) chain.forEach(function(fx) {
+            if (fx._nodes) fx._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} });
+        });
+    }
+    self.trackEffects = {};
+    // Clean up aux buses
+    self.auxBuses.forEach(function(bus) {
+        for (var stid in bus.sendGains) { try { bus.sendGains[stid].node.disconnect(); } catch(e) {} }
+        if (bus.effectNode._nodes) bus.effectNode._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} });
+        try { bus.returnGain.disconnect(); } catch(e) {}
+    });
+    self.auxBuses = [];
     self.tracks = [];
     self.undoStack = [];
     self.redoStack = [];
@@ -2027,6 +2628,8 @@ DawEngine.prototype.newProject = function() {
     self.playing = false;
     self.playPos = 0;
     self._updatePlayButton(false);
+    if (self.masterGain) self.masterGain.gain.value = 1.0;
+    self.masterLimiterBypass = false;
     self.addTrack('Track 1');
     document.getElementById('bpm-input').value = 120;
     mc1Toast('New project created', 'ok');
@@ -2043,6 +2646,12 @@ DawEngine.prototype.exportMixdown = function() {
     var name = document.getElementById('export-name').value.trim() || 'mixdown';
     var progDiv = document.getElementById('export-progress');
     var statusEl = document.getElementById('export-status');
+    var stemCheck = document.getElementById('export-stems');
+    var stemExport = stemCheck ? stemCheck.checked : false;
+    var qualityEl = document.getElementById('export-quality');
+    var quality = qualityEl ? qualityEl.value : '';
+    var bitDepthEl = document.getElementById('export-bit-depth');
+    var bitDepth = bitDepthEl ? bitDepthEl.value : '16';
 
     // We need to save the project first so the server has the data
     if (!self.projectId) {
@@ -2051,21 +2660,24 @@ DawEngine.prototype.exportMixdown = function() {
     }
 
     progDiv.style.display = '';
-    statusEl.textContent = 'Exporting...';
+    statusEl.textContent = stemExport ? 'Exporting stems...' : 'Exporting...';
 
     mc1Api('POST', '/app/api/daw.php', {
         action: 'export_mixdown',
         project_id: self.projectId,
         format: format,
         bitrate: bitrate,
+        quality: quality,
+        bit_depth: bitDepth,
+        stem_export: stemExport,
         output_name: name
     }).then(function(d) {
         if (d.ok && d.download_url) {
-            statusEl.textContent = 'Export complete!';
+            statusEl.textContent = 'Export complete!' + (d.stem_count ? ' (' + d.stem_count + ' stems)' : '');
             setTimeout(function() {
                 var a = document.createElement('a');
                 a.href = d.download_url;
-                a.download = name + '.' + format;
+                a.download = d.file || (name + '.' + format);
                 a.click();
                 progDiv.style.display = 'none';
             }, 500);
@@ -2153,6 +2765,85 @@ DawEngine.prototype.tapTempo = function() {
     self.bpm = bpm;
     document.getElementById('bpm-input').value = bpm;
     mc1Toast('BPM: ' + bpm, 'ok');
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  MASTER BUS METER DRAWING (Canvas 2D on master-meter canvas)
+ * ══════════════════════════════════════════════════════════════ */
+
+DawEngine.prototype._drawMasterMeter = function() {
+    var self = this;
+    var canvas = document.getElementById('master-meter-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width;
+    var h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(0, 0, w, h);
+
+    // Convert peak/rms to dB for meter display
+    var peakDb = self.meterData.peak > 0 ? 20 * Math.log10(self.meterData.peak) : -60;
+    var rmsDb = self.meterData.rms > 0 ? 20 * Math.log10(self.meterData.rms) : -60;
+
+    // Meter range: -60dB to 0dB
+    var minDb = -60, maxDb = 0;
+    var peakPct = Math.max(0, Math.min(1, (peakDb - minDb) / (maxDb - minDb)));
+    var rmsPct = Math.max(0, Math.min(1, (rmsDb - minDb) / (maxDb - minDb)));
+
+    // Draw RMS bar (left channel representation)
+    var barW = (w / 2) - 4;
+    var barH = h - 8;
+    var barX = 2;
+    var barY = 4;
+
+    // RMS fill (green → yellow → red gradient)
+    var rmsH = rmsPct * barH;
+    var gradient = ctx.createLinearGradient(0, barY + barH, 0, barY);
+    gradient.addColorStop(0, '#22c55e');
+    gradient.addColorStop(0.6, '#eab308');
+    gradient.addColorStop(0.85, '#f97316');
+    gradient.addColorStop(1, '#ef4444');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(barX, barY + barH - rmsH, barW, rmsH);
+
+    // Peak indicator line
+    var peakY = barY + barH - (peakPct * barH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(barX, peakY);
+    ctx.lineTo(barX + barW, peakY);
+    ctx.stroke();
+
+    // Right channel (mirror using same data for stereo visualization)
+    var barX2 = w / 2 + 2;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(barX2, barY + barH - rmsH, barW, rmsH);
+    ctx.strokeStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(barX2, peakY);
+    ctx.lineTo(barX2 + barW, peakY);
+    ctx.stroke();
+
+    // dB scale marks
+    ctx.fillStyle = 'rgba(148,163,184,0.6)';
+    ctx.font = '8px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    var marks = [0, -6, -12, -24, -48];
+    for (var mi = 0; mi < marks.length; mi++) {
+        var mPct = (marks[mi] - minDb) / (maxDb - minDb);
+        var my = barY + barH - (mPct * barH);
+        ctx.fillText(marks[mi] + '', w / 2, my + 3);
+    }
+
+    // LUFS readout
+    var lufsEl = document.getElementById('master-lufs');
+    if (lufsEl) {
+        lufsEl.textContent = self.meterData.lufs > -60 ? self.meterData.lufs.toFixed(1) + ' LUFS' : '-- LUFS';
+    }
 };
 
 /* ══════════════════════════════════════════════════════════════

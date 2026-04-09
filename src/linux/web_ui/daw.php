@@ -5,7 +5,7 @@
  * Cubasis/Audacity-style multi-track audio editor with WebGL waveform rendering,
  * Web Audio API playback, drag-drop clip management, and server-side ffmpeg mixdown.
  *
- * Phase:   DAW-2
+ * Phase:   DAW-3
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
  *
@@ -143,6 +143,51 @@ require_once __DIR__ . '/app/inc/header.php';
 
 /* ── Tap Tempo button ── */
 #btn-tap-tempo{font-size:10px;font-weight:700;letter-spacing:.04em;padding:3px 8px;min-width:34px}
+
+/* ── Effects Panel (slide-out from right) ── */
+.fx-panel{position:fixed;top:0;right:0;width:320px;height:100vh;background:var(--bg2);border-left:1px solid var(--border);z-index:400;transform:translateX(100%);transition:transform .25s ease;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,.5)}
+.fx-panel.open{transform:translateX(0)}
+.fx-panel-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.2)}
+.fx-panel-header h4{flex:1;margin:0;font-size:13px;font-weight:700;color:var(--teal)}
+.fx-panel-close{cursor:pointer;color:var(--muted);font-size:14px}
+.fx-panel-close:hover{color:var(--text)}
+.fx-chain{padding:8px}
+.fx-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:rgba(255,255,255,.02)}
+.fx-card-header{display:flex;align-items:center;gap:6px;padding:6px 10px;cursor:move;border-bottom:1px solid rgba(255,255,255,.04)}
+.fx-card-header .fx-type{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal);flex:1}
+.fx-card-header .fx-remove{color:var(--red);font-size:11px;cursor:pointer;opacity:.5}
+.fx-card-header .fx-remove:hover{opacity:1}
+.fx-card-body{padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px}
+.fx-param{display:flex;flex-direction:column;gap:2px;min-width:70px}
+.fx-param label{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.fx-param input[type=range]{width:80px;height:4px}
+.fx-param .fx-val{font-size:10px;color:var(--text-dim);font-family:monospace}
+.fx-add-row{padding:8px;text-align:center}
+
+/* ── Aux Bus Panel ── */
+.aux-panel{position:fixed;top:0;right:0;width:300px;height:100vh;background:var(--bg2);border-left:1px solid var(--border);z-index:400;transform:translateX(100%);transition:transform .25s ease;overflow-y:auto;box-shadow:-4px 0 20px rgba(0,0,0,.5)}
+.aux-panel.open{transform:translateX(0)}
+.aux-bus-card{border:1px solid var(--border);border-radius:var(--radius-sm);margin:8px;padding:10px;background:rgba(255,255,255,.02)}
+.aux-bus-card h5{font-size:12px;font-weight:700;color:var(--text);margin:0 0 8px}
+.aux-send-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px;color:var(--text-dim)}
+.aux-send-row span{width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aux-send-row input[type=range]{flex:1;height:3px}
+.aux-send-row .send-val{width:30px;text-align:right;font-family:monospace;font-size:10px}
+
+/* ── Master Bus Section ── */
+.daw-master{display:flex;align-items:center;gap:10px;padding:6px 12px;background:rgba(0,0,0,.2);border-top:1px solid var(--border);flex-shrink:0}
+.master-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.master-fader{width:120px;height:4px}
+.master-vol-val{font-size:11px;font-family:monospace;color:var(--text-dim);min-width:40px;text-align:center}
+#master-meter-canvas{width:40px;height:50px;border:1px solid var(--border);border-radius:3px;background:rgba(0,0,0,.3)}
+.master-lufs{font-size:10px;font-family:monospace;color:var(--text-dim);min-width:65px;text-align:center}
+.master-limiter-btn{font-size:9px;padding:2px 6px;letter-spacing:.04em}
+.master-limiter-btn.bypassed{background:rgba(239,68,68,.2) !important;color:var(--red) !important;border-color:rgba(239,68,68,.4) !important}
+
+/* ── Track FX Button ── */
+.track-fx-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:3px;background:rgba(255,255,255,.04);color:var(--text-dim);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.track-fx-btn:hover{background:rgba(255,255,255,.1);color:var(--text)}
+.track-fx-btn.has-fx{background:rgba(20,184,166,.15);color:var(--teal);border-color:rgba(20,184,166,.4)}
 </style>
 
 <!-- Toolbar -->
@@ -174,6 +219,8 @@ require_once __DIR__ . '/app/inc/header.php';
       <option value="auto" selected>XF Auto</option>
       <option value="manual">XF Manual</option>
     </select>
+    <div class="sep"></div>
+    <button class="btn btn-secondary btn-sm" id="btn-buses" title="Aux Buses"><i class="fa-solid fa-diagram-project"></i> Buses</button>
     <div class="sep"></div>
     <select class="form-select" id="snap-select" style="width:90px;padding:4px 6px;font-size:11px" title="Snap to grid">
       <option value="0">No Snap</option>
@@ -212,6 +259,16 @@ require_once __DIR__ . '/app/inc/header.php';
       </div>
       <div class="daw-hscroll" id="hscroll"><div class="daw-hscroll-inner" id="hscroll-inner"></div></div>
     </div>
+  </div>
+
+  <!-- Master bus -->
+  <div class="daw-master">
+    <span class="master-label">Master</span>
+    <input type="range" class="master-fader" id="master-fader" min="0" max="200" value="100" title="Master Volume">
+    <span class="master-vol-val" id="master-vol-val">100%</span>
+    <canvas id="master-meter-canvas" width="40" height="50"></canvas>
+    <span class="master-lufs" id="master-lufs">-- LUFS</span>
+    <button class="btn btn-secondary master-limiter-btn" id="btn-limiter-bypass" title="Limiter Bypass">LIM</button>
   </div>
 
   <!-- Bottom bar -->
@@ -282,9 +339,11 @@ require_once __DIR__ . '/app/inc/header.php';
       <label class="form-label">Format</label>
       <select class="form-select" id="export-format">
         <option value="mp3">MP3</option>
-        <option value="wav">WAV (PCM 16-bit)</option>
+        <option value="wav">WAV</option>
         <option value="flac">FLAC</option>
         <option value="ogg">Ogg Vorbis</option>
+        <option value="aac">AAC</option>
+        <option value="opus">Opus</option>
       </select>
     </div>
     <div class="form-group" id="export-bitrate-group">
@@ -296,9 +355,32 @@ require_once __DIR__ . '/app/inc/header.php';
         <option value="320k">320 kbps</option>
       </select>
     </div>
+    <div class="form-group" id="export-quality-group" style="display:none">
+      <label class="form-label">Quality</label>
+      <select class="form-select" id="export-quality">
+        <option value="0">0 (Lowest)</option>
+        <option value="2">2</option>
+        <option value="5" selected>5 (Default)</option>
+        <option value="7">7</option>
+        <option value="8">8 (Highest)</option>
+        <option value="10">10 (Max)</option>
+      </select>
+    </div>
+    <div class="form-group" id="export-bit-depth-group" style="display:none">
+      <label class="form-label">Bit Depth</label>
+      <select class="form-select" id="export-bit-depth">
+        <option value="16" selected>16-bit</option>
+        <option value="24">24-bit</option>
+      </select>
+    </div>
     <div class="form-group">
       <label class="form-label">Project Name</label>
       <input class="form-input" id="export-name" value="">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);cursor:pointer">
+        <input type="checkbox" id="export-stems"> Export each track as a separate stem file
+      </label>
     </div>
     <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
       <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-export').classList.remove('open')">Cancel</button>
@@ -321,6 +403,48 @@ require_once __DIR__ . '/app/inc/header.php';
     <div id="lib-results" style="max-height:400px;overflow-y:auto">
       <div style="text-align:center;padding:20px;color:var(--muted)">Search for tracks to add to your project</div>
     </div>
+  </div>
+</div>
+
+<!-- Track Effects Panel (slide-out) -->
+<div class="fx-panel" id="fx-panel">
+  <div class="fx-panel-header">
+    <i class="fa-solid fa-sliders fa-fw" style="color:var(--teal)"></i>
+    <h4 id="fx-panel-title">Track Effects</h4>
+    <span class="fx-panel-close" id="fx-panel-close"><i class="fa-solid fa-xmark"></i></span>
+  </div>
+  <div class="fx-chain" id="fx-chain">
+    <!-- Effect cards injected by JS -->
+  </div>
+  <div class="fx-add-row">
+    <select class="form-select" id="fx-add-type" style="width:140px;display:inline-block;font-size:11px;padding:4px 6px">
+      <option value="">Add Effect...</option>
+      <option value="eq">EQ (3-Band)</option>
+      <option value="compressor">Compressor</option>
+      <option value="reverb">Reverb</option>
+      <option value="delay">Delay</option>
+      <option value="gain">Gain</option>
+    </select>
+  </div>
+</div>
+
+<!-- Aux Bus Panel (slide-out) -->
+<div class="aux-panel" id="aux-panel">
+  <div class="fx-panel-header">
+    <i class="fa-solid fa-diagram-project fa-fw" style="color:var(--teal)"></i>
+    <h4>Aux Buses</h4>
+    <span class="fx-panel-close" id="aux-panel-close"><i class="fa-solid fa-xmark"></i></span>
+  </div>
+  <div id="aux-bus-list" style="padding:8px">
+    <!-- Bus cards injected by JS -->
+  </div>
+  <div class="fx-add-row">
+    <select class="form-select" id="aux-add-type" style="width:140px;display:inline-block;font-size:11px;padding:4px 6px">
+      <option value="">Add Aux Bus...</option>
+      <option value="reverb">Reverb Bus</option>
+      <option value="delay">Delay Bus</option>
+      <option value="compressor">Compressor Bus</option>
+    </select>
   </div>
 </div>
 
@@ -421,10 +545,82 @@ require_once __DIR__ . '/app/inc/header.php';
             document.getElementById('modal-export').classList.remove('open');
         });
         document.getElementById('export-format').addEventListener('change', function(){
-            var show = (this.value === 'mp3' || this.value === 'ogg');
-            document.getElementById('export-bitrate-group').style.display = show ? '' : 'none';
+            var fmt = this.value;
+            var showBitrate = (fmt === 'mp3' || fmt === 'ogg' || fmt === 'aac' || fmt === 'opus');
+            var showQuality = (fmt === 'flac' || fmt === 'ogg');
+            var showBitDepth = (fmt === 'wav');
+            document.getElementById('export-bitrate-group').style.display = showBitrate ? '' : 'none';
+            document.getElementById('export-quality-group').style.display = showQuality ? '' : 'none';
+            document.getElementById('export-bit-depth-group').style.display = showBitDepth ? '' : 'none';
+            // Update bitrate options for different codecs
+            var brSel = document.getElementById('export-bitrate');
+            if (fmt === 'aac') {
+                brSel.innerHTML = '<option value="64k">64 kbps</option><option value="128k" selected>128 kbps</option><option value="256k">256 kbps</option>';
+            } else if (fmt === 'opus') {
+                brSel.innerHTML = '<option value="48k">48 kbps</option><option value="96k">96 kbps</option><option value="128k" selected>128 kbps</option>';
+            } else {
+                brSel.innerHTML = '<option value="128k">128 kbps</option><option value="192k" selected>192 kbps</option><option value="256k">256 kbps</option><option value="320k">320 kbps</option>';
+            }
         });
         document.getElementById('btn-do-export').addEventListener('click', function(){ daw.exportMixdown(); });
+
+        // Master fader
+        document.getElementById('master-fader').addEventListener('input', function(){
+            var vol = parseFloat(this.value) / 100;
+            daw.setMasterVolume(vol);
+            document.getElementById('master-vol-val').textContent = this.value + '%';
+        });
+
+        // Limiter bypass
+        document.getElementById('btn-limiter-bypass').addEventListener('click', function(){
+            var bp = !daw.masterLimiterBypass;
+            daw.setMasterLimiterBypass(bp);
+            this.classList.toggle('bypassed', bp);
+            mc1Toast('Master limiter ' + (bp ? 'bypassed' : 'active'), 'ok');
+        });
+
+        // Effects panel
+        document.getElementById('fx-panel-close').addEventListener('click', function(){
+            document.getElementById('fx-panel').classList.remove('open');
+        });
+        document.getElementById('fx-add-type').addEventListener('change', function(){
+            var type = this.value;
+            if (!type) return;
+            this.value = '';
+            var tid = document.getElementById('fx-panel').dataset.trackId;
+            if (!tid) return;
+            var defaults = {
+                eq: {lowFreq:200, lowGain:0, midFreq:1000, midGain:0, midQ:1, highFreq:5000, highGain:0},
+                compressor: {threshold:-18, knee:10, ratio:4, attack:0.01, release:0.15},
+                reverb: {mix:0.3, decay:2.0},
+                delay: {time:0.3, feedback:0.4, mix:0.3},
+                gain: {gain:1.0}
+            };
+            daw.addTrackEffect(tid, type, defaults[type] || {});
+            renderFxPanel(tid);
+            updateTrackFxButtons();
+        });
+
+        // Aux bus panel
+        document.getElementById('btn-buses').addEventListener('click', function(){
+            document.getElementById('aux-panel').classList.toggle('open');
+            renderAuxPanel();
+        });
+        document.getElementById('aux-panel-close').addEventListener('click', function(){
+            document.getElementById('aux-panel').classList.remove('open');
+        });
+        document.getElementById('aux-add-type').addEventListener('change', function(){
+            var type = this.value;
+            if (!type) return;
+            this.value = '';
+            var defaults = {
+                reverb: {mix:0.5, decay:2.0},
+                delay: {time:0.3, feedback:0.4, mix:0.5},
+                compressor: {threshold:-12, knee:10, ratio:4, attack:0.01, release:0.15}
+            };
+            daw.createAuxBus(type.charAt(0).toUpperCase() + type.slice(1) + ' Bus', type, defaults[type] || {});
+            renderAuxPanel();
+        });
 
         // Context menu
         document.querySelectorAll('#ctx-menu .daw-ctx-item').forEach(function(el){
@@ -493,6 +689,170 @@ require_once __DIR__ . '/app/inc/header.php';
         var d = document.createElement('div');
         d.appendChild(document.createTextNode(s));
         return d.innerHTML;
+    }
+
+    /* ── FX Panel Rendering ── */
+    function openFxPanel(trackId) {
+        var panel = document.getElementById('fx-panel');
+        var track = daw._getTrack(trackId);
+        panel.dataset.trackId = trackId;
+        document.getElementById('fx-panel-title').textContent = (track ? track.name : 'Track') + ' Effects';
+        panel.classList.add('open');
+        renderFxPanel(trackId);
+    }
+    // Expose for track panel buttons
+    window._openFxPanel = openFxPanel;
+
+    function renderFxPanel(trackId) {
+        var container = document.getElementById('fx-chain');
+        var effects = daw.getTrackEffects(trackId);
+        container.innerHTML = '';
+        if (effects.length === 0) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">No effects. Add one below.</div>';
+            return;
+        }
+        effects.forEach(function(fx, idx) {
+            var card = document.createElement('div');
+            card.className = 'fx-card';
+            card.dataset.index = idx;
+
+            var header = document.createElement('div');
+            header.className = 'fx-card-header';
+            header.innerHTML = '<span class="fx-type">' + esc(fx.type) + '</span>' +
+                '<span class="fx-remove" data-idx="' + idx + '" title="Remove"><i class="fa-solid fa-trash"></i></span>';
+            card.appendChild(header);
+
+            var body = document.createElement('div');
+            body.className = 'fx-card-body';
+            var params = fx.params;
+
+            if (fx.type === 'eq') {
+                body.appendChild(makeFxSlider(trackId, idx, 'lowGain', 'Low', params.lowGain || 0, -12, 12, 0.5, 'dB'));
+                body.appendChild(makeFxSlider(trackId, idx, 'midGain', 'Mid', params.midGain || 0, -12, 12, 0.5, 'dB'));
+                body.appendChild(makeFxSlider(trackId, idx, 'highGain', 'High', params.highGain || 0, -12, 12, 0.5, 'dB'));
+                body.appendChild(makeFxSlider(trackId, idx, 'midFreq', 'Freq', params.midFreq || 1000, 200, 8000, 50, 'Hz'));
+                body.appendChild(makeFxSlider(trackId, idx, 'midQ', 'Q', params.midQ || 1, 0.1, 10, 0.1, ''));
+            } else if (fx.type === 'compressor') {
+                body.appendChild(makeFxSlider(trackId, idx, 'threshold', 'Thresh', params.threshold, -60, 0, 1, 'dB'));
+                body.appendChild(makeFxSlider(trackId, idx, 'ratio', 'Ratio', params.ratio, 1, 20, 0.5, ':1'));
+                body.appendChild(makeFxSlider(trackId, idx, 'attack', 'Attack', params.attack, 0.001, 0.5, 0.001, 's'));
+                body.appendChild(makeFxSlider(trackId, idx, 'release', 'Release', params.release, 0.01, 1, 0.01, 's'));
+                body.appendChild(makeFxSlider(trackId, idx, 'knee', 'Knee', params.knee, 0, 40, 1, 'dB'));
+            } else if (fx.type === 'reverb') {
+                body.appendChild(makeFxSlider(trackId, idx, 'mix', 'Mix', params.mix, 0, 1, 0.01, ''));
+                body.appendChild(makeFxSlider(trackId, idx, 'decay', 'Decay', params.decay, 0.1, 8, 0.1, 's'));
+            } else if (fx.type === 'delay') {
+                body.appendChild(makeFxSlider(trackId, idx, 'time', 'Time', params.time, 0.01, 2, 0.01, 's'));
+                body.appendChild(makeFxSlider(trackId, idx, 'feedback', 'FB', params.feedback, 0, 0.95, 0.01, ''));
+                body.appendChild(makeFxSlider(trackId, idx, 'mix', 'Mix', params.mix, 0, 1, 0.01, ''));
+            } else if (fx.type === 'gain') {
+                body.appendChild(makeFxSlider(trackId, idx, 'gain', 'Gain', params.gain, 0, 2, 0.01, ''));
+            }
+
+            card.appendChild(body);
+            container.appendChild(card);
+        });
+
+        // Bind remove buttons
+        container.querySelectorAll('.fx-remove').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var i = parseInt(el.dataset.idx);
+                daw.removeTrackEffect(trackId, i);
+                renderFxPanel(trackId);
+                updateTrackFxButtons();
+            });
+        });
+    }
+
+    function makeFxSlider(trackId, fxIdx, paramKey, label, value, min, max, step, unit) {
+        var wrap = document.createElement('div');
+        wrap.className = 'fx-param';
+        var uid = 'fxp-' + trackId + '-' + fxIdx + '-' + paramKey;
+        wrap.innerHTML = '<label>' + esc(label) + '</label>' +
+            '<input type="range" id="' + uid + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + value + '">' +
+            '<span class="fx-val" id="' + uid + '-v">' + parseFloat(value).toFixed(2) + (unit ? ' ' + unit : '') + '</span>';
+        setTimeout(function() {
+            var inp = document.getElementById(uid);
+            var valEl = document.getElementById(uid + '-v');
+            if (!inp) return;
+            inp.addEventListener('input', function() {
+                var v = parseFloat(this.value);
+                valEl.textContent = v.toFixed(2) + (unit ? ' ' + unit : '');
+                var update = {};
+                update[paramKey] = v;
+                daw.updateTrackEffect(trackId, fxIdx, update);
+            });
+        }, 30);
+        return wrap;
+    }
+
+    function updateTrackFxButtons() {
+        if (!daw) return;
+        document.querySelectorAll('.track-fx-btn').forEach(function(btn) {
+            var tid = btn.dataset.track;
+            var chain = daw.trackEffects[tid] || [];
+            btn.classList.toggle('has-fx', chain.length > 0);
+            btn.title = chain.length > 0 ? chain.length + ' effect(s)' : 'Add effects';
+        });
+    }
+
+    /* ── Aux Bus Panel Rendering ── */
+    function renderAuxPanel() {
+        var container = document.getElementById('aux-bus-list');
+        container.innerHTML = '';
+        if (daw.auxBuses.length === 0) {
+            container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted);font-size:12px">No aux buses. Add one below.</div>';
+            return;
+        }
+        daw.auxBuses.forEach(function(bus, bi) {
+            var card = document.createElement('div');
+            card.className = 'aux-bus-card';
+
+            var hdr = '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">' +
+                '<h5 style="flex:1;margin:0">' + esc(bus.name) + '</h5>' +
+                '<span style="color:var(--muted);font-size:10px">' + bus.effectType + '</span>' +
+                '<span class="fx-remove" data-bus="' + bi + '" title="Remove bus" style="cursor:pointer;color:var(--red);font-size:11px;opacity:.5"><i class="fa-solid fa-trash"></i></span>' +
+                '</div>';
+            card.innerHTML = hdr;
+
+            // Send level sliders for each track
+            daw.tracks.forEach(function(track) {
+                var sendLevel = 0;
+                if (bus.sendGains[track.id]) sendLevel = bus.sendGains[track.id].level || 0;
+                var row = document.createElement('div');
+                row.className = 'aux-send-row';
+                var sid = 'aux-send-' + bus.id + '-' + track.id;
+                row.innerHTML = '<span>' + esc(track.name) + '</span>' +
+                    '<input type="range" id="' + sid + '" min="0" max="100" value="' + Math.round(sendLevel * 100) + '">' +
+                    '<span class="send-val" id="' + sid + '-v">' + Math.round(sendLevel * 100) + '%</span>';
+                card.appendChild(row);
+                setTimeout(function() {
+                    var inp = document.getElementById(sid);
+                    var valEl = document.getElementById(sid + '-v');
+                    if (!inp) return;
+                    inp.addEventListener('input', function() {
+                        var lvl = parseFloat(this.value) / 100;
+                        valEl.textContent = Math.round(lvl * 100) + '%';
+                        daw.setAuxSend(track.id, bus.id, lvl);
+                    });
+                }, 30);
+            });
+
+            container.appendChild(card);
+        });
+
+        // Remove bus handlers
+        container.querySelectorAll('.fx-remove[data-bus]').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                var idx = parseInt(el.dataset.bus);
+                if (idx >= 0 && idx < daw.auxBuses.length) {
+                    daw.removeAuxBus(daw.auxBuses[idx].id);
+                    renderAuxPanel();
+                }
+            });
+        });
     }
 })();
 </script>

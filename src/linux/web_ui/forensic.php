@@ -5,14 +5,17 @@
  * File:    src/linux/web_ui/forensic.php
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   FA-2
+ * Phase:   FA-3
  * Purpose: We provide a deep spectral analysis page targeting paranormal investigators,
  *          forensic analysts, and audio researchers. We use WebGL 2.0 for high-resolution
  *          spectrogram rendering with configurable FFT sizes up to 65536, multiple window
  *          functions, color maps, frequency scales, region selection, filtered playback,
  *          annotations, optional Ollama AI analysis, spectral noise reduction, band
  *          isolation, amplitude envelope, WSOLA pitch-preserved speed change, spectrum
- *          peak detection, and side-by-side compare mode with difference view.
+ *          peak detection, side-by-side compare mode with difference view, professional
+ *          HTML report generation with chain-of-custody, AI spectrum analysis with
+ *          frequency distribution context, automatic event detection, and stereo
+ *          phase correlation goniometer display.
  *
  * Standards:
  *  - We never call exit() or die() -- uopz extension is active on this server
@@ -142,6 +145,41 @@ require_once __DIR__ . '/app/inc/header.php';
 .minimap canvas{width:100%;height:100%}
 .minimap-viewport{position:absolute;top:0;bottom:0;border:1px solid var(--teal);background:rgba(20,184,166,.1);pointer-events:none}
 
+/* Event list */
+.event-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:14px}
+.event-panel .card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.event-filter-row{display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap}
+.event-filter-row .btn{padding:3px 8px;font-size:10px}
+.event-list{max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.event-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim);padding:4px 6px;background:rgba(255,255,255,.03);border-radius:var(--radius-xs);cursor:pointer;transition:background .15s}
+.event-item:hover{background:rgba(20,184,166,.08);color:var(--text)}
+.event-icon{font-size:13px;min-width:20px;text-align:center}
+.event-time{font-family:'SF Mono','Fira Code',monospace;color:var(--teal);min-width:60px}
+.event-label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evt-silence{border-left:3px solid #94a3b8}
+.evt-transient{border-left:3px solid #eab308}
+.evt-tonal{border-left:3px solid #3b82f6}
+.evt-click{border-left:3px solid #ef4444}
+
+/* Goniometer */
+.goniometer-panel{display:none;margin-top:8px}
+.goniometer-panel .panel-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}
+#goniometer-canvas{width:200px;height:200px;border:1px solid var(--border);border-radius:var(--radius-sm);background:#080c18}
+
+/* AI panel */
+.ai-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:14px}
+.ai-panel .card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.ai-btn-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+/* Report modal */
+.report-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:5000;display:none;align-items:center;justify-content:center}
+.report-modal.show{display:flex}
+.report-modal-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:420px;max-width:90vw}
+.report-modal-box h3{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px}
+.rpt-checks{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+.rpt-checks label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim)}
+.rpt-checks input[type=checkbox]{accent-color:var(--teal)}
+
 @media(max-width:860px){
   .forensic-body{grid-template-columns:1fr}
   .forensic-controls{flex-direction:row;flex-wrap:wrap;border-radius:var(--radius);border-right:1px solid var(--border)}
@@ -171,6 +209,12 @@ require_once __DIR__ . '/app/inc/header.php';
     </button>
     <button class="btn btn-secondary btn-sm" onclick="forensic.loadAnalysis()">
         <i class="fa-solid fa-folder-tree"></i> Load Analysis
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick="forensic.detectEvents()">
+        <i class="fa-solid fa-magnifying-glass-chart"></i> Detect Events
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick="forensic.exportSpecPNG()">
+        <i class="fa-solid fa-image"></i> Export PNG
     </button>
 </div>
 
@@ -281,9 +325,10 @@ require_once __DIR__ . '/app/inc/header.php';
         <div class="anno-list" id="anno-list">
             <div class="empty" style="padding:16px"><i class="fa-solid fa-map-pin fa-fw"></i> Click spectrogram to add markers</div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-xs" onclick="forensic.exportAnnotations()"><i class="fa-solid fa-download"></i> Export JSON</button>
-            <button class="btn btn-secondary btn-xs" onclick="forensic.exportReport()"><i class="fa-solid fa-file-lines"></i> Export Report</button>
+            <button class="btn btn-primary btn-xs" onclick="forensic.exportReport()"><i class="fa-solid fa-file-lines"></i> Export Report</button>
+            <button class="btn btn-secondary btn-xs" onclick="forensic.exportSpecPNG()"><i class="fa-solid fa-image"></i> Export PNG</button>
         </div>
     </div>
 
@@ -320,11 +365,42 @@ require_once __DIR__ . '/app/inc/header.php';
                 Preserve Pitch
             </label>
         </div>
-        <div class="ai-row">
-            <button class="btn btn-secondary btn-sm" onclick="forensic.aiAnalyze()"><i class="fa-solid fa-robot"></i> AI Analyze Selection</button>
-            <button class="btn btn-secondary btn-sm" onclick="forensic.aiDescribe()"><i class="fa-solid fa-comment-dots"></i> Describe Audio</button>
+        <!-- Goniometer (stereo phase correlation) -->
+        <div class="goniometer-panel" id="goniometer-panel">
+            <div class="panel-label">Phase Correlation</div>
+            <canvas id="goniometer-canvas" width="200" height="200"></canvas>
         </div>
-        <div id="ai-result" style="display:none;margin-top:8px;padding:8px;background:rgba(20,184,166,.06);border:1px solid rgba(20,184,166,.15);border-radius:var(--radius-xs);font-size:12px;color:var(--text-dim);max-height:120px;overflow-y:auto"></div>
+    </div>
+</div>
+
+<!-- AI Analysis Panel -->
+<div class="ai-panel">
+    <div class="card-title"><i class="fa-solid fa-robot fa-fw" style="color:var(--teal)"></i> AI Analysis</div>
+    <div class="ai-btn-row">
+        <button class="btn btn-secondary btn-sm" onclick="forensic.aiAnalyze()" id="btn-ai-analyze">
+            <i class="fa-solid fa-crosshairs"></i> Analyze Selection
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="forensic.aiDescribe()">
+            <i class="fa-solid fa-comment-dots"></i> Describe Audio
+        </button>
+    </div>
+    <div id="ai-result" style="display:none;margin-top:8px;padding:8px;background:rgba(20,184,166,.06);border:1px solid rgba(20,184,166,.15);border-radius:var(--radius-xs);font-size:12px;color:var(--text-dim);max-height:160px;overflow-y:auto;position:relative"></div>
+</div>
+
+<!-- Event Detection Panel -->
+<div class="event-panel">
+    <div class="card-title"><i class="fa-solid fa-magnifying-glass-chart fa-fw" style="color:var(--teal)"></i> Detected Events</div>
+    <div class="event-filter-row">
+        <button class="btn btn-secondary btn-xs" onclick="forensic.filterEvents('all')">All</button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.filterEvents('silence')">&#x1f507; Silence</button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.filterEvents('transient')">&#x26a1; Transient</button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.filterEvents('tonal')">&#x1f3b5; Tonal</button>
+        <button class="btn btn-secondary btn-xs" onclick="forensic.filterEvents('click')">&#x1f4a5; Click/Pop</button>
+    </div>
+    <div class="event-list" id="event-list">
+        <div class="empty" style="padding:12px;font-size:12px;color:var(--muted)">
+            <i class="fa-solid fa-magnifying-glass fa-fw"></i> Click "Detect Events" to scan audio
+        </div>
     </div>
 </div>
 
@@ -424,6 +500,33 @@ require_once __DIR__ . '/app/inc/header.php';
     </div>
 </div>
 
+<!-- Report config modal -->
+<div class="report-modal" id="report-modal">
+    <div class="report-modal-box">
+        <h3><i class="fa-solid fa-file-lines" style="color:var(--teal)"></i> Generate Forensic Report</h3>
+        <div class="form-group">
+            <label class="form-label">Analyst Name</label>
+            <input type="text" class="form-input" id="report-analyst" placeholder="Your name">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Case Number</label>
+            <input type="text" class="form-input" id="report-case" placeholder="Case #">
+        </div>
+        <div class="rpt-checks">
+            <label><input type="checkbox" id="rpt-inc-meta" checked> File Metadata &amp; Analysis Settings</label>
+            <label><input type="checkbox" id="rpt-inc-spec" checked> Spectrogram Screenshot</label>
+            <label><input type="checkbox" id="rpt-inc-wave" checked> Waveform Overview</label>
+            <label><input type="checkbox" id="rpt-inc-anno" checked> Annotations</label>
+            <label><input type="checkbox" id="rpt-inc-events" checked> Detected Events</label>
+            <label><input type="checkbox" id="rpt-inc-enhance" checked> Enhancement History</label>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button class="btn btn-secondary btn-sm" onclick="forensic.closeReportModal()">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="forensic.confirmReport()"><i class="fa-solid fa-file-export"></i> Generate</button>
+        </div>
+    </div>
+</div>
+
 <!-- Annotation input modal -->
 <div class="anno-modal" id="anno-modal">
     <div class="anno-modal-box">
@@ -497,6 +600,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.code === 'KeyP') { forensic.findPeaks(); }
         if (e.code === 'KeyE') { forensic.toggleEnvelope(); }
         if (e.code === 'KeyO') { forensic.restoreOriginal(); }
+        if (e.code === 'KeyD') { forensic.detectEvents(); }
+        if (e.code === 'KeyG') { forensic.exportReport(); }
     });
 });
 </script>

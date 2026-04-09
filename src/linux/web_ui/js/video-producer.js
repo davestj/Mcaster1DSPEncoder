@@ -643,6 +643,234 @@ VideoProducer.prototype.destroy = function() {
 };
 
 /* ======================================================================
+ * StreamEngine -- captures program canvas + audio, uploads chunks
+ * to server for ffmpeg relay to RTMP / Icecast2
+ * ====================================================================== */
+
+function StreamEngine(producer) {
+    this.producer = producer;
+    this.streaming = false;
+    this.targetId = 0;
+    this.recorder = null;
+    this.chunkIndex = 0;
+    this.bytesUploaded = 0;
+    this.startTime = 0;
+    this.audioSlotId = 0;
+    this._audioEl = null;
+    this._combinedStream = null;
+    this._chunkIntervalMs = 2000;
+    this._codecPreference = 'webm';   // 'webm' or 'rtmp'
+    this._videoBitrate = 2500000;     // default 2500kbps
+}
+
+/**
+ * startStreaming -- begin capturing program canvas + encoder slot audio
+ * and uploading WebM chunks to /app/api/producer.php for ffmpeg relay.
+ *
+ * @param {number} targetId   - rtmp_targets.id
+ * @param {object} opts       - { audioSlotId, codec, videoBitrate }
+ * @return {Promise}
+ */
+StreamEngine.prototype.startStreaming = function(targetId, opts) {
+    if (this.streaming) return Promise.reject(new Error('Already streaming'));
+    opts = opts || {};
+    var self = this;
+
+    this.targetId = targetId;
+    this.audioSlotId = opts.audioSlotId || 0;
+    this._codecPreference = opts.codec || 'webm';
+    this._videoBitrate = opts.videoBitrate || 2500000;
+    this.chunkIndex = 0;
+    this.bytesUploaded = 0;
+
+    /* We capture the program canvas at 30fps */
+    var videoStream = this.producer.programCanvas.captureStream(30);
+    if (!videoStream) return Promise.reject(new Error('captureStream not supported'));
+
+    /* We combine video + audio into one MediaStream */
+    return this._getAudioStream(this.audioSlotId).then(function(audioStream) {
+        var tracks = videoStream.getVideoTracks().slice();
+        if (audioStream) {
+            var audioTracks = audioStream.getAudioTracks();
+            for (var i = 0; i < audioTracks.length; i++) {
+                tracks.push(audioTracks[i]);
+            }
+        }
+        self._combinedStream = new MediaStream(tracks);
+
+        /* We pick the best supported mimeType */
+        var mimeType = self._pickMimeType();
+        var recOpts = { videoBitsPerSecond: self._videoBitrate };
+        if (mimeType) recOpts.mimeType = mimeType;
+
+        self.recorder = new MediaRecorder(self._combinedStream, recOpts);
+
+        /* We tell the server to start the ffmpeg relay process */
+        return fetch('/app/api/producer.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({ action: 'start_stream', target_id: targetId })
+        }).then(function(r) { return r.json(); });
+    }).then(function(d) {
+        if (!d || !d.ok) {
+            throw new Error(d ? (d.error || 'Server error') : 'No response');
+        }
+
+        /* We listen for data chunks and upload them */
+        self.recorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) {
+                self._uploadChunk(e.data);
+            }
+        };
+
+        self.recorder.start(self._chunkIntervalMs);
+        self.streaming = true;
+        self.startTime = Date.now();
+        self.producer.isStreaming = true;
+        return d;
+    });
+};
+
+/**
+ * stopStreaming -- stop the MediaRecorder, tell the server to close ffmpeg
+ */
+StreamEngine.prototype.stopStreaming = function() {
+    if (!this.streaming) return Promise.resolve();
+    var self = this;
+
+    if (this.recorder && this.recorder.state !== 'inactive') {
+        this.recorder.stop();
+    }
+    this.recorder = null;
+    this.streaming = false;
+    this.producer.isStreaming = false;
+
+    /* We clean up the audio element */
+    if (this._audioEl) {
+        this._audioEl.pause();
+        this._audioEl.removeAttribute('src');
+        this._audioEl.load();
+        this._audioEl = null;
+    }
+    if (this._combinedStream) {
+        this._combinedStream.getTracks().forEach(function(t) { t.stop(); });
+        this._combinedStream = null;
+    }
+
+    /* We tell the server to stop the ffmpeg process */
+    return fetch('/app/api/producer.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action: 'stop_stream', target_id: self.targetId })
+    }).then(function(r) { return r.json(); });
+};
+
+/**
+ * getStreamStatus -- return current streaming state
+ */
+StreamEngine.prototype.getStreamStatus = function() {
+    return {
+        streaming: this.streaming,
+        targetId: this.targetId,
+        duration: this.streaming ? Date.now() - this.startTime : 0,
+        bytesUploaded: this.bytesUploaded,
+        chunkIndex: this.chunkIndex
+    };
+};
+
+/**
+ * _getAudioStream -- create a hidden <audio> element connected to the
+ * encoder slot's stream URL and capture its MediaStream via captureStream()
+ */
+StreamEngine.prototype._getAudioStream = function(slotId) {
+    if (!slotId) return Promise.resolve(null);
+    var self = this;
+
+    return new Promise(function(resolve) {
+        /* We fetch the stream URL for this slot from the C++ API */
+        fetch('/api/v1/encoders', {
+            method: 'GET',
+            credentials: 'same-origin'
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (!d || !d.encoders) { resolve(null); return; }
+            var enc = null;
+            for (var i = 0; i < d.encoders.length; i++) {
+                if (d.encoders[i].slot === slotId) { enc = d.encoders[i]; break; }
+            }
+            if (!enc || !enc.stream_url) { resolve(null); return; }
+
+            var audio = document.createElement('audio');
+            audio.crossOrigin = 'anonymous';
+            audio.src = enc.stream_url;
+            audio.volume = 1.0;
+            /* We mute the element so it does not play through speakers twice */
+            audio.muted = true;
+            self._audioEl = audio;
+
+            var ctx = new (window.AudioContext || window.webkitAudioContext)();
+            var source = ctx.createMediaElementSource(audio);
+            var dest = ctx.createMediaStreamDestination();
+            source.connect(dest);
+            /* We also connect to ctx.destination if user wants monitoring */
+
+            audio.play().then(function() {
+                resolve(dest.stream);
+            }).catch(function(e) {
+                console.warn('StreamEngine: audio play failed:', e);
+                resolve(null);
+            });
+        }).catch(function() {
+            resolve(null);
+        });
+    });
+};
+
+/**
+ * _uploadChunk -- POST a recorded WebM blob to the server
+ */
+StreamEngine.prototype._uploadChunk = function(blob) {
+    var self = this;
+    var idx = this.chunkIndex++;
+
+    fetch('/app/api/producer.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/octet-stream',
+            'X-Stream-Target': String(self.targetId),
+            'X-Chunk-Index': String(idx)
+        },
+        credentials: 'same-origin',
+        body: blob
+    }).then(function(r) {
+        self.bytesUploaded += blob.size;
+        return r.json();
+    }).catch(function(e) {
+        console.error('StreamEngine: chunk upload failed:', e);
+    });
+};
+
+/**
+ * _pickMimeType -- select the best supported WebM codec
+ */
+StreamEngine.prototype._pickMimeType = function() {
+    var candidates = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm'
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        if (MediaRecorder.isTypeSupported(candidates[i])) {
+            return candidates[i];
+        }
+    }
+    return '';
+};
+
+/* ======================================================================
  * Resolution presets
  * ====================================================================== */
 
@@ -653,13 +881,25 @@ var RESOLUTIONS = {
 };
 
 /* ======================================================================
+ * Bitrate presets for streaming
+ * ====================================================================== */
+
+var STREAM_BITRATE_PRESETS = {
+    '480p@1000k':  { videoBitrate: 1000000, label: '480p @ 1000 kbps' },
+    '720p@2500k':  { videoBitrate: 2500000, label: '720p @ 2500 kbps' },
+    '1080p@4500k': { videoBitrate: 4500000, label: '1080p @ 4500 kbps' }
+};
+
+/* ======================================================================
  * Public API
  * ====================================================================== */
 
 window.Mc1VideoProducer = {
     VideoSource: VideoSource,
     VideoProducer: VideoProducer,
-    RESOLUTIONS: RESOLUTIONS
+    StreamEngine: StreamEngine,
+    RESOLUTIONS: RESOLUTIONS,
+    STREAM_BITRATE_PRESETS: STREAM_BITRATE_PRESETS
 };
 
 })();

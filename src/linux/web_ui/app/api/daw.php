@@ -9,7 +9,7 @@
  * Auth gate on every action via mc1_is_authed().
  *
  * @author  Dave St. John <davestj@gmail.com>
- * @version 1.8.0
+ * @version 1.8.1
  * @since   2026-03-27
  */
 
@@ -168,12 +168,15 @@ if ($action === 'export_mixdown') {
     $projectId  = (int)($req['project_id'] ?? 0);
     $format     = (string)($req['format'] ?? 'mp3');
     $bitrate    = (string)($req['bitrate'] ?? '192k');
+    $quality    = (string)($req['quality'] ?? '5');
+    $bitDepth   = (string)($req['bit_depth'] ?? '16');
+    $stemExport = !empty($req['stem_export']);
     $outputName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', trim((string)($req['output_name'] ?? 'mixdown')));
 
     if ($projectId <= 0) { mc1_api_respond(['ok' => false, 'error' => 'project_id required'], 400); return; }
 
     // Validate format
-    $validFormats = ['mp3', 'wav', 'flac', 'ogg'];
+    $validFormats = ['mp3', 'wav', 'flac', 'ogg', 'aac', 'opus'];
     if (!in_array($format, $validFormats)) {
         mc1_api_respond(['ok' => false, 'error' => 'Invalid format. Use: ' . implode(', ', $validFormats)], 400);
         return;
@@ -196,15 +199,13 @@ if ($action === 'export_mixdown') {
         return;
     }
 
-    // Collect all audio file paths from clips
-    // Clips reference track DB IDs via their name — we need file_path from tracks table
-    // For now, we try to find tracks by title/name match
-    $audioFiles = [];
-    $trackVolumes = [];
+    // Collect audio files per track (for both mixdown and stem export)
+    $trackFiles = []; // [ ['name'=>..., 'volume'=>..., 'files'=>[...]] ]
     foreach ($json['tracks'] as $track) {
         $vol = (float)($track['volume'] ?? 1.0);
+        $trackName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', trim((string)($track['name'] ?? 'Track')));
+        $files = [];
         foreach ($track['clips'] ?? [] as $clip) {
-            // Try to find the audio file by clip name in the media DB
             $clipName = $clip['name'] ?? '';
             $st2 = mc1_db('mcaster1_media')->prepare(
                 'SELECT file_path FROM tracks WHERE title LIKE ? OR file_path LIKE ? LIMIT 1'
@@ -213,48 +214,104 @@ if ($action === 'export_mixdown') {
             $st2->execute([$search, $search]);
             $trackRow = $st2->fetch();
             if ($trackRow && file_exists($trackRow['file_path'])) {
-                $audioFiles[] = $trackRow['file_path'];
-                $trackVolumes[] = $vol;
+                $files[] = $trackRow['file_path'];
             }
+        }
+        if (count($files) > 0) {
+            $trackFiles[] = ['name' => $trackName, 'volume' => $vol, 'files' => $files];
         }
     }
 
-    if (count($audioFiles) === 0) {
+    if (count($trackFiles) === 0) {
         mc1_api_respond(['ok' => false, 'error' => 'No audio files found in project clips. Export requires clips that match tracks in the media library.'], 400);
         return;
     }
 
-    // Build ffmpeg command
+    // Build codec flags based on format
+    $codecFlags = _dawCodecFlags($format, $bitrate, $quality, $bitDepth);
+    $ext = _dawExtension($format);
+
     $exportDir = '/tmp/mc1_daw_exports';
     if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
-    $ext = $format;
-    if ($format === 'ogg') $ext = 'ogg';
-    $outFile = $exportDir . '/' . $outputName . '_' . date('Ymd_His') . '.' . $ext;
 
-    // Build ffmpeg filter
+    // ── Stem export: one file per track ──
+    if ($stemExport) {
+        $stemDir = $exportDir . '/' . $outputName . '_stems_' . date('Ymd_His');
+        if (!is_dir($stemDir)) mkdir($stemDir, 0755, true);
+        $stemCount = 0;
+
+        foreach ($trackFiles as $ti => $tf) {
+            $stemFile = $stemDir . '/' . $tf['name'] . '_' . ($ti + 1) . '.' . $ext;
+            $inputs = '';
+            $filters = '';
+            $labels = [];
+            for ($fi = 0; $fi < count($tf['files']); $fi++) {
+                $inputs .= ' -i ' . escapeshellarg($tf['files'][$fi]);
+                $vol = round($tf['volume'], 2);
+                $label = 'a' . $fi;
+                $filters .= '[' . $fi . ':a]volume=' . $vol . '[' . $label . '];';
+                $labels[] = '[' . $label . ']';
+            }
+            if (count($tf['files']) > 1) {
+                $filters .= implode('', $labels) . 'amix=inputs=' . count($tf['files']);
+            } else {
+                // Single file: just apply volume filter
+                $filters = rtrim($filters, ';');
+                $filters .= '';
+            }
+
+            if (count($tf['files']) === 1) {
+                $cmd = 'ffmpeg -y' . $inputs . ' -filter_complex ' . escapeshellarg('[0:a]volume=' . round($tf['volume'], 2))
+                     . ' ' . $codecFlags . ' ' . escapeshellarg($stemFile) . ' 2>&1';
+            } else {
+                $cmd = 'ffmpeg -y' . $inputs . ' -filter_complex ' . escapeshellarg($filters)
+                     . ' ' . $codecFlags . ' ' . escapeshellarg($stemFile) . ' 2>&1';
+            }
+
+            mc1_log(4, 'DAW stem export: ' . $cmd);
+            $output = [];
+            $ret = 0;
+            exec($cmd, $output, $ret);
+            if ($ret === 0 && file_exists($stemFile)) $stemCount++;
+        }
+
+        // Create zip of stems
+        $zipFile = $exportDir . '/' . $outputName . '_stems_' . date('Ymd_His') . '.zip';
+        $zipCmd = 'cd ' . escapeshellarg($stemDir) . ' && zip -j ' . escapeshellarg($zipFile) . ' *.' . $ext . ' 2>&1';
+        exec($zipCmd, $zipOutput, $zipRet);
+
+        if ($zipRet !== 0 || !file_exists($zipFile)) {
+            mc1_api_respond(['ok' => false, 'error' => 'Failed to create stem zip'], 500);
+            return;
+        }
+
+        $downloadUrl = '/app/api/audio.php?path=' . urlencode($zipFile);
+        mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($zipFile), 'stem_count' => $stemCount]);
+        return;
+    }
+
+    // ── Standard mixdown: all tracks into one file ──
+    $outFile = $exportDir . '/' . $outputName . '_' . date('Ymd_His') . '.' . $ext;
+    $allFiles = [];
+    $allVolumes = [];
+    foreach ($trackFiles as $tf) {
+        foreach ($tf['files'] as $f) {
+            $allFiles[] = $f;
+            $allVolumes[] = $tf['volume'];
+        }
+    }
+
     $inputs = '';
     $filters = '';
     $labels = [];
-    for ($i = 0; $i < count($audioFiles); $i++) {
-        $inputs .= ' -i ' . escapeshellarg($audioFiles[$i]);
-        $vol = round($trackVolumes[$i], 2);
+    for ($i = 0; $i < count($allFiles); $i++) {
+        $inputs .= ' -i ' . escapeshellarg($allFiles[$i]);
+        $vol = round($allVolumes[$i], 2);
         $label = 'a' . $i;
         $filters .= '[' . $i . ':a]volume=' . $vol . '[' . $label . '];';
         $labels[] = '[' . $label . ']';
     }
-    $filters .= implode('', $labels) . 'amix=inputs=' . count($audioFiles);
-
-    // Codec flags
-    $codecFlags = '';
-    if ($format === 'mp3') {
-        $codecFlags = '-c:a libmp3lame -b:a ' . escapeshellarg($bitrate);
-    } elseif ($format === 'wav') {
-        $codecFlags = '-c:a pcm_s16le';
-    } elseif ($format === 'flac') {
-        $codecFlags = '-c:a flac';
-    } elseif ($format === 'ogg') {
-        $codecFlags = '-c:a libvorbis -b:a ' . escapeshellarg($bitrate);
-    }
+    $filters .= implode('', $labels) . 'amix=inputs=' . count($allFiles);
 
     $cmd = 'ffmpeg -y' . $inputs . ' -filter_complex ' . escapeshellarg($filters)
          . ' ' . $codecFlags . ' ' . escapeshellarg($outFile) . ' 2>&1';
@@ -271,11 +328,46 @@ if ($action === 'export_mixdown') {
         return;
     }
 
-    // Serve the file via a temporary download URL
-    // We use the audio API with a path parameter
     $downloadUrl = '/app/api/audio.php?path=' . urlencode($outFile);
     mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($outFile)]);
     return;
+}
+
+// ── Helper: build ffmpeg codec flags per format ──────────────────────────
+
+function _dawCodecFlags(string $format, string $bitrate, string $quality, string $bitDepth): string {
+    switch ($format) {
+        case 'mp3':
+            return '-c:a libmp3lame -b:a ' . escapeshellarg($bitrate);
+        case 'wav':
+            $codec = ($bitDepth === '24') ? 'pcm_s24le' : 'pcm_s16le';
+            return '-c:a ' . $codec;
+        case 'flac':
+            $level = max(0, min(8, (int)$quality));
+            return '-c:a flac -compression_level ' . $level;
+        case 'ogg':
+            // libvorbis: quality 0-10 maps to -q:a
+            $q = max(0, min(10, (int)$quality));
+            return '-c:a libvorbis -q:a ' . $q;
+        case 'aac':
+            return '-c:a aac -b:a ' . escapeshellarg($bitrate);
+        case 'opus':
+            return '-c:a libopus -b:a ' . escapeshellarg($bitrate);
+        default:
+            return '-c:a libmp3lame -b:a 192k';
+    }
+}
+
+function _dawExtension(string $format): string {
+    $map = [
+        'mp3'  => 'mp3',
+        'wav'  => 'wav',
+        'flac' => 'flac',
+        'ogg'  => 'ogg',
+        'aac'  => 'm4a',
+        'opus' => 'opus',
+    ];
+    return $map[$format] ?? $format;
 }
 
 // ── Unknown action ────────────────────────────────────────────────────────
