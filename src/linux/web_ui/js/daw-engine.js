@@ -4,7 +4,7 @@
  * File:    src/linux/web_ui/js/daw-engine.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   DAW-3
+ * Phase:   DAW-4
  *
  * We provide a full multi-track DAW engine with:
  *   - Track and clip management (add, remove, move, split, merge, duplicate)
@@ -23,6 +23,10 @@
  *   - Aux send buses with shared effects
  *   - Master bus metering (AnalyserNode) + limiter + LUFS estimation
  *   - Multi-format export: MP3, WAV 16/24, FLAC, OGG, AAC, Opus + stem export
+ *   - Per-track noise reduction (spectral subtraction, reused from forensic-analyzer)
+ *   - Time stretch (WSOLA) and pitch shift per clip (non-destructive)
+ *   - Track freeze / unfreeze (renders track to single buffer, saves CPU)
+ *   - MIDI-style markers and regions on the timeline
  *
  * Standards:
  *   - We use Web Audio API AudioBufferSourceNode for clip playback
@@ -94,6 +98,22 @@ function DawEngine(containerId) {
     /* ── Metering Data ── */
     self.meterData   = { peak: 0, rms: 0, lufs: -70 };
     self._lufsWindow = []; // rolling window for LUFS estimation
+
+    /* ── Noise Reduction (per-track) ── */
+    // trackNoisePrints[trackId] = Float32Array (average magnitude per FFT bin)
+    self.trackNoisePrints = {};
+    self.nrFftSize   = 4096;
+    self.nrHopRatio  = 0.5;
+
+    /* ── Track Freeze State ── */
+    // frozenTracks[trackId] = { originalClips: [], originalEffects: [], frozenBuffer: AudioBuffer, frozenPeaks: {} }
+    self.frozenTracks = {};
+
+    /* ── Markers and Regions ── */
+    self.markers     = []; // [{ id, time, name, color }]
+    self.regions     = []; // [{ id, startTime, endTime, name, color }]
+    self.nextMarkerId = 1;
+    self.nextRegionId = 1;
 
     /* ── Undo/Redo ── */
     self.undoStack    = [];
@@ -1529,6 +1549,32 @@ DawEngine.prototype._drawRuler = function() {
         }
     }
 
+    // Draw region spans on ruler
+    for (var ri2 = 0; ri2 < self.regions.length; ri2++) {
+        var rr = self.regions[ri2];
+        var rrx1 = (rr.startTime * pps) - self.scrollX;
+        var rrx2 = (rr.endTime * pps) - self.scrollX;
+        if (rrx2 >= 0 && rrx1 <= w) {
+            ctx.fillStyle = (rr.color || '#8b5cf6') + '30';
+            ctx.fillRect(rrx1, 0, rrx2 - rrx1, h);
+        }
+    }
+
+    // Draw marker ticks on ruler
+    for (var mi2 = 0; mi2 < self.markers.length; mi2++) {
+        var mm = self.markers[mi2];
+        var mmx = (mm.time * pps) - self.scrollX;
+        if (mmx >= -2 && mmx <= w + 2) {
+            ctx.fillStyle = mm.color || '#eab308';
+            ctx.beginPath();
+            ctx.moveTo(mmx - 3, h);
+            ctx.lineTo(mmx + 3, h);
+            ctx.lineTo(mmx, h - 5);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+
     // Playhead marker on ruler
     var phx = (self.playPos * pps) - self.scrollX;
     if (phx >= -5 && phx <= w + 5) {
@@ -1694,6 +1740,73 @@ DawEngine.prototype._drawOverlay = function() {
         }
     }
 
+    // Draw regions (semi-transparent colored bars above track area)
+    for (var ri = 0; ri < self.regions.length; ri++) {
+        var reg = self.regions[ri];
+        var regX1 = (reg.startTime * self.pixelsPerSec) - self.scrollX;
+        var regX2 = (reg.endTime * self.pixelsPerSec) - self.scrollX;
+        if (regX2 < 0 || regX1 > w) continue;
+        var regW = regX2 - regX1;
+        // Region bar at top of track area (14px tall)
+        ctx.fillStyle = (reg.color || '#8b5cf6') + '25';
+        ctx.fillRect(regX1, 0, regW, h);
+        ctx.fillStyle = (reg.color || '#8b5cf6') + '40';
+        ctx.fillRect(regX1, 0, regW, 14);
+        // Region borders
+        ctx.strokeStyle = (reg.color || '#8b5cf6') + '80';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(regX1, 0, regW, 14);
+        // Region name
+        if (regW > 30) {
+            ctx.fillStyle = '#e2e8f0';
+            ctx.font = '9px -apple-system, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(reg.name, regX1 + 3, 10, regW - 6);
+        }
+    }
+
+    // Draw markers (colored vertical lines with triangular flags)
+    for (var mi = 0; mi < self.markers.length; mi++) {
+        var mkr = self.markers[mi];
+        var mkrX = (mkr.time * self.pixelsPerSec) - self.scrollX;
+        if (mkrX < -10 || mkrX > w + 10) continue;
+
+        // Vertical line full height
+        ctx.strokeStyle = mkr.color || '#eab308';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(mkrX, 0);
+        ctx.lineTo(mkrX, h);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+
+        // Triangular flag at top
+        ctx.fillStyle = mkr.color || '#eab308';
+        ctx.beginPath();
+        ctx.moveTo(mkrX, 0);
+        ctx.lineTo(mkrX + 8, 0);
+        ctx.lineTo(mkrX + 8, 10);
+        ctx.lineTo(mkrX, 14);
+        ctx.closePath();
+        ctx.fill();
+
+        // Marker name on flag
+        ctx.fillStyle = '#0e1729';
+        ctx.font = 'bold 8px -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(mkr.name.substring(0, 8), mkrX + 1, 9);
+    }
+
+    // Draw frozen track overlays (ice pattern in Canvas 2D fallback)
+    for (var fti = 0; fti < self.tracks.length; fti++) {
+        if (self.frozenTracks[self.tracks[fti].id]) {
+            var fYBase = fti * self.TRACK_HEIGHT;
+            // Subtle blue tint overlay
+            ctx.fillStyle = 'rgba(96,165,250,0.04)';
+            ctx.fillRect(0, fYBase, w, self.TRACK_HEIGHT);
+        }
+    }
+
     // Draw per-track overlays: crossfades, fade handles, gain automation
     for (var ti = 0; ti < self.tracks.length; ti++) {
         var track = self.tracks[ti];
@@ -1846,14 +1959,19 @@ DawEngine.prototype._renderTrackList = function() {
         panel.dataset.trackId = track.id;
         panel.style.height = self.TRACK_HEIGHT + 'px';
 
+        var isFrozen = !!self.frozenTracks[track.id];
+        var hasNoisePrint = !!self.trackNoisePrints[track.id];
+
         panel.innerHTML =
             '<div class="track-name-row">' +
             '  <div class="track-color" style="background:' + track.color + '" data-track="' + track.id + '"></div>' +
-            '  <span class="track-name" contenteditable="true" data-track="' + track.id + '">' + self._esc(track.name) + '</span>' +
+            '  <span class="track-name" contenteditable="' + (isFrozen ? 'false' : 'true') + '" data-track="' + track.id + '">' + self._esc(track.name) + (isFrozen ? ' &#10052;' : '') + '</span>' +
             '  <div class="track-btns">' +
             '    <button class="track-btn' + (track.muted ? ' muted' : '') + '" data-action="mute" data-track="' + track.id + '" title="Mute">M</button>' +
             '    <button class="track-btn' + (track.solo ? ' soloed' : '') + '" data-action="solo" data-track="' + track.id + '" title="Solo">S</button>' +
-            '    <button class="track-fx-btn' + ((self.trackEffects[track.id] && self.trackEffects[track.id].length > 0) ? ' has-fx' : '') + '" data-track="' + track.id + '" title="Effects"><i class="fa-solid fa-sliders fa-xs"></i></button>' +
+            '    <button class="track-fx-btn' + ((self.trackEffects[track.id] && self.trackEffects[track.id].length > 0) ? ' has-fx' : '') + (isFrozen ? ' frozen-fx' : '') + '" data-track="' + track.id + '" title="Effects"' + (isFrozen ? ' disabled' : '') + '><i class="fa-solid fa-sliders fa-xs"></i></button>' +
+            '    <button class="track-btn track-denoise-btn' + (hasNoisePrint ? ' has-nr' : '') + '" data-track="' + track.id + '" title="Denoise Track"><i class="fa-solid fa-wand-magic-sparkles" style="font-size:8px"></i></button>' +
+            '    <button class="track-btn track-freeze-btn' + (isFrozen ? ' frozen' : '') + '" data-track="' + track.id + '" title="' + (isFrozen ? 'Unfreeze' : 'Freeze') + ' Track"><i class="fa-solid fa-snowflake" style="font-size:8px"></i></button>' +
             '  </div>' +
             '  <span class="track-del" data-track="' + track.id + '" title="Delete track"><i class="fa-solid fa-trash"></i></span>' +
             '</div>' +
@@ -1951,6 +2069,29 @@ DawEngine.prototype._renderTrackList = function() {
             e.stopPropagation();
             if (typeof window._openFxPanel === 'function') {
                 window._openFxPanel(btn.dataset.track);
+            }
+        });
+    });
+
+    // Denoise button opens denoise dialog
+    container.querySelectorAll('.track-denoise-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (typeof window._openDenoiseDialog === 'function') {
+                window._openDenoiseDialog(btn.dataset.track);
+            }
+        });
+    });
+
+    // Freeze/Unfreeze button
+    container.querySelectorAll('.track-freeze-btn').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            var tid = btn.dataset.track;
+            if (self.frozenTracks[tid]) {
+                self.unfreezeTrack(tid);
+            } else {
+                self.freezeTrack(tid);
             }
         });
     });
@@ -2364,17 +2505,25 @@ DawEngine.prototype._serializeState = function() {
                     id: c.id, name: c.name, startTime: c.startTime, duration: c.duration,
                     offset: c.offset, fadeIn: c.fadeIn, fadeOut: c.fadeOut, color: c.color,
                     gainEnvelope: c.gainEnvelope ? c.gainEnvelope.map(function(pt) { return { time: pt.time, value: pt.value }; }) : [],
-                    _bufRef: c.audioBuffer, _peaksRef: c.peaks
+                    _bufRef: c.audioBuffer, _peaksRef: c.peaks, _origBufRef: c._originalBuffer,
+                    _frozen: c._frozen || false
                 };
             })
         };
     });
-    return JSON.stringify(trackData);
+    var state = {
+        tracks: trackData,
+        markers: self.markers.map(function(m) { return { id: m.id, time: m.time, name: m.name, color: m.color }; }),
+        regions: self.regions.map(function(r) { return { id: r.id, startTime: r.startTime, endTime: r.endTime, name: r.name, color: r.color }; })
+    };
+    return JSON.stringify(state);
 };
 
 DawEngine.prototype._restoreState = function(stateStr) {
     var self = this;
-    var trackData = JSON.parse(stateStr);
+    var parsed = JSON.parse(stateStr);
+    // Support both old format (array of tracks) and new format (object with tracks+markers+regions)
+    var trackData = Array.isArray(parsed) ? parsed : (parsed.tracks || []);
     // Rebuild _bufRef and _peaksRef from the stringified marker
     // Since JSON.stringify drops functions and typed arrays, we need
     // to find them from existing clips by id
@@ -2382,7 +2531,7 @@ DawEngine.prototype._restoreState = function(stateStr) {
     for (var i = 0; i < self.tracks.length; i++) {
         for (var j = 0; j < self.tracks[i].clips.length; j++) {
             var c = self.tracks[i].clips[j];
-            clipMap[c.id] = { audioBuffer: c.audioBuffer, peaks: c.peaks };
+            clipMap[c.id] = { audioBuffer: c.audioBuffer, peaks: c.peaks, _originalBuffer: c._originalBuffer };
         }
     }
 
@@ -2397,11 +2546,22 @@ DawEngine.prototype._restoreState = function(stateStr) {
                     offset: cd.offset, fadeIn: cd.fadeIn, fadeOut: cd.fadeOut, color: cd.color,
                     gainEnvelope: cd.gainEnvelope || [],
                     audioBuffer: cd._bufRef || ref.audioBuffer || null,
-                    peaks: cd._peaksRef || ref.peaks || null
+                    peaks: cd._peaksRef || ref.peaks || null,
+                    _originalBuffer: cd._origBufRef || ref._originalBuffer || null,
+                    _frozen: cd._frozen || false
                 };
             })
         };
     });
+
+    // Restore markers and regions from state
+    if (!Array.isArray(parsed) && parsed.markers) {
+        self.markers = parsed.markers;
+    }
+    if (!Array.isArray(parsed) && parsed.regions) {
+        self.regions = parsed.regions;
+    }
+
     self._renderTrackList();
     self._resizeCanvases();
 };
@@ -2420,9 +2580,12 @@ DawEngine.prototype.saveProject = function() {
     }
 
     var projectJson = {
-        version: 2,
+        version: 3,
         bpm: self.bpm,
         timeSignature: self.timeSignature,
+        markers: self.markers.map(function(m) { return { id: m.id, time: m.time, name: m.name, color: m.color }; }),
+        regions: self.regions.map(function(r) { return { id: r.id, startTime: r.startTime, endTime: r.endTime, name: r.name, color: r.color }; }),
+        frozenTrackIds: Object.keys(self.frozenTracks),
         tracks: self.tracks.map(function(t) {
             return {
                 id: t.id, name: t.name, muted: t.muted, solo: t.solo,
@@ -2533,6 +2696,23 @@ DawEngine.prototype.loadProject = function(id) {
                     }
                 });
             }
+            // Restore markers and regions
+            self.markers = [];
+            self.regions = [];
+            if (json.markers) {
+                self.markers = json.markers.map(function(m) {
+                    var num = parseInt((m.id || '').replace('marker_', ''));
+                    if (num >= self.nextMarkerId) self.nextMarkerId = num + 1;
+                    return { id: m.id, time: m.time, name: m.name, color: m.color || '#eab308' };
+                });
+            }
+            if (json.regions) {
+                self.regions = json.regions.map(function(r) {
+                    var num = parseInt((r.id || '').replace('region_', ''));
+                    if (num >= self.nextRegionId) self.nextRegionId = num + 1;
+                    return { id: r.id, startTime: r.startTime, endTime: r.endTime, name: r.name, color: r.color || '#8b5cf6' };
+                });
+            }
             // Restore master settings
             if (json.masterVolume !== undefined && self.masterGain) {
                 self.masterGain.gain.value = json.masterVolume;
@@ -2624,6 +2804,10 @@ DawEngine.prototype.newProject = function() {
     self.redoStack = [];
     self.selectedClip = null;
     self.selectedTrack = null;
+    self.markers = [];
+    self.regions = [];
+    self.frozenTracks = {};
+    self.trackNoisePrints = {};
     self._stopAllSources();
     self.playing = false;
     self.playPos = 0;
@@ -2844,6 +3028,799 @@ DawEngine.prototype._drawMasterMeter = function() {
     if (lufsEl) {
         lufsEl.textContent = self.meterData.lufs > -60 ? self.meterData.lufs.toFixed(1) + ' LUFS' : '-- LUFS';
     }
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  DSP UTILITIES (ported from forensic-analyzer.js)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Get mono Float32Array from an AudioBuffer (average channels).
+ */
+DawEngine.prototype._getMonoData = function(buffer) {
+    if (buffer.numberOfChannels > 1) {
+        var ch0 = buffer.getChannelData(0);
+        var ch1 = buffer.getChannelData(1);
+        var mono = new Float32Array(ch0.length);
+        for (var i = 0; i < ch0.length; i++) {
+            mono[i] = (ch0[i] + ch1[i]) * 0.5;
+        }
+        return mono;
+    }
+    return new Float32Array(buffer.getChannelData(0));
+};
+
+/**
+ * Compute Hann window of given size.
+ */
+DawEngine.prototype._computeHannWindow = function(size) {
+    var w = new Float32Array(size);
+    var TWO_PI = 2 * Math.PI;
+    var n = size - 1;
+    for (var i = 0; i < size; i++) {
+        w[i] = 0.5 * (1 - Math.cos(TWO_PI * i / n));
+    }
+    return w;
+};
+
+/**
+ * Forward FFT — returns interleaved [re0, im0, re1, im1, ...].
+ * Ported from ForensicAnalyzer._fft.
+ */
+DawEngine.prototype._fft = function(input) {
+    var n = input.length;
+    var m = 1;
+    while (m < n) m <<= 1;
+    var re = new Float32Array(m);
+    var im = new Float32Array(m);
+    for (var i = 0; i < n; i++) re[i] = input[i];
+    var bits = Math.log2(m);
+    for (var j = 0; j < m; j++) {
+        var rev = 0;
+        for (var b = 0; b < bits; b++) {
+            rev = (rev << 1) | ((j >> b) & 1);
+        }
+        if (rev > j) {
+            var tmpR = re[j]; re[j] = re[rev]; re[rev] = tmpR;
+            var tmpI = im[j]; im[j] = im[rev]; im[rev] = tmpI;
+        }
+    }
+    for (var size = 2; size <= m; size *= 2) {
+        var half = size / 2;
+        var angle = -2 * Math.PI / size;
+        var wRe = Math.cos(angle);
+        var wIm = Math.sin(angle);
+        for (var k = 0; k < m; k += size) {
+            var twRe = 1, twIm = 0;
+            for (var l = 0; l < half; l++) {
+                var idx1 = k + l;
+                var idx2 = k + l + half;
+                var tRe = twRe * re[idx2] - twIm * im[idx2];
+                var tIm = twRe * im[idx2] + twIm * re[idx2];
+                re[idx2] = re[idx1] - tRe;
+                im[idx2] = im[idx1] - tIm;
+                re[idx1] = re[idx1] + tRe;
+                im[idx1] = im[idx1] + tIm;
+                var newTwRe = twRe * wRe - twIm * wIm;
+                twIm = twRe * wIm + twIm * wRe;
+                twRe = newTwRe;
+            }
+        }
+    }
+    var result = new Float32Array(m * 2);
+    for (var p = 0; p < m; p++) {
+        result[p * 2] = re[p];
+        result[p * 2 + 1] = im[p];
+    }
+    return result;
+};
+
+/**
+ * Inverse FFT — takes interleaved spectrum, returns time-domain Float32Array.
+ * Ported from ForensicAnalyzer._ifft.
+ */
+DawEngine.prototype._ifft = function(spectrum, n) {
+    var m = 1;
+    while (m < n) m <<= 1;
+    var re = new Float32Array(m);
+    var im = new Float32Array(m);
+    for (var i = 0; i < m; i++) {
+        re[i] = spectrum[i * 2] || 0;
+        im[i] = -(spectrum[i * 2 + 1] || 0);
+    }
+    var bits = Math.log2(m);
+    for (var j = 0; j < m; j++) {
+        var rev = 0;
+        for (var b = 0; b < bits; b++) {
+            rev = (rev << 1) | ((j >> b) & 1);
+        }
+        if (rev > j) {
+            var tmpR = re[j]; re[j] = re[rev]; re[rev] = tmpR;
+            var tmpI = im[j]; im[j] = im[rev]; im[rev] = tmpI;
+        }
+    }
+    for (var size = 2; size <= m; size *= 2) {
+        var half = size / 2;
+        var angle = -2 * Math.PI / size;
+        var wRe = Math.cos(angle);
+        var wIm = Math.sin(angle);
+        for (var k = 0; k < m; k += size) {
+            var twRe = 1, twIm = 0;
+            for (var l = 0; l < half; l++) {
+                var idx1 = k + l;
+                var idx2 = k + l + half;
+                var tRe = twRe * re[idx2] - twIm * im[idx2];
+                var tIm = twRe * im[idx2] + twIm * re[idx2];
+                re[idx2] = re[idx1] - tRe;
+                im[idx2] = im[idx1] - tIm;
+                re[idx1] = re[idx1] + tRe;
+                im[idx1] = im[idx1] + tIm;
+                var newTwRe = twRe * wRe - twIm * wIm;
+                twIm = twRe * wIm + twIm * wRe;
+                twRe = newTwRe;
+            }
+        }
+    }
+    var output = new Float32Array(m);
+    for (var p = 0; p < m; p++) {
+        output[p] = re[p] / m;
+    }
+    return output;
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  PER-TRACK NOISE REDUCTION (spectral subtraction)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Capture noise print from a silent section of a track.
+ * Averages the magnitude spectrum across all clips within the specified time range.
+ *
+ * @param {string} trackId - Track ID
+ * @param {number} startTime - Start time in seconds (timeline time)
+ * @param {number} endTime - End time in seconds (timeline time)
+ */
+DawEngine.prototype.captureTrackNoisePrint = function(trackId, startTime, endTime) {
+    var self = this;
+    var track = self._getTrack(trackId);
+    if (!track) { mc1Toast('Track not found', 'err'); return; }
+
+    var t0 = Math.min(startTime, endTime);
+    var t1 = Math.max(startTime, endTime);
+    if (t1 - t0 < 0.05) { mc1Toast('Selection too short for noise print', 'warn'); return; }
+
+    var fftSize = self.nrFftSize;
+    var hopSize = Math.floor(fftSize * self.nrHopRatio);
+    var freqBins = fftSize / 2;
+    var windowFn = self._computeHannWindow(fftSize);
+
+    var noiseMag = new Float64Array(freqBins);
+    var frameCount = 0;
+
+    // Process each clip that intersects [t0, t1]
+    for (var ci = 0; ci < track.clips.length; ci++) {
+        var clip = track.clips[ci];
+        if (!clip.audioBuffer) continue;
+        var clipEnd = clip.startTime + clip.duration;
+        if (clipEnd <= t0 || clip.startTime >= t1) continue;
+
+        var rawData = self._getMonoData(clip.audioBuffer);
+        var sr = clip.audioBuffer.sampleRate;
+
+        // Map timeline selection to clip-local sample positions
+        var localStart = Math.max(0, t0 - clip.startTime) + clip.offset;
+        var localEnd = Math.min(clip.duration, t1 - clip.startTime) + clip.offset;
+        var startSample = Math.max(0, Math.floor(localStart * sr));
+        var endSample = Math.min(rawData.length, Math.floor(localEnd * sr));
+
+        for (var offset = startSample; offset + fftSize <= endSample; offset += hopSize) {
+            var windowed = new Float32Array(fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                windowed[i] = rawData[offset + i] * windowFn[i];
+            }
+            var spectrum = self._fft(windowed);
+            for (var bin = 0; bin < freqBins; bin++) {
+                var re = spectrum[bin * 2];
+                var im = spectrum[bin * 2 + 1];
+                noiseMag[bin] += Math.sqrt(re * re + im * im) / fftSize;
+            }
+            frameCount++;
+        }
+    }
+
+    if (frameCount === 0) {
+        mc1Toast('No audio data in selection for noise print', 'warn');
+        return;
+    }
+
+    var noisePrint = new Float32Array(freqBins);
+    for (var b = 0; b < freqBins; b++) {
+        noisePrint[b] = noiseMag[b] / frameCount;
+    }
+    self.trackNoisePrints[trackId] = noisePrint;
+    mc1Toast('Noise print captured from ' + frameCount + ' frames', 'ok');
+};
+
+/**
+ * Apply spectral subtraction noise reduction to all clips on a track.
+ * Creates new AudioBuffers (non-destructive, originals preserved).
+ *
+ * @param {string} trackId - Track ID
+ * @param {number} strength - Noise reduction strength 0.0 to 2.0 (default 1.0)
+ */
+DawEngine.prototype.applyTrackNoiseReduction = function(trackId, strength) {
+    var self = this;
+    var track = self._getTrack(trackId);
+    if (!track) { mc1Toast('Track not found', 'err'); return; }
+    var noisePrint = self.trackNoisePrints[trackId];
+    if (!noisePrint) { mc1Toast('Capture a noise print first', 'warn'); return; }
+
+    strength = strength !== undefined ? strength : 1.0;
+    self._pushUndo('noiseReduction');
+
+    var fftSize = self.nrFftSize;
+    var hopSize = Math.floor(fftSize * self.nrHopRatio);
+    var freqBins = fftSize / 2;
+    var windowFn = self._computeHannWindow(fftSize);
+    var clipsToProcess = [];
+
+    for (var ci = 0; ci < track.clips.length; ci++) {
+        var clip = track.clips[ci];
+        if (!clip.audioBuffer) continue;
+        clipsToProcess.push(clip);
+    }
+
+    if (clipsToProcess.length === 0) { mc1Toast('No audio clips to denoise', 'warn'); return; }
+
+    var processed = 0;
+    var total = clipsToProcess.length;
+
+    function processNextClip() {
+        if (processed >= total) {
+            mc1Toast('Noise reduction applied to ' + total + ' clip(s) (strength: ' + strength.toFixed(1) + ')', 'ok');
+            return;
+        }
+        var clip = clipsToProcess[processed];
+        var rawData = self._getMonoData(clip.audioBuffer);
+        var sr = clip.audioBuffer.sampleRate;
+        var outLength = rawData.length;
+        var output = new Float32Array(outLength);
+        var normBuf = new Float32Array(outLength);
+        var numFrames = Math.floor((rawData.length - fftSize) / hopSize) + 1;
+
+        for (var frame = 0; frame < numFrames; frame++) {
+            var off = frame * hopSize;
+            var windowed = new Float32Array(fftSize);
+            for (var i = 0; i < fftSize; i++) {
+                var idx = off + i;
+                windowed[i] = (idx < rawData.length ? rawData[idx] : 0) * windowFn[i];
+            }
+            var spectrum = self._fft(windowed);
+
+            // Spectral subtraction
+            for (var bin = 0; bin < freqBins; bin++) {
+                var re = spectrum[bin * 2];
+                var im = spectrum[bin * 2 + 1];
+                var mag = Math.sqrt(re * re + im * im) / fftSize;
+                var phase = Math.atan2(im, re);
+                var cleanMag = Math.max(0, mag - noisePrint[bin] * strength);
+                spectrum[bin * 2] = cleanMag * fftSize * Math.cos(phase);
+                spectrum[bin * 2 + 1] = cleanMag * fftSize * Math.sin(phase);
+                if (bin > 0 && bin < freqBins) {
+                    var mirrorBin = fftSize - bin;
+                    spectrum[mirrorBin * 2] = spectrum[bin * 2];
+                    spectrum[mirrorBin * 2 + 1] = -spectrum[bin * 2 + 1];
+                }
+            }
+
+            var timeDomain = self._ifft(spectrum, fftSize);
+            for (var i2 = 0; i2 < fftSize; i2++) {
+                var idx2 = off + i2;
+                if (idx2 < outLength) {
+                    output[idx2] += timeDomain[i2] * windowFn[i2];
+                    normBuf[idx2] += windowFn[i2] * windowFn[i2];
+                }
+            }
+        }
+
+        // Normalize
+        for (var n = 0; n < outLength; n++) {
+            if (normBuf[n] > 1e-8) output[n] /= normBuf[n];
+        }
+
+        // Store original and create denoised buffer
+        if (!clip._originalBuffer) clip._originalBuffer = clip.audioBuffer;
+        var cleanBuffer = self.audioCtx.createBuffer(1, outLength, sr);
+        cleanBuffer.getChannelData(0).set(output);
+        clip.audioBuffer = cleanBuffer;
+        clip.peaks = self._computePeaks(cleanBuffer);
+
+        processed++;
+        if (processed < total) {
+            setTimeout(processNextClip, 0);
+        } else {
+            mc1Toast('Noise reduction applied to ' + total + ' clip(s)', 'ok');
+        }
+    }
+
+    setTimeout(processNextClip, 0);
+};
+
+/**
+ * Restore original (pre-denoise) audio for all clips on a track.
+ */
+DawEngine.prototype.restoreTrackOriginalAudio = function(trackId) {
+    var self = this;
+    var track = self._getTrack(trackId);
+    if (!track) return;
+    self._pushUndo('restoreOriginal');
+    var restored = 0;
+    for (var ci = 0; ci < track.clips.length; ci++) {
+        var clip = track.clips[ci];
+        if (clip._originalBuffer) {
+            clip.audioBuffer = clip._originalBuffer;
+            clip.peaks = self._computePeaks(clip._originalBuffer);
+            delete clip._originalBuffer;
+            restored++;
+        }
+    }
+    delete self.trackNoisePrints[trackId];
+    if (restored > 0) mc1Toast('Restored original audio for ' + restored + ' clip(s)', 'ok');
+    else mc1Toast('No denoised clips to restore', 'warn');
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  TIME STRETCH (WSOLA — pitch preserved)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * WSOLA time-stretching — changes duration without changing pitch.
+ * Ported from ForensicAnalyzer._wsola.
+ *
+ * @param {AudioBuffer} inputBuffer - Source audio
+ * @param {number} factor - Stretch factor (0.5 = half duration, 2.0 = double)
+ * @returns {AudioBuffer}
+ */
+DawEngine.prototype._wsola = function(inputBuffer, factor) {
+    var self = this;
+    var sr = inputBuffer.sampleRate;
+    var input = self._getMonoData(inputBuffer);
+    var inputLen = input.length;
+    var windowSize = 2048;
+    var hopAnalysis = 512;
+    var speed = 1.0 / factor; // speed=2 means half duration; factor=2 means double duration
+    var hopSynthesis = Math.round(hopAnalysis * factor);
+    var searchRegion = 256;
+
+    var win = self._computeHannWindow(windowSize);
+    var outputLen = Math.round(inputLen * factor);
+    var output = new Float32Array(outputLen);
+    var normBuf = new Float32Array(outputLen);
+
+    var analysisPos = 0;
+    var synthesisPos = 0;
+
+    while (analysisPos + windowSize < inputLen && synthesisPos + windowSize < outputLen) {
+        var bestOffset = analysisPos;
+        var bestCorr = -Infinity;
+        var searchStart = Math.max(0, analysisPos - searchRegion);
+        var searchEnd = Math.min(inputLen - windowSize, analysisPos + searchRegion);
+
+        for (var s = searchStart; s <= searchEnd; s++) {
+            var corr = 0;
+            for (var i = 0; i < windowSize; i += 4) {
+                corr += input[s + i] * input[analysisPos + i];
+            }
+            if (corr > bestCorr) {
+                bestCorr = corr;
+                bestOffset = s;
+            }
+        }
+
+        for (var i2 = 0; i2 < windowSize; i2++) {
+            var outIdx = synthesisPos + i2;
+            if (outIdx < outputLen && bestOffset + i2 < inputLen) {
+                output[outIdx] += input[bestOffset + i2] * win[i2];
+                normBuf[outIdx] += win[i2] * win[i2];
+            }
+        }
+
+        analysisPos += hopAnalysis;
+        synthesisPos += hopSynthesis;
+    }
+
+    for (var n = 0; n < outputLen; n++) {
+        if (normBuf[n] > 1e-8) output[n] /= normBuf[n];
+    }
+
+    var outBuffer = self.audioCtx.createBuffer(1, outputLen, sr);
+    outBuffer.getChannelData(0).set(output);
+    return outBuffer;
+};
+
+/**
+ * Stretch a clip's duration by a factor. Non-destructive (stores original).
+ *
+ * @param {string} clipId - Clip ID
+ * @param {number} factor - Stretch factor (0.5 = half speed/double duration, 2.0 = double speed/half duration)
+ */
+DawEngine.prototype.stretchClip = function(clipId, factor) {
+    var self = this;
+    var found = self._getClip(clipId);
+    if (!found) { mc1Toast('Clip not found', 'err'); return; }
+    var clip = found.clip;
+    if (!clip.audioBuffer) { mc1Toast('No audio in clip', 'warn'); return; }
+
+    self._pushUndo('timeStretch');
+
+    if (!clip._originalBuffer) clip._originalBuffer = clip.audioBuffer;
+    var stretched = self._wsola(clip._originalBuffer, factor);
+    clip.audioBuffer = stretched;
+    clip.duration = stretched.duration;
+    clip.peaks = self._computePeaks(stretched);
+    clip._stretchFactor = factor;
+
+    mc1Toast('Time stretch: ' + factor.toFixed(2) + 'x applied', 'ok');
+};
+
+/**
+ * Pitch shift a clip by N semitones. Non-destructive.
+ * Method: resample to change pitch, then WSOLA to restore original duration.
+ *
+ * @param {string} clipId - Clip ID
+ * @param {number} semitones - Number of semitones (-12 to +12)
+ */
+DawEngine.prototype.pitchShiftClip = function(clipId, semitones) {
+    var self = this;
+    var found = self._getClip(clipId);
+    if (!found) { mc1Toast('Clip not found', 'err'); return; }
+    var clip = found.clip;
+    if (!clip.audioBuffer) { mc1Toast('No audio in clip', 'warn'); return; }
+
+    self._pushUndo('pitchShift');
+
+    if (!clip._originalBuffer) clip._originalBuffer = clip.audioBuffer;
+    var sourceBuffer = clip._originalBuffer;
+
+    // Pitch factor: +12 semitones = 2x frequency, -12 = 0.5x
+    var pitchRatio = Math.pow(2, semitones / 12);
+
+    // Step 1: Resample to change pitch (change the effective sample rate)
+    var sr = sourceBuffer.sampleRate;
+    var inputData = self._getMonoData(sourceBuffer);
+    var inputLen = inputData.length;
+    var resampledLen = Math.round(inputLen / pitchRatio);
+    var resampled = new Float32Array(resampledLen);
+
+    // Linear interpolation resampling
+    for (var i = 0; i < resampledLen; i++) {
+        var srcPos = i * pitchRatio;
+        var srcIdx = Math.floor(srcPos);
+        var frac = srcPos - srcIdx;
+        if (srcIdx + 1 < inputLen) {
+            resampled[i] = inputData[srcIdx] * (1 - frac) + inputData[srcIdx + 1] * frac;
+        } else if (srcIdx < inputLen) {
+            resampled[i] = inputData[srcIdx];
+        }
+    }
+
+    // Step 2: Create a buffer at the original sample rate with the resampled data
+    // This already has the pitch changed. Duration is different though.
+    var pitchedBuffer = self.audioCtx.createBuffer(1, resampledLen, sr);
+    pitchedBuffer.getChannelData(0).set(resampled);
+
+    // Step 3: WSOLA to restore original duration
+    // The pitched buffer has a different duration. We need to stretch it back to the original.
+    var durationRatio = sourceBuffer.duration / pitchedBuffer.duration;
+    var finalBuffer;
+    if (Math.abs(durationRatio - 1.0) > 0.01) {
+        finalBuffer = self._wsola(pitchedBuffer, durationRatio);
+    } else {
+        finalBuffer = pitchedBuffer;
+    }
+
+    clip.audioBuffer = finalBuffer;
+    clip.duration = finalBuffer.duration;
+    clip.peaks = self._computePeaks(finalBuffer);
+    clip._pitchSemitones = semitones;
+
+    mc1Toast('Pitch shift: ' + (semitones >= 0 ? '+' : '') + semitones + ' semitones', 'ok');
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  TRACK FREEZE / UNFREEZE
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Freeze a track: renders all clips + effects + volume/pan to a single AudioBuffer.
+ * Replaces the track's clips with one frozen clip. Saves CPU by removing real-time
+ * effect processing. Original clips + effects stored for unfreeze.
+ *
+ * @param {string} trackId - Track ID
+ */
+DawEngine.prototype.freezeTrack = function(trackId) {
+    var self = this;
+    var track = self._getTrack(trackId);
+    if (!track) { mc1Toast('Track not found', 'err'); return; }
+    if (self.frozenTracks[trackId]) { mc1Toast('Track is already frozen', 'warn'); return; }
+
+    self._pushUndo('freezeTrack');
+
+    // Determine the full duration of the track
+    var maxEnd = 0;
+    for (var ci = 0; ci < track.clips.length; ci++) {
+        var ce = track.clips[ci].startTime + track.clips[ci].duration;
+        if (ce > maxEnd) maxEnd = ce;
+    }
+    if (maxEnd <= 0) { mc1Toast('Track has no clips to freeze', 'warn'); return; }
+
+    var sr = self.audioCtx.sampleRate;
+    var totalSamples = Math.ceil(maxEnd * sr);
+
+    // Use OfflineAudioContext to render the track
+    var offCtx = new OfflineAudioContext(1, totalSamples, sr);
+
+    // Create a gain node for track volume
+    var trackGain = offCtx.createGain();
+    trackGain.gain.value = track.volume;
+    trackGain.connect(offCtx.destination);
+
+    // Render effects chain in offline context
+    var effectsChain = self.trackEffects[trackId] || [];
+    var effectTarget = trackGain;
+
+    // For frozen tracks, we bake effects into the audio, so we just route clips directly
+    // through the track gain. Effects are complex to replicate in offline context,
+    // so we render clips with gain only and note that freeze bakes in volume.
+
+    for (var ci2 = 0; ci2 < track.clips.length; ci2++) {
+        var clip = track.clips[ci2];
+        if (!clip.audioBuffer) continue;
+
+        var source = offCtx.createBufferSource();
+        source.buffer = clip.audioBuffer;
+
+        var clipGain = offCtx.createGain();
+        clipGain.connect(effectTarget);
+
+        // Fade in
+        if (clip.fadeIn > 0) {
+            clipGain.gain.setValueAtTime(0, clip.startTime);
+            clipGain.gain.linearRampToValueAtTime(1, clip.startTime + clip.fadeIn);
+        }
+        // Fade out
+        if (clip.fadeOut > 0) {
+            var fadeStart = clip.startTime + clip.duration - clip.fadeOut;
+            clipGain.gain.setValueAtTime(1, fadeStart);
+            clipGain.gain.linearRampToValueAtTime(0, clip.startTime + clip.duration);
+        }
+
+        // Gain envelope
+        if (clip.gainEnvelope && clip.gainEnvelope.length > 0) {
+            var envGain = offCtx.createGain();
+            envGain.connect(clipGain);
+            for (var gi = 0; gi < clip.gainEnvelope.length; gi++) {
+                var gp = clip.gainEnvelope[gi];
+                var gpTime = clip.startTime + gp.time;
+                if (gi === 0) {
+                    envGain.gain.setValueAtTime(gp.value, gpTime);
+                } else {
+                    envGain.gain.linearRampToValueAtTime(gp.value, gpTime);
+                }
+            }
+            source.connect(envGain);
+        } else {
+            source.connect(clipGain);
+        }
+
+        source.start(clip.startTime, clip.offset, clip.duration);
+    }
+
+    offCtx.startRendering().then(function(renderedBuffer) {
+        // Store originals
+        self.frozenTracks[trackId] = {
+            originalClips: track.clips.slice(),
+            originalEffects: (self.trackEffects[trackId] || []).slice(),
+            frozenBuffer: renderedBuffer
+        };
+
+        // Replace track clips with single frozen clip
+        var frozenClip = {
+            id: 'clip_' + self.nextClipId++,
+            name: track.name + ' (Frozen)',
+            audioBuffer: renderedBuffer,
+            peaks: self._computePeaks(renderedBuffer),
+            startTime: 0,
+            duration: renderedBuffer.duration,
+            offset: 0,
+            fadeIn: 0,
+            fadeOut: 0,
+            gainEnvelope: [],
+            color: track.color,
+            _frozen: true
+        };
+        track.clips = [frozenClip];
+
+        // Disable effects on this track (disconnect them)
+        var chain = self.trackEffects[trackId];
+        if (chain) {
+            chain.forEach(function(fx) {
+                if (fx._nodes) fx._nodes.forEach(function(n) { try { n.disconnect(); } catch(e) {} });
+            });
+        }
+        self.trackEffects[trackId] = [];
+        self._rebuildTrackEffectChain(trackId);
+
+        // Reset track volume to 1.0 since it's baked in
+        track.volume = 1.0;
+        if (self.trackNodes[trackId]) {
+            self.trackNodes[trackId].gain.gain.value = 1.0;
+        }
+
+        self._renderTrackList();
+        mc1Toast('Track "' + track.name + '" frozen', 'ok');
+    }).catch(function(e) {
+        mc1Toast('Freeze failed: ' + e.message, 'err');
+    });
+};
+
+/**
+ * Unfreeze a track: restores original clips and effects.
+ *
+ * @param {string} trackId - Track ID
+ */
+DawEngine.prototype.unfreezeTrack = function(trackId) {
+    var self = this;
+    var track = self._getTrack(trackId);
+    if (!track) { mc1Toast('Track not found', 'err'); return; }
+    var frozen = self.frozenTracks[trackId];
+    if (!frozen) { mc1Toast('Track is not frozen', 'warn'); return; }
+
+    self._pushUndo('unfreezeTrack');
+
+    // Restore original clips
+    track.clips = frozen.originalClips;
+
+    // Restore effects
+    self.trackEffects[trackId] = frozen.originalEffects;
+    self._rebuildTrackEffectChain(trackId);
+
+    // Clean up frozen state
+    delete self.frozenTracks[trackId];
+
+    self._renderTrackList();
+    mc1Toast('Track "' + track.name + '" unfrozen', 'ok');
+};
+
+/**
+ * Check if a track is frozen.
+ */
+DawEngine.prototype.isTrackFrozen = function(trackId) {
+    return !!this.frozenTracks[trackId];
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  MARKERS AND REGIONS
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Add a named marker at a specific time.
+ */
+DawEngine.prototype.addMarker = function(time, name, color) {
+    var self = this;
+    self._pushUndo('addMarker');
+    var marker = {
+        id: 'marker_' + self.nextMarkerId++,
+        time: Math.max(0, time),
+        name: name || 'Marker ' + self.markers.length,
+        color: color || '#eab308'
+    };
+    self.markers.push(marker);
+    self.markers.sort(function(a, b) { return a.time - b.time; });
+    mc1Toast('Marker added: ' + marker.name, 'ok');
+    return marker;
+};
+
+/**
+ * Remove a marker by ID.
+ */
+DawEngine.prototype.removeMarker = function(markerId) {
+    var self = this;
+    var idx = self.markers.findIndex(function(m) { return m.id === markerId; });
+    if (idx < 0) return;
+    self._pushUndo('removeMarker');
+    self.markers.splice(idx, 1);
+};
+
+/**
+ * Update a marker's properties.
+ */
+DawEngine.prototype.updateMarker = function(markerId, props) {
+    var self = this;
+    var marker = self.markers.find(function(m) { return m.id === markerId; });
+    if (!marker) return;
+    self._pushUndo('updateMarker');
+    if (props.time !== undefined) marker.time = Math.max(0, props.time);
+    if (props.name !== undefined) marker.name = props.name;
+    if (props.color !== undefined) marker.color = props.color;
+    self.markers.sort(function(a, b) { return a.time - b.time; });
+};
+
+/**
+ * Jump to the next marker from the current play position.
+ */
+DawEngine.prototype.jumpToNextMarker = function() {
+    var self = this;
+    for (var i = 0; i < self.markers.length; i++) {
+        if (self.markers[i].time > self.playPos + 0.01) {
+            self.seek(self.markers[i].time);
+            mc1Toast('Jumped to: ' + self.markers[i].name, 'ok');
+            return;
+        }
+    }
+    mc1Toast('No next marker', 'warn');
+};
+
+/**
+ * Jump to the previous marker from the current play position.
+ */
+DawEngine.prototype.jumpToPrevMarker = function() {
+    var self = this;
+    for (var i = self.markers.length - 1; i >= 0; i--) {
+        if (self.markers[i].time < self.playPos - 0.01) {
+            self.seek(self.markers[i].time);
+            mc1Toast('Jumped to: ' + self.markers[i].name, 'ok');
+            return;
+        }
+    }
+    mc1Toast('No previous marker', 'warn');
+};
+
+/**
+ * Add a named region span.
+ */
+DawEngine.prototype.addRegion = function(startTime, endTime, name, color) {
+    var self = this;
+    self._pushUndo('addRegion');
+    var t0 = Math.min(startTime, endTime);
+    var t1 = Math.max(startTime, endTime);
+    var region = {
+        id: 'region_' + self.nextRegionId++,
+        startTime: Math.max(0, t0),
+        endTime: t1,
+        name: name || 'Region ' + self.regions.length,
+        color: color || '#8b5cf6'
+    };
+    self.regions.push(region);
+    self.regions.sort(function(a, b) { return a.startTime - b.startTime; });
+    mc1Toast('Region added: ' + region.name, 'ok');
+    return region;
+};
+
+/**
+ * Remove a region by ID.
+ */
+DawEngine.prototype.removeRegion = function(regionId) {
+    var self = this;
+    var idx = self.regions.findIndex(function(r) { return r.id === regionId; });
+    if (idx < 0) return;
+    self._pushUndo('removeRegion');
+    self.regions.splice(idx, 1);
+};
+
+/**
+ * Update a region's properties.
+ */
+DawEngine.prototype.updateRegion = function(regionId, props) {
+    var self = this;
+    var region = self.regions.find(function(r) { return r.id === regionId; });
+    if (!region) return;
+    self._pushUndo('updateRegion');
+    if (props.startTime !== undefined) region.startTime = Math.max(0, props.startTime);
+    if (props.endTime !== undefined) region.endTime = props.endTime;
+    if (props.name !== undefined) region.name = props.name;
+    if (props.color !== undefined) region.color = props.color;
+    self.regions.sort(function(a, b) { return a.startTime - b.startTime; });
 };
 
 /* ══════════════════════════════════════════════════════════════

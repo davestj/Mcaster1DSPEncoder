@@ -5,7 +5,9 @@
  * GPU-accelerated video frame rendering: texture upload, fullscreen quad,
  * and transition effects between two video sources.
  * Supports: cut, fade, dissolve, wipe L/R, wipe circle, zoom, slide,
- * chroma key, PIP compositing, color correction, lower-third overlay.
+ * chroma key, PIP compositing, color correction, lower-third overlay,
+ * text crawl (news ticker), logo/watermark overlay, timer/clock overlay,
+ * stinger transitions.
  * WebGL 2.0 preferred, fallback to WebGL 1.0.
  *
  * Copyright (c) 2026 David St. John <davestj@gmail.com>
@@ -847,6 +849,435 @@ LowerThirdRenderer.prototype.isVisible = function() {
 };
 
 /* ======================================================================
+ * TextCrawlRenderer -- scrolling news ticker overlay (2D canvas)
+ * ====================================================================== */
+
+function TextCrawlRenderer(width, height) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width || 1280;
+    this.canvas.height = height || 48;
+    this.ctx = this.canvas.getContext('2d');
+
+    this.text = '';
+    this.speed = 2;            // pixels per frame
+    this.fontSize = 28;
+    this.fontFamily = 'Arial, sans-serif';
+    this.textColor = '#ffffff';
+    this.bgColor = 'rgba(15, 23, 42, 0.85)';
+    this.visible = false;
+    this._scrollX = 0;
+    this._textWidth = 0;
+}
+
+TextCrawlRenderer.prototype.show = function(text, options) {
+    options = options || {};
+    this.text = text || '';
+    if (options.speed !== undefined) this.speed = options.speed;
+    if (options.fontSize) this.fontSize = options.fontSize;
+    if (options.fontFamily) this.fontFamily = options.fontFamily;
+    if (options.textColor) this.textColor = options.textColor;
+    if (options.bgColor) this.bgColor = options.bgColor;
+    this.visible = true;
+    this._scrollX = this.canvas.width;
+    // Measure text width
+    this.ctx.font = 'bold ' + this.fontSize + 'px ' + this.fontFamily;
+    this._textWidth = this.ctx.measureText(this.text).width;
+};
+
+TextCrawlRenderer.prototype.hide = function() {
+    this.visible = false;
+    this._scrollX = 0;
+};
+
+TextCrawlRenderer.prototype.update = function() {
+    if (!this.visible) return;
+    this._scrollX -= this.speed;
+    // Reset when text has fully scrolled off left
+    if (this._scrollX < -this._textWidth - 20) {
+        this._scrollX = this.canvas.width;
+    }
+    this._render();
+};
+
+TextCrawlRenderer.prototype._render = function() {
+    var ctx = this.ctx;
+    var w = this.canvas.width;
+    var h = this.canvas.height;
+
+    ctx.clearRect(0, 0, w, h);
+    if (!this.visible) return;
+
+    // Background
+    ctx.fillStyle = this.bgColor;
+    ctx.fillRect(0, 0, w, h);
+
+    // Scrolling text
+    ctx.fillStyle = this.textColor;
+    ctx.font = 'bold ' + this.fontSize + 'px ' + this.fontFamily;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(this.text, this._scrollX, h / 2);
+};
+
+TextCrawlRenderer.prototype.getCanvas = function() {
+    return this.canvas;
+};
+
+TextCrawlRenderer.prototype.isVisible = function() {
+    return this.visible;
+};
+
+/* ======================================================================
+ * LogoOverlay -- persistent image overlay (watermark / logo)
+ * ====================================================================== */
+
+function LogoOverlay(width, height) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width || 256;
+    this.canvas.height = height || 256;
+    this.ctx = this.canvas.getContext('2d');
+
+    this.image = null;
+    this.loaded = false;
+    this.visible = false;
+    this.opacity = 1.0;
+    this.scale = 1.0;
+    this.position = 'tr';    // tl, tr, bl, br, center
+}
+
+LogoOverlay.prototype.loadImage = function(url) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            self.image = img;
+            self.loaded = true;
+            self._render();
+            resolve();
+        };
+        img.onerror = function(e) {
+            self.loaded = false;
+            reject(e);
+        };
+        img.src = url;
+    });
+};
+
+LogoOverlay.prototype.loadFile = function(file) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            self.loadImage(e.target.result).then(resolve).catch(reject);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
+LogoOverlay.prototype.show = function(options) {
+    options = options || {};
+    if (options.opacity !== undefined) this.opacity = options.opacity;
+    if (options.scale !== undefined) this.scale = options.scale;
+    if (options.position) this.position = options.position;
+    this.visible = true;
+    this._render();
+};
+
+LogoOverlay.prototype.hide = function() {
+    this.visible = false;
+    var ctx = this.ctx;
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+};
+
+LogoOverlay.prototype._render = function() {
+    if (!this.loaded || !this.image) return;
+    var ctx = this.ctx;
+    var w = this.canvas.width;
+    var h = this.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!this.visible) return;
+
+    var iw = this.image.width * this.scale;
+    var ih = this.image.height * this.scale;
+
+    // Resize canvas to fit the scaled image
+    if (this.canvas.width !== Math.ceil(iw) || this.canvas.height !== Math.ceil(ih)) {
+        this.canvas.width = Math.ceil(iw) || 1;
+        this.canvas.height = Math.ceil(ih) || 1;
+    }
+
+    ctx.globalAlpha = this.opacity;
+    ctx.drawImage(this.image, 0, 0, iw, ih);
+    ctx.globalAlpha = 1.0;
+};
+
+LogoOverlay.prototype.getCanvas = function() {
+    return this.canvas;
+};
+
+LogoOverlay.prototype.isVisible = function() {
+    return this.visible && this.loaded;
+};
+
+/**
+ * getRect -- returns { x, y, w, h } in UV coords for the logo position
+ * @param {number} canvasW - program canvas width
+ * @param {number} canvasH - program canvas height
+ */
+LogoOverlay.prototype.getRect = function(canvasW, canvasH) {
+    if (!this.loaded || !this.image) return { x: 0, y: 0, w: 0, h: 0 };
+    var iw = (this.image.width * this.scale) / canvasW;
+    var ih = (this.image.height * this.scale) / canvasH;
+    var margin = 0.02;
+    var positions = {
+        'tl': { x: margin, y: margin },
+        'tr': { x: 1.0 - iw - margin, y: margin },
+        'bl': { x: margin, y: 1.0 - ih - margin },
+        'br': { x: 1.0 - iw - margin, y: 1.0 - ih - margin },
+        'center': { x: 0.5 - iw / 2, y: 0.5 - ih / 2 }
+    };
+    var pos = positions[this.position] || positions['tr'];
+    return { x: pos.x, y: pos.y, w: iw, h: ih };
+};
+
+/* ======================================================================
+ * TimerOverlay -- real-time clock or countdown timer (2D canvas)
+ * ====================================================================== */
+
+function TimerOverlay(width, height) {
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = width || 320;
+    this.canvas.height = height || 64;
+    this.ctx = this.canvas.getContext('2d');
+
+    this.mode = 'clock';       // 'clock' | 'timer' | 'countdown'
+    this.format = 'HH:MM:SS'; // 'HH:MM:SS' | 'MM:SS'
+    this.fontSize = 36;
+    this.fontFamily = 'monospace';
+    this.textColor = '#ffffff';
+    this.bgColor = 'rgba(15, 23, 42, 0.80)';
+    this.visible = false;
+    this.position = 'tr';
+
+    // Timer / countdown state
+    this._timerStart = 0;
+    this._countdownFrom = 0;  // seconds
+    this._countdownRemaining = 0;
+    this._lastUpdate = 0;
+}
+
+TimerOverlay.prototype.show = function(options) {
+    options = options || {};
+    if (options.mode) this.mode = options.mode;
+    if (options.format) this.format = options.format;
+    if (options.fontSize) this.fontSize = options.fontSize;
+    if (options.textColor) this.textColor = options.textColor;
+    if (options.bgColor) this.bgColor = options.bgColor;
+    if (options.position) this.position = options.position;
+    this.visible = true;
+
+    if (this.mode === 'timer') {
+        this._timerStart = Date.now();
+    } else if (this.mode === 'countdown') {
+        this._countdownFrom = (options.countdownSeconds || 300);
+        this._countdownRemaining = this._countdownFrom;
+        this._timerStart = Date.now();
+    }
+    this._render();
+};
+
+TimerOverlay.prototype.hide = function() {
+    this.visible = false;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+};
+
+TimerOverlay.prototype.update = function() {
+    if (!this.visible) return;
+    var now = Date.now();
+    // Throttle to ~1 update per second
+    if (now - this._lastUpdate < 500) return;
+    this._lastUpdate = now;
+    this._render();
+};
+
+TimerOverlay.prototype._render = function() {
+    var ctx = this.ctx;
+    var w = this.canvas.width;
+    var h = this.canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (!this.visible) return;
+
+    var timeStr = '';
+    if (this.mode === 'clock') {
+        var d = new Date();
+        timeStr = this._fmtTime(d.getHours(), d.getMinutes(), d.getSeconds());
+    } else if (this.mode === 'timer') {
+        var elapsed = Math.floor((Date.now() - this._timerStart) / 1000);
+        var th = Math.floor(elapsed / 3600);
+        var tm = Math.floor((elapsed % 3600) / 60);
+        var ts = elapsed % 60;
+        timeStr = this._fmtTime(th, tm, ts);
+    } else if (this.mode === 'countdown') {
+        var elapsedSec = Math.floor((Date.now() - this._timerStart) / 1000);
+        this._countdownRemaining = Math.max(0, this._countdownFrom - elapsedSec);
+        var ch = Math.floor(this._countdownRemaining / 3600);
+        var cm = Math.floor((this._countdownRemaining % 3600) / 60);
+        var cs = this._countdownRemaining % 60;
+        timeStr = this._fmtTime(ch, cm, cs);
+    }
+
+    // Background
+    ctx.fillStyle = this.bgColor;
+    var radius = 6;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(w - radius, 0);
+    ctx.quadraticCurveTo(w, 0, w, radius);
+    ctx.lineTo(w, h - radius);
+    ctx.quadraticCurveTo(w, h, w - radius, h);
+    ctx.lineTo(radius, h);
+    ctx.quadraticCurveTo(0, h, 0, h - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Text
+    ctx.fillStyle = this.textColor;
+    ctx.font = 'bold ' + this.fontSize + 'px ' + this.fontFamily;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(timeStr, w / 2, h / 2);
+};
+
+TimerOverlay.prototype._fmtTime = function(h, m, s) {
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    if (this.format === 'MM:SS') {
+        var totalMin = h * 60 + m;
+        return pad(totalMin) + ':' + pad(s);
+    }
+    return pad(h) + ':' + pad(m) + ':' + pad(s);
+};
+
+TimerOverlay.prototype.getCanvas = function() {
+    return this.canvas;
+};
+
+TimerOverlay.prototype.isVisible = function() {
+    return this.visible;
+};
+
+TimerOverlay.prototype.getRect = function(canvasW, canvasH) {
+    var uw = this.canvas.width / canvasW;
+    var uh = this.canvas.height / canvasH;
+    var margin = 0.02;
+    var positions = {
+        'tl': { x: margin, y: margin },
+        'tr': { x: 1.0 - uw - margin, y: margin },
+        'bl': { x: margin, y: 1.0 - uh - margin },
+        'br': { x: 1.0 - uw - margin, y: 1.0 - uh - margin },
+        'center': { x: 0.5 - uw / 2, y: 0.5 - uh / 2 }
+    };
+    var pos = positions[this.position] || positions['tr'];
+    return { x: pos.x, y: pos.y, w: uw, h: uh };
+};
+
+/* ======================================================================
+ * StingerTransition -- short video clip played as a transition
+ * ====================================================================== */
+
+function StingerTransition() {
+    this.videoEl = null;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = 1280;
+    this.canvas.height = 720;
+    this.ctx = this.canvas.getContext('2d');
+    this.loaded = false;
+    this.playing = false;
+    this._onComplete = null;
+    this._rafId = null;
+}
+
+StingerTransition.prototype.loadVideo = function(url) {
+    var self = this;
+    return new Promise(function(resolve, reject) {
+        if (!self.videoEl) {
+            self.videoEl = document.createElement('video');
+            self.videoEl.setAttribute('playsinline', '');
+            self.videoEl.muted = true;
+            self.videoEl.preload = 'auto';
+        }
+        self.videoEl.oncanplay = function() {
+            self.loaded = true;
+            self.canvas.width = self.videoEl.videoWidth || 1280;
+            self.canvas.height = self.videoEl.videoHeight || 720;
+            resolve();
+        };
+        self.videoEl.onerror = function(e) {
+            self.loaded = false;
+            reject(e);
+        };
+        self.videoEl.src = url;
+        self.videoEl.load();
+    });
+};
+
+StingerTransition.prototype.loadFile = function(file) {
+    var url = URL.createObjectURL(file);
+    return this.loadVideo(url);
+};
+
+StingerTransition.prototype.play = function(onComplete) {
+    if (!this.loaded || !this.videoEl) return;
+    var self = this;
+    this.playing = true;
+    this._onComplete = onComplete || null;
+
+    this.videoEl.currentTime = 0;
+    this.videoEl.play();
+
+    this.videoEl.onended = function() {
+        self.playing = false;
+        if (self._rafId) cancelAnimationFrame(self._rafId);
+        self._rafId = null;
+        if (self._onComplete) self._onComplete();
+    };
+
+    var renderFrame = function() {
+        if (!self.playing) return;
+        if (self.videoEl && !self.videoEl.paused && self.videoEl.readyState >= 2) {
+            self.ctx.drawImage(self.videoEl, 0, 0, self.canvas.width, self.canvas.height);
+        }
+        self._rafId = requestAnimationFrame(renderFrame);
+    };
+    self._rafId = requestAnimationFrame(renderFrame);
+};
+
+StingerTransition.prototype.stop = function() {
+    this.playing = false;
+    if (this.videoEl) this.videoEl.pause();
+    if (this._rafId) cancelAnimationFrame(this._rafId);
+    this._rafId = null;
+};
+
+StingerTransition.prototype.getCanvas = function() {
+    return this.canvas;
+};
+
+StingerTransition.prototype.isPlaying = function() {
+    return this.playing;
+};
+
+/**
+ * getProgress -- returns 0.0 to 1.0 representing stinger playback progress
+ */
+StingerTransition.prototype.getProgress = function() {
+    if (!this.videoEl || !this.videoEl.duration) return 0;
+    return Math.min(this.videoEl.currentTime / this.videoEl.duration, 1.0);
+};
+
+/* ======================================================================
  * destroyRenderer(renderer) -- clean up GL resources
  * ====================================================================== */
 
@@ -906,10 +1337,14 @@ window.Mc1WebGLVideo = {
     drawPIP: drawPIP,
     drawOverlay: drawOverlay,
     LowerThirdRenderer: LowerThirdRenderer,
+    TextCrawlRenderer: TextCrawlRenderer,
+    LogoOverlay: LogoOverlay,
+    TimerOverlay: TimerOverlay,
+    StingerTransition: StingerTransition,
     destroyRenderer: destroyRenderer,
     PIP_POSITIONS: PIP_POSITIONS,
     PIP_SIZES: PIP_SIZES,
-    TRANSITION_TYPES: ['cut', 'fade', 'dissolve', 'wipe_left', 'wipe_right', 'wipe_circle', 'zoom', 'slide']
+    TRANSITION_TYPES: ['cut', 'fade', 'dissolve', 'wipe_left', 'wipe_right', 'wipe_circle', 'zoom', 'slide', 'stinger']
 };
 
 })();

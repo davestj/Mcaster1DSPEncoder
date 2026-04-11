@@ -4,7 +4,7 @@
  * File:    src/linux/web_ui/js/daw-waveform.js
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
- * Phase:   DAW-2
+ * Phase:   DAW-4
  *
  * We provide a WebGL 2.0 renderer for multi-track waveform display.
  * We render all tracks and clips in a single WebGL draw pass using
@@ -210,6 +210,17 @@ DawWaveformRenderer.prototype.draw = function(tracks, pixelsPerSec, scrollX, tra
             this._pushLine(verts, x1, yBase2 + 2, x1, yBase2 + trackHeight - 2, bc);
             this._pushLine(verts, x2, yBase2 + 2, x2, yBase2 + trackHeight - 2, bc);
 
+            // Frozen clip overlay (diagonal hash)
+            if (clip._frozen) {
+                this.drawFrozenOverlay(verts, x1, yBase2 + 2, clipW, trackHeight - 4);
+            }
+
+            // Stretched clip indicator (dashed border)
+            if (clip._stretchFactor && Math.abs(clip._stretchFactor - 1.0) > 0.01) {
+                var stretchColor = [1.0, 0.58, 0.1, 0.7]; // orange
+                this.drawStretchIndicator(verts, x1, yBase2 + 2, x2, yBase2 + trackHeight - 2, stretchColor);
+            }
+
             // Waveform peaks
             if (clip.peaks && clip.peaks.data) {
                 var pps = clip.peaks.peaksPerSec;
@@ -295,6 +306,49 @@ DawWaveformRenderer.prototype._pushLine = function(verts, x1, y1, x2, y2, color)
         x2 - nx, y2 - ny, r, g, b, a,
         x2 + nx, y2 + ny, r, g, b, a
     );
+};
+
+/* ══════════════════════════════════════════════════════════════
+ *  FROZEN TRACK OVERLAY (diagonal hash pattern)
+ * ══════════════════════════════════════════════════════════════ */
+
+/**
+ * Draw a diagonal hash pattern overlay on a frozen clip (WebGL quads).
+ */
+DawWaveformRenderer.prototype.drawFrozenOverlay = function(verts, x, y, w, h) {
+    var spacing = 12;
+    var iceColor = [0.6, 0.8, 1.0, 0.08];
+    for (var offset = -h; offset < w; offset += spacing) {
+        var lx1 = Math.max(x, x + offset);
+        var ly1 = (offset < 0) ? y - offset : y;
+        var lx2 = Math.min(x + w, x + offset + h);
+        var ly2 = (offset + h > w) ? y + w - offset : y + h;
+        if (lx1 < lx2) {
+            this._pushLine(verts, lx1, ly1, lx2, ly2, iceColor);
+        }
+    }
+};
+
+/**
+ * Draw a dashed border for stretched clips.
+ */
+DawWaveformRenderer.prototype.drawStretchIndicator = function(verts, x1, y1, x2, y2, color) {
+    var dashLen = 6;
+    var gapLen = 4;
+    // Top edge
+    var x = x1;
+    while (x < x2) {
+        var end = Math.min(x + dashLen, x2);
+        this._pushLine(verts, x, y1, end, y1, color);
+        x = end + gapLen;
+    }
+    // Bottom edge
+    x = x1;
+    while (x < x2) {
+        var end2 = Math.min(x + dashLen, x2);
+        this._pushLine(verts, x, y2, end2, y2, color);
+        x = end2 + gapLen;
+    }
 };
 
 /* ── Cleanup ── */

@@ -319,6 +319,9 @@ require __DIR__ . '/app/inc/header.php';
           <option value="flac">FLAC</option>
           <option value="aac">AAC</option>
           <option value="wav">WAV</option>
+          <option value="mp4">MP4 (Video)</option>
+          <option value="webm">WebM (Video)</option>
+          <option value="mkv">MKV (Video)</option>
         </select>
       </div>
       <div class="form-group">
@@ -728,15 +731,27 @@ function loadEpisodes() {
                 : '<span class="badge badge-gray"><i class="fa-solid fa-eye-slash"></i> Draft</span>';
             var epNum = ep.episode_number || '?';
 
+            /* We detect if this episode is a video format */
+            var fmt = (ep.format || 'mp3').toLowerCase();
+            var isVideo = (fmt === 'mp4' || fmt === 'webm' || fmt === 'mkv');
+            var typeBadge = isVideo
+                ? '<span class="badge" style="background:rgba(168,85,247,.15);color:#a855f7"><i class="fa-solid fa-video"></i> Video</span>'
+                : '<span class="badge" style="background:rgba(59,130,246,.15);color:#3b82f6"><i class="fa-solid fa-headphones"></i> Audio</span>';
+
+            /* We use a video icon for the episode number badge on video episodes */
+            var numIcon = isVideo
+                ? '<i class="fa-solid fa-film" style="font-size:14px"></i>'
+                : esc(String(epNum));
+
             html += '<div class="pc-ep-card">'
-                  + '<div class="pc-ep-num">' + esc(String(epNum)) + '</div>'
+                  + '<div class="pc-ep-num">' + numIcon + '</div>'
                   + '<div class="pc-ep-info">'
                   + '<div class="pc-ep-title">' + esc(ep.title) + '</div>';
             if (ep.description) {
                 html += '<div class="pc-ep-desc">' + esc(ep.description) + '</div>';
             }
             html += '<div class="pc-ep-meta">'
-                  + pubBadge
+                  + pubBadge + ' ' + typeBadge
                   + '<span><i class="fa-solid fa-clock"></i> ' + fmtDur(ep.duration_sec) + '</span>'
                   + '<span><i class="fa-solid fa-file"></i> ' + fmtSize(ep.file_size_bytes) + '</span>'
                   + '<span><i class="fa-solid fa-compact-disc"></i> ' + esc(ep.format || 'mp3').toUpperCase() + '</span>';
@@ -757,7 +772,7 @@ function loadEpisodes() {
             }
             html += '<button class="btn btn-icon btn-xs" onclick="openPublishEpisode(' + ep.id + ')" title="Publish to platforms">'
                   + '<i class="fa-solid fa-tower-broadcast"></i></button>'
-                  + '<button class="btn btn-icon btn-xs" onclick="playPreview(' + ep.id + ')" title="Preview audio">'
+                  + '<button class="btn btn-icon btn-xs" onclick="playPreview(' + ep.id + ')" title="Preview ' + (isVideo ? 'video' : 'audio') + '">'
                   + '<i class="fa-solid fa-play"></i></button>'
                   + '<a class="btn btn-icon btn-xs" href="/episode-editor.php?episode_id=' + ep.id + '" title="Open in Episode Editor">'
                   + '<i class="fa-solid fa-wave-square"></i></a>'
@@ -968,16 +983,45 @@ window.unpublishEp = function(id) {
     });
 };
 
-/* ── Preview audio ── */
+/* ── Preview audio/video ── */
 window.playPreview = function(id) {
     mc1Api('POST', '/app/api/podcast.php', { action: 'get_episode', id: id }).then(function(d) {
         if (!d.ok || !d.episode) { mc1Toast('Cannot preview', 'err'); return; }
-        // We open the audio in a new tab or use the audio API
         var ep = d.episode;
-        if (ep.file_path) {
-            // We attempt playback via the audio API endpoint
-            var audioUrl = '/app/api/audio.php?path=' + encodeURIComponent(ep.file_path);
-            var audio = new Audio(audioUrl);
+        if (!ep.file_path) { mc1Toast('No file path', 'warn'); return; }
+
+        var mediaUrl = '/app/api/audio.php?path=' + encodeURIComponent(ep.file_path);
+        var fmt = (ep.format || 'mp3').toLowerCase();
+        var isVideo = (fmt === 'mp4' || fmt === 'webm' || fmt === 'mkv');
+
+        if (isVideo) {
+            /* We show the video in a modal overlay */
+            var existing = document.getElementById('video-preview-modal');
+            if (existing) existing.remove();
+
+            var overlay = document.createElement('div');
+            overlay.id = 'video-preview-modal';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:600;display:flex;align-items:center;justify-content:center;cursor:pointer';
+            overlay.onclick = function(e) {
+                if (e.target === overlay) {
+                    var vid = overlay.querySelector('video');
+                    if (vid) { vid.pause(); vid.removeAttribute('src'); vid.load(); }
+                    overlay.remove();
+                }
+            };
+            var video = document.createElement('video');
+            video.controls = true;
+            video.autoplay = true;
+            video.style.cssText = 'max-width:80vw;max-height:80vh;border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5)';
+            video.src = mediaUrl;
+            overlay.appendChild(video);
+            document.body.appendChild(overlay);
+            video.play().catch(function(e) {
+                mc1Toast('Cannot play video: ' + e.message, 'warn');
+            });
+        } else {
+            /* We play audio inline */
+            var audio = new Audio(mediaUrl);
             audio.play().catch(function(e) {
                 mc1Toast('Cannot play: ' + e.message, 'warn');
             });

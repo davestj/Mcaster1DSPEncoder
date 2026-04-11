@@ -9,7 +9,7 @@
  * Auth gate on every action via mc1_is_authed().
  *
  * @author  Dave St. John <davestj@gmail.com>
- * @version 1.8.1
+ * @version 1.8.2
  * @since   2026-03-27
  */
 
@@ -368,6 +368,269 @@ function _dawExtension(string $format): string {
         'opus' => 'opus',
     ];
     return $map[$format] ?? $format;
+}
+
+// ── denoise_track (server-side via ffmpeg afftdn) ────────────────────────
+
+if ($action === 'denoise_track') {
+    $inputPath  = (string)($req['input_path'] ?? '');
+    $noiseLevel = (string)($req['noise_level'] ?? '-25');
+
+    if (empty($inputPath) || !file_exists($inputPath)) {
+        mc1_api_respond(['ok' => false, 'error' => 'Input file not found'], 400);
+        return;
+    }
+
+    $exportDir = '/tmp/mc1_daw_exports';
+    if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
+    $outFile = $exportDir . '/denoised_' . date('Ymd_His') . '_' . basename($inputPath);
+
+    // Use ffmpeg afftdn (adaptive FFT denoising)
+    $nf = max(-80, min(0, (int)$noiseLevel));
+    $cmd = 'ffmpeg -y -i ' . escapeshellarg($inputPath)
+         . ' -af ' . escapeshellarg('afftdn=nf=' . $nf)
+         . ' ' . escapeshellarg($outFile) . ' 2>&1';
+
+    mc1_log(4, 'DAW denoise: ' . $cmd);
+    $output = [];
+    $ret = 0;
+    exec($cmd, $output, $ret);
+
+    if ($ret !== 0 || !file_exists($outFile)) {
+        mc1_log(2, 'DAW denoise failed: ret=' . $ret . ' output=' . implode("\n", $output));
+        mc1_api_respond(['ok' => false, 'error' => 'ffmpeg denoise failed', 'detail' => implode("\n", array_slice($output, -5))], 500);
+        return;
+    }
+
+    $downloadUrl = '/app/api/audio.php?path=' . urlencode($outFile);
+    mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($outFile)]);
+    return;
+}
+
+// ── time_stretch (server-side via ffmpeg atempo) ─────────────────────────
+
+if ($action === 'time_stretch') {
+    $inputPath = (string)($req['input_path'] ?? '');
+    $factor    = (float)($req['factor'] ?? 1.0);
+
+    if (empty($inputPath) || !file_exists($inputPath)) {
+        mc1_api_respond(['ok' => false, 'error' => 'Input file not found'], 400);
+        return;
+    }
+    if ($factor <= 0 || $factor > 4.0) {
+        mc1_api_respond(['ok' => false, 'error' => 'Factor must be between 0.25 and 4.0'], 400);
+        return;
+    }
+
+    $exportDir = '/tmp/mc1_daw_exports';
+    if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
+    $outFile = $exportDir . '/stretched_' . date('Ymd_His') . '_' . basename($inputPath);
+
+    // ffmpeg atempo is limited to 0.5-2.0; chain multiple for wider range
+    // Speed = 1/factor (stretch factor 2.0 = half speed = atempo 0.5)
+    $speed = 1.0 / $factor;
+    $atempoFilters = [];
+    $remaining = $speed;
+    while ($remaining < 0.5 || $remaining > 2.0) {
+        if ($remaining < 0.5) {
+            $atempoFilters[] = 'atempo=0.5';
+            $remaining /= 0.5;
+        } elseif ($remaining > 2.0) {
+            $atempoFilters[] = 'atempo=2.0';
+            $remaining /= 2.0;
+        }
+    }
+    $atempoFilters[] = 'atempo=' . round($remaining, 6);
+    $filterStr = implode(',', $atempoFilters);
+
+    $cmd = 'ffmpeg -y -i ' . escapeshellarg($inputPath)
+         . ' -af ' . escapeshellarg($filterStr)
+         . ' ' . escapeshellarg($outFile) . ' 2>&1';
+
+    mc1_log(4, 'DAW time stretch: ' . $cmd);
+    $output = [];
+    $ret = 0;
+    exec($cmd, $output, $ret);
+
+    if ($ret !== 0 || !file_exists($outFile)) {
+        mc1_log(2, 'DAW time stretch failed: ret=' . $ret . ' output=' . implode("\n", $output));
+        mc1_api_respond(['ok' => false, 'error' => 'ffmpeg time stretch failed', 'detail' => implode("\n", array_slice($output, -5))], 500);
+        return;
+    }
+
+    $downloadUrl = '/app/api/audio.php?path=' . urlencode($outFile);
+    mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($outFile)]);
+    return;
+}
+
+// ── pitch_shift (server-side via ffmpeg asetrate + atempo or rubberband) ─
+
+if ($action === 'pitch_shift') {
+    $inputPath  = (string)($req['input_path'] ?? '');
+    $semitones  = (int)($req['semitones'] ?? 0);
+
+    if (empty($inputPath) || !file_exists($inputPath)) {
+        mc1_api_respond(['ok' => false, 'error' => 'Input file not found'], 400);
+        return;
+    }
+    if ($semitones < -24 || $semitones > 24) {
+        mc1_api_respond(['ok' => false, 'error' => 'Semitones must be between -24 and +24'], 400);
+        return;
+    }
+
+    $exportDir = '/tmp/mc1_daw_exports';
+    if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
+    $outFile = $exportDir . '/pitched_' . date('Ymd_His') . '_' . basename($inputPath);
+
+    // Check if rubberband is available
+    $hasRubberband = false;
+    exec('which rubberband 2>/dev/null', $rbOut, $rbRet);
+    if ($rbRet === 0) $hasRubberband = true;
+
+    if ($hasRubberband) {
+        // Use rubberband for high-quality pitch shift
+        $cmd = 'rubberband -p ' . $semitones . ' ' . escapeshellarg($inputPath) . ' ' . escapeshellarg($outFile) . ' 2>&1';
+    } else {
+        // Fallback: ffmpeg asetrate + atempo combo
+        // asetrate changes sample rate (changes pitch + speed)
+        // Then atempo corrects the speed back to original
+        $pitchRatio = pow(2, $semitones / 12);
+        // Get original sample rate
+        $probeCmd = 'ffprobe -v quiet -print_format json -show_streams ' . escapeshellarg($inputPath);
+        $probeOut = [];
+        exec($probeCmd, $probeOut);
+        $probeJson = json_decode(implode('', $probeOut), true);
+        $origSr = 44100;
+        if (isset($probeJson['streams'][0]['sample_rate'])) {
+            $origSr = (int)$probeJson['streams'][0]['sample_rate'];
+        }
+        $newSr = round($origSr * $pitchRatio);
+        $atempoFactor = $pitchRatio; // atempo to restore original duration
+
+        // Build atempo chain for values outside 0.5-2.0
+        $atempoFilters = [];
+        $remaining = $atempoFactor;
+        while ($remaining < 0.5 || $remaining > 2.0) {
+            if ($remaining < 0.5) {
+                $atempoFilters[] = 'atempo=0.5';
+                $remaining /= 0.5;
+            } elseif ($remaining > 2.0) {
+                $atempoFilters[] = 'atempo=2.0';
+                $remaining /= 2.0;
+            }
+        }
+        $atempoFilters[] = 'atempo=' . round($remaining, 6);
+
+        $filterStr = 'asetrate=' . $newSr . ',' . implode(',', $atempoFilters) . ',aresample=' . $origSr;
+        $cmd = 'ffmpeg -y -i ' . escapeshellarg($inputPath)
+             . ' -af ' . escapeshellarg($filterStr)
+             . ' ' . escapeshellarg($outFile) . ' 2>&1';
+    }
+
+    mc1_log(4, 'DAW pitch shift: ' . $cmd);
+    $output = [];
+    $ret = 0;
+    exec($cmd, $output, $ret);
+
+    if ($ret !== 0 || !file_exists($outFile)) {
+        mc1_log(2, 'DAW pitch shift failed: ret=' . $ret . ' output=' . implode("\n", $output));
+        mc1_api_respond(['ok' => false, 'error' => 'Pitch shift failed', 'detail' => implode("\n", array_slice($output, -5))], 500);
+        return;
+    }
+
+    $downloadUrl = '/app/api/audio.php?path=' . urlencode($outFile);
+    mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($outFile)]);
+    return;
+}
+
+// ── freeze_track (server-side: render track via ffmpeg) ──────────────────
+
+if ($action === 'freeze_track') {
+    $projectId = (int)($req['project_id'] ?? 0);
+    $trackIdx  = (int)($req['track_index'] ?? -1);
+
+    if ($projectId <= 0) { mc1_api_respond(['ok' => false, 'error' => 'project_id required'], 400); return; }
+    if ($trackIdx < 0)   { mc1_api_respond(['ok' => false, 'error' => 'track_index required'], 400); return; }
+
+    // Load project
+    try {
+        $st = mc1_db('mcaster1_media')->prepare('SELECT * FROM daw_projects WHERE id = ? AND user_id = ?');
+        $st->execute([$projectId, $userId]);
+        $project = $st->fetch();
+        if (!$project) { mc1_api_respond(['ok' => false, 'error' => 'Project not found'], 404); return; }
+    } catch (Exception $e) {
+        mc1_api_respond(['ok' => false, 'error' => $e->getMessage()], 500);
+        return;
+    }
+
+    $json = is_string($project['project_json']) ? json_decode($project['project_json'], true) : $project['project_json'];
+    if (!$json || !isset($json['tracks'][$trackIdx])) {
+        mc1_api_respond(['ok' => false, 'error' => 'Track not found in project'], 400);
+        return;
+    }
+
+    $track = $json['tracks'][$trackIdx];
+    $vol = (float)($track['volume'] ?? 1.0);
+    $trackName = preg_replace('/[^a-zA-Z0-9_\-]/', '_', trim((string)($track['name'] ?? 'Track')));
+
+    // Collect audio files from clips
+    $files = [];
+    foreach ($track['clips'] ?? [] as $clip) {
+        $clipName = $clip['name'] ?? '';
+        $st2 = mc1_db('mcaster1_media')->prepare(
+            'SELECT file_path FROM tracks WHERE title LIKE ? OR file_path LIKE ? LIMIT 1'
+        );
+        $search = '%' . $clipName . '%';
+        $st2->execute([$search, $search]);
+        $trackRow = $st2->fetch();
+        if ($trackRow && file_exists($trackRow['file_path'])) {
+            $files[] = $trackRow['file_path'];
+        }
+    }
+
+    if (count($files) === 0) {
+        mc1_api_respond(['ok' => false, 'error' => 'No audio files found for track clips'], 400);
+        return;
+    }
+
+    $exportDir = '/tmp/mc1_daw_exports';
+    if (!is_dir($exportDir)) mkdir($exportDir, 0755, true);
+    $outFile = $exportDir . '/frozen_' . $trackName . '_' . date('Ymd_His') . '.wav';
+
+    // Build ffmpeg command to mix all clips with volume
+    $inputs = '';
+    $filters = '';
+    $labels = [];
+    for ($fi = 0; $fi < count($files); $fi++) {
+        $inputs .= ' -i ' . escapeshellarg($files[$fi]);
+        $v = round($vol, 2);
+        $label = 'a' . $fi;
+        $filters .= '[' . $fi . ':a]volume=' . $v . '[' . $label . '];';
+        $labels[] = '[' . $label . ']';
+    }
+    if (count($files) > 1) {
+        $filters .= implode('', $labels) . 'amix=inputs=' . count($files);
+    } else {
+        $filters = '[0:a]volume=' . round($vol, 2);
+    }
+
+    $cmd = 'ffmpeg -y' . $inputs . ' -filter_complex ' . escapeshellarg($filters)
+         . ' -c:a pcm_s16le ' . escapeshellarg($outFile) . ' 2>&1';
+
+    mc1_log(4, 'DAW freeze track: ' . $cmd);
+    $output = [];
+    $ret = 0;
+    exec($cmd, $output, $ret);
+
+    if ($ret !== 0 || !file_exists($outFile)) {
+        mc1_log(2, 'DAW freeze failed: ret=' . $ret . ' output=' . implode("\n", $output));
+        mc1_api_respond(['ok' => false, 'error' => 'ffmpeg freeze failed', 'detail' => implode("\n", array_slice($output, -5))], 500);
+        return;
+    }
+
+    $downloadUrl = '/app/api/audio.php?path=' . urlencode($outFile);
+    mc1_api_respond(['ok' => true, 'download_url' => $downloadUrl, 'file' => basename($outFile)]);
+    return;
 }
 
 // ── Unknown action ────────────────────────────────────────────────────────

@@ -65,14 +65,59 @@ $content_type = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
 
 if (strpos($content_type, 'application/octet-stream') !== false) {
     /* =====================================================================
-     * Binary chunk upload — write raw data to the FIFO pipe
+     * Binary chunk upload — stream relay FIFO or vodcast file assembly
+     * We detect which type by checking for X-Vodcast-Id vs X-Stream-Target.
      * ===================================================================== */
+
+    $vodcast_id = (int)($_SERVER['HTTP_X_VODCAST_ID'] ?? 0);
     $target_id  = (int)($_SERVER['HTTP_X_STREAM_TARGET'] ?? 0);
     $chunk_idx  = (int)($_SERVER['HTTP_X_CHUNK_INDEX'] ?? 0);
 
+    /* We read the raw POST body */
+    $raw = file_get_contents('php://input');
+    $bytes = strlen($raw);
+
+    if ($bytes === 0) {
+        header('Content-Type: application/json');
+        mc1_api_respond(['error' => 'Empty chunk'], 400);
+        return;
+    }
+
+    /* ── Vodcast chunk upload — append to recording file ── */
+    if ($vodcast_id > 0) {
+        $vodcast_meta = mc1_vodcast_meta_path($vodcast_id);
+        if (!file_exists($vodcast_meta)) {
+            header('Content-Type: application/json');
+            mc1_api_respond(['error' => 'No active vodcast recording for id ' . $vodcast_id], 404);
+            return;
+        }
+
+        $meta = json_decode((string)file_get_contents($vodcast_meta), true);
+        $filepath = $meta['filepath'] ?? '';
+
+        if ($filepath === '' || !is_dir(dirname($filepath))) {
+            header('Content-Type: application/json');
+            mc1_api_respond(['error' => 'Vodcast recording path invalid'], 500);
+            return;
+        }
+
+        /* We append the raw data to the recording file */
+        $written = @file_put_contents($filepath, $raw, FILE_APPEND | LOCK_EX);
+        if ($written === false) {
+            header('Content-Type: application/json');
+            mc1_api_respond(['error' => 'Write to vodcast file failed'], 500);
+            return;
+        }
+
+        header('Content-Type: application/json');
+        mc1_api_respond(['ok' => true, 'chunk' => $chunk_idx, 'bytes' => $written]);
+        return;
+    }
+
+    /* ── Stream relay chunk upload — write to FIFO pipe ── */
     if ($target_id < 1) {
         header('Content-Type: application/json');
-        mc1_api_respond(['error' => 'X-Stream-Target header required'], 400);
+        mc1_api_respond(['error' => 'X-Stream-Target or X-Vodcast-Id header required'], 400);
         return;
     }
 
@@ -81,16 +126,6 @@ if (strpos($content_type, 'application/octet-stream') !== false) {
     if (!file_exists($pipe_path)) {
         header('Content-Type: application/json');
         mc1_api_respond(['error' => 'No active stream for target ' . $target_id . '. Start stream first.'], 404);
-        return;
-    }
-
-    /* We read the raw POST body and write to the FIFO pipe */
-    $raw = file_get_contents('php://input');
-    $bytes = strlen($raw);
-
-    if ($bytes === 0) {
-        header('Content-Type: application/json');
-        mc1_api_respond(['error' => 'Empty chunk'], 400);
         return;
     }
 
@@ -182,6 +217,20 @@ function mc1_producer_cleanup(int $target_id): void {
     @unlink($pipe);
     @unlink($pid_file);
     @unlink($counter);
+}
+
+/* -- Vodcast recording helpers ------------------------------------------- */
+
+function mc1_vodcast_meta_path(int $vodcast_id): string {
+    return '/tmp/mc1_vodcast_' . $vodcast_id . '.meta';
+}
+
+function mc1_vodcast_archive_dir(): string {
+    $dir = '/var/www/mcaster1.com/audio/video_recordings';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    return $dir;
 }
 
 /* We load an RTMP target row from the DB */
@@ -613,6 +662,317 @@ if ($action === 'list_recordings') {
     }
 
     mc1_api_respond(['ok' => true, 'recordings' => $recordings]);
+    return;
+}
+
+/* =========================================================================
+ * action: start_vodcast — create temp recording file, podcast_episode row
+ * ========================================================================= */
+if ($action === 'start_vodcast') {
+    if (!$is_admin) {
+        mc1_api_respond(['error' => 'Admin permission required'], 403);
+        return;
+    }
+
+    $show_id = (int)($body['show_id'] ?? 0);
+    $title   = trim((string)($body['title'] ?? ''));
+    $format  = (string)($body['format'] ?? 'webm');
+
+    if ($show_id < 1) {
+        mc1_api_respond(['error' => 'show_id required'], 400);
+        return;
+    }
+    if ($title === '') {
+        mc1_api_respond(['error' => 'title required'], 400);
+        return;
+    }
+    if (!in_array($format, ['webm', 'mp4'], true)) {
+        $format = 'webm';
+    }
+
+    /* We generate a unique vodcast ID and filename */
+    $vodcast_id = (int)date('YmdHis');
+    $archive_dir = mc1_vodcast_archive_dir();
+
+    /* We always record as WebM natively; MP4 is transcoded at stop time */
+    $rec_ext   = 'webm';
+    $filename  = 'vodcast_' . date('Ymd_His') . '.' . $rec_ext;
+    $filepath  = $archive_dir . '/' . $filename;
+
+    /* We write metadata file so chunk uploads can find the path */
+    $meta = [
+        'vodcast_id' => $vodcast_id,
+        'show_id'    => $show_id,
+        'title'      => $title,
+        'format'     => $format,
+        'filepath'   => $filepath,
+        'filename'   => $filename,
+        'started_at' => date('Y-m-d H:i:s'),
+    ];
+    file_put_contents(mc1_vodcast_meta_path($vodcast_id), json_encode($meta));
+
+    /* We create an empty file to start appending chunks to */
+    file_put_contents($filepath, '');
+
+    /* We create the podcast_episode record in draft state */
+    try {
+        $pdo = mc1_db('mcaster1_media');
+
+        /* We auto-compute episode number */
+        $stmt = $pdo->prepare(
+            'SELECT COALESCE(MAX(episode_number), 0) FROM podcast_episodes WHERE show_id = ?'
+        );
+        $stmt->execute([$show_id]);
+        $ep_num = (int)$stmt->fetchColumn() + 1;
+
+        $ins = $pdo->prepare(
+            'INSERT INTO podcast_episodes
+             (show_id, title, file_path, format, episode_number, is_published)
+             VALUES (?, ?, ?, ?, ?, 0)'
+        );
+        $ins->execute([
+            $show_id,
+            $title,
+            $filepath,
+            $format,      /* We store the desired final format (mp4 or webm) */
+            $ep_num,
+        ]);
+        $episode_id = (int)$pdo->lastInsertId();
+
+        /* We store the episode_id in the meta file */
+        $meta['episode_id'] = $episode_id;
+        file_put_contents(mc1_vodcast_meta_path($vodcast_id), json_encode($meta));
+    } catch (Exception $e) {
+        mc1_log(2, 'vodcast start_vodcast DB error', json_encode([
+            'err' => $e->getMessage(), 'show_id' => $show_id,
+        ]));
+        mc1_api_respond(['error' => 'Database error creating episode'], 500);
+        return;
+    }
+
+    mc1_log(4, 'vodcast recording started', json_encode([
+        'vodcast_id' => $vodcast_id, 'episode_id' => $episode_id,
+        'show_id' => $show_id, 'format' => $format,
+    ]));
+
+    mc1_api_respond([
+        'ok'         => true,
+        'vodcast_id' => $vodcast_id,
+        'episode_id' => $episode_id,
+        'filename'   => $filename,
+        'filepath'   => $filepath,
+    ]);
+    return;
+}
+
+/* =========================================================================
+ * action: stop_vodcast — finalize recording file, get duration, optionally
+ * transcode WebM to MP4, update episode record
+ * ========================================================================= */
+if ($action === 'stop_vodcast') {
+    if (!$is_admin) {
+        mc1_api_respond(['error' => 'Admin permission required'], 403);
+        return;
+    }
+
+    $vodcast_id = (int)($body['vodcast_id'] ?? 0);
+    if ($vodcast_id < 1) {
+        mc1_api_respond(['error' => 'vodcast_id required'], 400);
+        return;
+    }
+
+    $meta_path = mc1_vodcast_meta_path($vodcast_id);
+    if (!file_exists($meta_path)) {
+        mc1_api_respond(['error' => 'No active vodcast recording for id ' . $vodcast_id], 404);
+        return;
+    }
+
+    $meta = json_decode((string)file_get_contents($meta_path), true);
+    $filepath   = $meta['filepath'] ?? '';
+    $format     = $meta['format'] ?? 'webm';
+    $episode_id = (int)($meta['episode_id'] ?? 0);
+
+    if (!file_exists($filepath)) {
+        @unlink($meta_path);
+        mc1_api_respond(['error' => 'Recording file not found'], 500);
+        return;
+    }
+
+    $file_size = filesize($filepath);
+    $final_path = $filepath;
+
+    /* We get duration from the WebM file via ffprobe */
+    $duration_sec = 0;
+    if (function_exists('exec')) {
+        $cmd = 'ffprobe -v quiet -show_entries format=duration -of csv=p=0 '
+             . escapeshellarg($filepath) . ' 2>/dev/null';
+        $lines = [];
+        @exec($cmd, $lines);
+        if (!empty($lines[0])) {
+            $duration_sec = (int)round((float)$lines[0]);
+        }
+    }
+
+    /* We transcode WebM to MP4 if requested */
+    if ($format === 'mp4') {
+        $mp4_path = preg_replace('/\.webm$/', '.mp4', $filepath);
+        $transcode_cmd = sprintf(
+            '/usr/bin/ffmpeg -y -i %s -c:v libx264 -preset fast -crf 23 '
+            . '-c:a aac -b:a 128k -movflags +faststart %s 2>/dev/null',
+            escapeshellarg($filepath),
+            escapeshellarg($mp4_path)
+        );
+        $retval = 0;
+        @exec($transcode_cmd, $_, $retval);
+
+        if ($retval === 0 && file_exists($mp4_path) && filesize($mp4_path) > 0) {
+            /* We remove the WebM source and use the MP4 */
+            @unlink($filepath);
+            $final_path = $mp4_path;
+            $file_size = filesize($mp4_path);
+
+            /* We re-probe MP4 duration */
+            $lines = [];
+            $cmd = 'ffprobe -v quiet -show_entries format=duration -of csv=p=0 '
+                 . escapeshellarg($mp4_path) . ' 2>/dev/null';
+            @exec($cmd, $lines);
+            if (!empty($lines[0])) {
+                $duration_sec = (int)round((float)$lines[0]);
+            }
+        } else {
+            /* We fall back to WebM if transcode failed */
+            $format = 'webm';
+            mc1_log(2, 'vodcast MP4 transcode failed, keeping WebM', json_encode([
+                'vodcast_id' => $vodcast_id, 'retval' => $retval,
+            ]));
+        }
+    }
+
+    /* We update the podcast_episode record with file size, duration, format, path */
+    if ($episode_id > 0) {
+        try {
+            mc1_db('mcaster1_media')->prepare(
+                'UPDATE podcast_episodes
+                 SET file_path = ?, file_size_bytes = ?, duration_sec = ?, format = ?
+                 WHERE id = ?'
+            )->execute([$final_path, $file_size, $duration_sec, $format, $episode_id]);
+        } catch (Exception $e) {
+            mc1_log(2, 'vodcast stop_vodcast DB update error', json_encode([
+                'err' => $e->getMessage(), 'episode_id' => $episode_id,
+            ]));
+        }
+    }
+
+    /* We clean up the meta file */
+    @unlink($meta_path);
+
+    mc1_log(4, 'vodcast recording stopped', json_encode([
+        'vodcast_id' => $vodcast_id, 'episode_id' => $episode_id,
+        'format' => $format, 'duration' => $duration_sec, 'size' => $file_size,
+    ]));
+
+    mc1_api_respond([
+        'ok'           => true,
+        'episode_id'   => $episode_id,
+        'filename'     => basename($final_path),
+        'file_path'    => $final_path,
+        'file_size'    => $file_size,
+        'duration_sec' => $duration_sec,
+        'format'       => $format,
+    ]);
+    return;
+}
+
+/* =========================================================================
+ * action: get_vodcast_thumbnail — extract a frame from recording via ffmpeg
+ * ========================================================================= */
+if ($action === 'get_vodcast_thumbnail') {
+    if (!$is_admin) {
+        mc1_api_respond(['error' => 'Admin permission required'], 403);
+        return;
+    }
+
+    $episode_id = (int)($body['episode_id'] ?? 0);
+    $timestamp  = trim((string)($body['timestamp'] ?? '00:00:30'));
+
+    if ($episode_id < 1) {
+        mc1_api_respond(['error' => 'episode_id required'], 400);
+        return;
+    }
+
+    /* We validate timestamp format (HH:MM:SS or seconds) */
+    if (!preg_match('/^(\d{1,2}:)?\d{1,2}:\d{2}$/', $timestamp) && !preg_match('/^\d+(\.\d+)?$/', $timestamp)) {
+        $timestamp = '00:00:30';
+    }
+
+    /* We load the episode to get the file path */
+    try {
+        $ep = mc1_db('mcaster1_media')->prepare(
+            'SELECT file_path, format FROM podcast_episodes WHERE id = ?'
+        );
+        $ep->execute([$episode_id]);
+        $ep = $ep->fetch(\PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        mc1_api_respond(['error' => 'Database error'], 500);
+        return;
+    }
+
+    if (!$ep || empty($ep['file_path']) || !file_exists($ep['file_path'])) {
+        mc1_api_respond(['error' => 'Episode file not found'], 404);
+        return;
+    }
+
+    /* We only support video formats for thumbnail extraction */
+    $video_formats = ['mp4', 'webm', 'mkv', 'avi', 'mov'];
+    if (!in_array($ep['format'] ?? '', $video_formats, true)) {
+        mc1_api_respond(['error' => 'Episode is not a video format'], 400);
+        return;
+    }
+
+    /* We generate the thumbnail path */
+    $archive_dir = mc1_vodcast_archive_dir();
+    $thumb_filename = 'thumb_ep' . $episode_id . '_' . date('YmdHis') . '.jpg';
+    $thumb_path = $archive_dir . '/' . $thumb_filename;
+
+    /* We extract a frame via ffmpeg */
+    $cmd = sprintf(
+        '/usr/bin/ffmpeg -y -i %s -ss %s -vframes 1 -q:v 2 %s 2>/dev/null',
+        escapeshellarg($ep['file_path']),
+        escapeshellarg($timestamp),
+        escapeshellarg($thumb_path)
+    );
+    $retval = 0;
+    @exec($cmd, $_, $retval);
+
+    if ($retval !== 0 || !file_exists($thumb_path) || filesize($thumb_path) === 0) {
+        @unlink($thumb_path);
+        mc1_api_respond(['error' => 'Thumbnail extraction failed. Try a different timestamp.'], 500);
+        return;
+    }
+
+    /* We update the episode cover_art_path if they have that column,
+     * or we just return the path for the caller to use */
+    try {
+        mc1_db('mcaster1_media')->prepare(
+            'UPDATE podcast_episodes SET cover_art_path = ? WHERE id = ?'
+        )->execute([$thumb_path, $episode_id]);
+    } catch (Exception $e) {
+        /* We do not fail if the column does not exist yet */
+        mc1_log(5, 'vodcast thumbnail DB update skipped', json_encode([
+            'err' => $e->getMessage(), 'episode_id' => $episode_id,
+        ]));
+    }
+
+    mc1_log(4, 'vodcast thumbnail extracted', json_encode([
+        'episode_id' => $episode_id, 'thumb' => $thumb_path,
+    ]));
+
+    mc1_api_respond([
+        'ok'       => true,
+        'path'     => $thumb_path,
+        'filename' => $thumb_filename,
+        'size'     => filesize($thumb_path),
+    ]);
     return;
 }
 

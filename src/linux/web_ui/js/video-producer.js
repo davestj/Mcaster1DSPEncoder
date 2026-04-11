@@ -2,9 +2,11 @@
  * Mcaster1 Video Producer Engine
  * js/video-producer.js
  *
- * Manages 3 video source slots (webcam, file, media library),
+ * Manages 6 video source slots (4 cameras, video file, media library),
  * PGM/PVW bus switcher, T-bar crossfader, auto-transitions,
  * chroma key, PIP compositing, color correction, lower-third overlay,
+ * text crawl, logo/watermark, timer/clock, stinger transitions,
+ * audio-follows-video, tally lights, scene presets (1-8),
  * recording and streaming state.
  * Depends on: js/webgl-video.js (Mc1WebGLVideo)
  *
@@ -34,6 +36,7 @@ function VideoSource(slotId, canvas) {
     this.isCue = false;
     this._rafId = null;
     this._destroyed = false;
+    this.audioDeviceId = '';   // Associated audio input device for audio-follows-video
 
     // Per-source color correction
     this.colorCorrection = {
@@ -230,6 +233,12 @@ VideoSource.prototype.setChromaKey = function(enabled, color, tolerance, softnes
     if (softness !== undefined) this.chromaKey.softness = softness;
 };
 
+/* -- Audio Device (for audio-follows-video) -------------------------- */
+
+VideoSource.prototype.setAudioDevice = function(deviceId) {
+    this.audioDeviceId = deviceId || '';
+};
+
 /* ======================================================================
  * VideoProducer -- main orchestrator with PGM/PVW bus switcher
  * ====================================================================== */
@@ -272,14 +281,38 @@ function VideoProducer(config) {
     // Lower-third overlay
     this.lowerThird = new WGL.LowerThirdRenderer(1280, 160);
 
+    // Text crawl overlay (news ticker)
+    this.textCrawl = new WGL.TextCrawlRenderer(1280, 48);
+
+    // Logo/watermark overlay
+    this.logoOverlay = new WGL.LogoOverlay(256, 256);
+
+    // Timer/clock overlay
+    this.timerOverlay = new WGL.TimerOverlay(320, 64);
+
+    // Stinger transition
+    this.stingerTransition = new WGL.StingerTransition();
+    this._stingerActive = false;
+    this._stingerSrcA = -1;
+    this._stingerSrcB = -1;
+
+    // Audio follows video
+    this.audioFollowsVideo = false;
+    this._activeAudioStream = null;
+    this._audioContext = null;
+    this._audioDestination = null;
+    this._audioSourceNode = null;
+
     // Recording / streaming
     this.isRecording = false;
     this.isStreaming = false;
     this.mediaRecorder = null;
     this.recordedChunks = [];
 
-    // Scene presets
-    this._scenePresets = [];
+    // Scene presets (8 slots)
+    this._scenePresets = [null, null, null, null, null, null, null, null];
+    this._sceneNames = ['Scene 1', 'Scene 2', 'Scene 3', 'Scene 4',
+                         'Scene 5', 'Scene 6', 'Scene 7', 'Scene 8'];
 
     this._rafId = null;
     this._destroyed = false;
@@ -329,17 +362,36 @@ VideoProducer.prototype.cut = function() {
     this._transProgress = 0;
     this.tbarValue = 0;
     this._updateSourceFlags();
+    this._handleAudioFollowsVideo();
 };
 
 /* -- Auto transition: timed PVW -> PGM ------------------------------- */
 
 VideoProducer.prototype.autoTransition = function(type) {
     if (this.pvwSourceIdx < 0) return;
-    if (this._transitioning) return;
+    if (this._transitioning || this._stingerActive) return;
 
     var transType = type || this.transitionType;
     if (transType === 'cut') {
         this.cut();
+        return;
+    }
+
+    // Stinger transition -- play the stinger clip then commit the switch
+    if (transType === 'stinger' && this.stingerTransition.loaded) {
+        var self = this;
+        this._stingerActive = true;
+        this._stingerSrcA = this.pgmSourceIdx;
+        this._stingerSrcB = this.pvwSourceIdx;
+        this.stingerTransition.play(function() {
+            self._stingerActive = false;
+            self.previousSourceIdx = self._stingerSrcA;
+            self.pgmSourceIdx = self._stingerSrcB;
+            self.activeSourceIdx = self.pgmSourceIdx;
+            self.pvwSourceIdx = self.previousSourceIdx >= 0 ? self.previousSourceIdx : -1;
+            self._updateSourceFlags();
+            self._handleAudioFollowsVideo();
+        });
         return;
     }
 
@@ -382,6 +434,7 @@ VideoProducer.prototype.setTbarValue = function(value) {
         this.tbarValue = 0;
         this._transitioning = false;
         this._updateSourceFlags();
+        this._handleAudioFollowsVideo();
     }
 };
 
@@ -407,6 +460,7 @@ VideoProducer.prototype._updateTransition = function() {
         this._transProgress = 0;
         this.tbarValue = 0;
         this._updateSourceFlags();
+        this._handleAudioFollowsVideo();
     }
 };
 
@@ -415,6 +469,136 @@ VideoProducer.prototype._updateSourceFlags = function() {
         this.sources[i].isLive = (i === this.pgmSourceIdx);
         this.sources[i].isCue = (i === this.pvwSourceIdx);
     }
+};
+
+/* -- Audio Follows Video --------------------------------------------- */
+
+VideoProducer.prototype.setAudioFollowsVideo = function(enabled) {
+    this.audioFollowsVideo = !!enabled;
+    if (enabled && this.pgmSourceIdx >= 0) {
+        this._handleAudioFollowsVideo();
+    }
+};
+
+VideoProducer.prototype._handleAudioFollowsVideo = function() {
+    if (!this.audioFollowsVideo) return;
+    if (this.pgmSourceIdx < 0) return;
+    var src = this.sources[this.pgmSourceIdx];
+    if (!src || !src.audioDeviceId) return;
+
+    var self = this;
+    // Stop previous audio capture
+    if (this._activeAudioStream) {
+        this._activeAudioStream.getTracks().forEach(function(t) { t.stop(); });
+        this._activeAudioStream = null;
+    }
+
+    // Start audio capture from the PGM source's associated mic
+    navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: src.audioDeviceId } },
+        video: false
+    }).then(function(stream) {
+        self._activeAudioStream = stream;
+        // The stream is available for the StreamEngine to use
+    }).catch(function(e) {
+        console.warn('Audio follows video: mic capture failed:', e);
+    });
+};
+
+/* -- Overlay Controls ------------------------------------------------ */
+
+VideoProducer.prototype.showTextCrawl = function(text, options) {
+    this.textCrawl.show(text, options);
+};
+
+VideoProducer.prototype.hideTextCrawl = function() {
+    this.textCrawl.hide();
+};
+
+VideoProducer.prototype.showLogo = function(options) {
+    this.logoOverlay.show(options);
+};
+
+VideoProducer.prototype.hideLogo = function() {
+    this.logoOverlay.hide();
+};
+
+VideoProducer.prototype.loadLogoImage = function(url) {
+    return this.logoOverlay.loadImage(url);
+};
+
+VideoProducer.prototype.loadLogoFile = function(file) {
+    return this.logoOverlay.loadFile(file);
+};
+
+VideoProducer.prototype.showTimer = function(options) {
+    this.timerOverlay.show(options);
+};
+
+VideoProducer.prototype.hideTimer = function() {
+    this.timerOverlay.hide();
+};
+
+VideoProducer.prototype.loadStinger = function(url) {
+    return this.stingerTransition.loadVideo(url);
+};
+
+VideoProducer.prototype.loadStingerFile = function(file) {
+    return this.stingerTransition.loadFile(file);
+};
+
+/* -- Tally light state ----------------------------------------------- */
+
+/**
+ * getTallyState -- returns array of tally objects for each source
+ * Each: { pgm: bool, pvw: bool }
+ */
+VideoProducer.prototype.getTallyState = function() {
+    var state = [];
+    for (var i = 0; i < this.sources.length; i++) {
+        state.push({
+            pgm: i === this.pgmSourceIdx,
+            pvw: i === this.pvwSourceIdx
+        });
+    }
+    return state;
+};
+
+/* -- Scene Presets (1-8) --------------------------------------------- */
+
+VideoProducer.prototype.saveScenePreset = function(slotIndex) {
+    if (slotIndex < 0 || slotIndex >= 8) return;
+    this._scenePresets[slotIndex] = this.getSceneConfig();
+};
+
+VideoProducer.prototype.loadScenePreset = function(slotIndex) {
+    if (slotIndex < 0 || slotIndex >= 8) return;
+    var scene = this._scenePresets[slotIndex];
+    if (!scene) return false;
+    this.loadSceneConfig(scene);
+    return true;
+};
+
+VideoProducer.prototype.renameScenePreset = function(slotIndex, name) {
+    if (slotIndex < 0 || slotIndex >= 8) return;
+    this._sceneNames[slotIndex] = name || ('Scene ' + (slotIndex + 1));
+};
+
+VideoProducer.prototype.getScenePresetName = function(slotIndex) {
+    if (slotIndex < 0 || slotIndex >= 8) return '';
+    return this._sceneNames[slotIndex];
+};
+
+VideoProducer.prototype.isScenePresetSaved = function(slotIndex) {
+    return slotIndex >= 0 && slotIndex < 8 && this._scenePresets[slotIndex] !== null;
+};
+
+/* -- Audio device enumeration (includes audio inputs) ---------------- */
+
+VideoProducer.prototype.enumerateAudioDevices = function() {
+    return navigator.mediaDevices.enumerateDevices().then(function(devices) {
+        return devices.filter(function(d) { return d.kind === 'audioinput'; });
+    });
 };
 
 /* -- Program output render loop -------------------------------------- */
@@ -432,15 +616,30 @@ VideoProducer.prototype._startProgramLoop = function() {
 VideoProducer.prototype._renderProgram = function() {
     this._updateTransition();
 
-    // Update lower-third animation
-    if (this.lowerThird.isVisible()) {
-        this.lowerThird.update();
-    }
+    // Update overlay animations
+    if (this.lowerThird.isVisible()) this.lowerThird.update();
+    if (this.textCrawl.isVisible()) this.textCrawl.update();
+    if (this.timerOverlay.isVisible()) this.timerOverlay.update();
 
     var programFrame = null;
 
-    // Determine if we are in a transition
-    if (this._transitioning && !this.tbarMode) {
+    // Stinger transition in progress -- composite stinger over the scene
+    if (this._stingerActive && this.stingerTransition.isPlaying()) {
+        var stingerProgress = this.stingerTransition.getProgress();
+        // Before halfway: show source A; after halfway: show source B
+        var showIdx = stingerProgress < 0.5 ? this._stingerSrcA : this._stingerSrcB;
+        var showSrc = this.sources[showIdx];
+        if (showSrc && showSrc.type !== 'none') {
+            WGL.drawTransition(this.programRenderer, showSrc.getFrame(), showSrc.getFrame(), 0, 'cut');
+        }
+        // Overlay the stinger clip on top
+        WGL.drawOverlay(this.programRenderer, this.programCanvas,
+            this.stingerTransition.getCanvas(),
+            { x: 0, y: 0, w: 1, h: 1 }, 1.0);
+        programFrame = this.programCanvas;
+    }
+    // Normal transition
+    else if (this._transitioning && !this.tbarMode) {
         var srcA = this.sources[this._transSrcA];
         var srcB = this.sources[this._transSrcB];
         var frameA = srcA ? srcA.getFrame() : null;
@@ -476,6 +675,34 @@ VideoProducer.prototype._renderProgram = function() {
             WGL.drawPIP(this.programRenderer, programFrame, pipSrc.getFrame(),
                 pipRect, this.pip.alpha, 0.008, [1, 1, 1]);
         }
+    }
+
+    // Logo/watermark overlay pass
+    if (this.logoOverlay.isVisible() && programFrame) {
+        var logoRect = this.logoOverlay.getRect(
+            this.programCanvas.clientWidth || 1280,
+            this.programCanvas.clientHeight || 720
+        );
+        WGL.drawOverlay(this.programRenderer, this.programCanvas,
+            this.logoOverlay.getCanvas(), logoRect, this.logoOverlay.opacity);
+    }
+
+    // Timer/clock overlay pass
+    if (this.timerOverlay.isVisible() && programFrame) {
+        var timerRect = this.timerOverlay.getRect(
+            this.programCanvas.clientWidth || 1280,
+            this.programCanvas.clientHeight || 720
+        );
+        WGL.drawOverlay(this.programRenderer, this.programCanvas,
+            this.timerOverlay.getCanvas(), timerRect, 1.0);
+    }
+
+    // Text crawl overlay pass (bottom ticker)
+    if (this.textCrawl.isVisible() && programFrame) {
+        WGL.drawOverlay(this.programRenderer, this.programCanvas,
+            this.textCrawl.getCanvas(),
+            { x: 0, y: 0.92, w: 1.0, h: 0.08 },
+            1.0);
     }
 
     // Lower-third overlay pass
@@ -586,6 +813,7 @@ VideoProducer.prototype.getSceneConfig = function() {
         sources.push({
             slot: i,
             type: s.type,
+            audioDeviceId: s.audioDeviceId,
             config: {
                 trackIdx: s.trackIdx,
                 tracksCount: s.tracks.length,
@@ -614,7 +842,16 @@ VideoProducer.prototype.getSceneConfig = function() {
         pip_source: this.pip.sourceIdx,
         pip_position: this.pip.position,
         pip_size: this.pip.size,
-        tbar_mode: this.tbarMode ? 1 : 0
+        tbar_mode: this.tbarMode ? 1 : 0,
+        audio_follows_video: this.audioFollowsVideo ? 1 : 0,
+        logo_visible: this.logoOverlay.isVisible() ? 1 : 0,
+        logo_position: this.logoOverlay.position,
+        logo_opacity: this.logoOverlay.opacity,
+        logo_scale: this.logoOverlay.scale,
+        timer_visible: this.timerOverlay.isVisible() ? 1 : 0,
+        timer_mode: this.timerOverlay.mode,
+        timer_format: this.timerOverlay.format,
+        timer_position: this.timerOverlay.position
     };
 };
 
@@ -626,6 +863,31 @@ VideoProducer.prototype.loadSceneConfig = function(scene) {
     if (scene.pip_position) this.pip.position = scene.pip_position;
     if (scene.pip_size) this.pip.size = scene.pip_size;
     if (scene.tbar_mode !== undefined) this.tbarMode = !!scene.tbar_mode;
+    if (scene.audio_follows_video !== undefined) this.audioFollowsVideo = !!scene.audio_follows_video;
+    // Restore logo overlay settings
+    if (scene.logo_visible !== undefined) {
+        if (scene.logo_visible && this.logoOverlay.loaded) {
+            this.logoOverlay.show({
+                position: scene.logo_position || 'tr',
+                opacity: scene.logo_opacity !== undefined ? scene.logo_opacity : 1.0,
+                scale: scene.logo_scale !== undefined ? scene.logo_scale : 1.0
+            });
+        } else {
+            this.logoOverlay.hide();
+        }
+    }
+    // Restore timer overlay settings
+    if (scene.timer_visible !== undefined) {
+        if (scene.timer_visible) {
+            this.timerOverlay.show({
+                mode: scene.timer_mode || 'clock',
+                format: scene.timer_format || 'HH:MM:SS',
+                position: scene.timer_position || 'tr'
+            });
+        } else {
+            this.timerOverlay.hide();
+        }
+    }
 };
 
 /* -- Cleanup --------------------------------------------------------- */
@@ -871,6 +1133,214 @@ StreamEngine.prototype._pickMimeType = function() {
 };
 
 /* ======================================================================
+ * VodcastRecorder -- captures program canvas + audio, records via
+ * MediaRecorder, uploads chunks to server for file assembly, and
+ * creates a podcast episode when finished.
+ * ====================================================================== */
+
+function VodcastRecorder(producer) {
+    this.producer = producer;
+    this.recording = false;
+    this.showId = 0;
+    this.title = '';
+    this.format = 'webm';       // 'webm' or 'mp4' (server transcode)
+    this.vodcastId = 0;         // server-assigned vodcast recording id
+    this.episodeId = 0;         // created episode id after stop
+    this.recorder = null;
+    this.chunkIndex = 0;
+    this.bytesUploaded = 0;
+    this.startTime = 0;
+    this.audioSlotId = 0;
+    this._audioEl = null;
+    this._combinedStream = null;
+    this._chunkIntervalMs = 2000;
+    this._videoBitrate = 5000000;
+}
+
+/**
+ * startVodcastRecording -- begin capturing program canvas + optional audio,
+ * uploading chunks to /app/api/producer.php for server-side file assembly.
+ *
+ * @param {number} showId    - podcast_shows.id to link the episode to
+ * @param {string} title     - episode title
+ * @param {string} format    - 'webm' (native) or 'mp4' (server transcodes)
+ * @param {object} opts      - { audioSlotId, videoBitrate }
+ * @return {Promise<number>} - vodcast_id from server
+ */
+VodcastRecorder.prototype.startVodcastRecording = function(showId, title, format, opts) {
+    if (this.recording) return Promise.reject(new Error('Already recording'));
+    opts = opts || {};
+    var self = this;
+
+    this.showId = showId;
+    this.title = title;
+    this.format = format || 'webm';
+    this.audioSlotId = opts.audioSlotId || 0;
+    this._videoBitrate = opts.videoBitrate || 5000000;
+    this.chunkIndex = 0;
+    this.bytesUploaded = 0;
+    this.vodcastId = 0;
+    this.episodeId = 0;
+
+    /* We capture the program canvas at 30fps */
+    var videoStream = this.producer.programCanvas.captureStream(30);
+    if (!videoStream) return Promise.reject(new Error('captureStream not supported'));
+
+    /* We combine video + optional audio */
+    return this._getAudioStream(this.audioSlotId).then(function(audioStream) {
+        var tracks = videoStream.getVideoTracks().slice();
+        if (audioStream) {
+            var audioTracks = audioStream.getAudioTracks();
+            for (var i = 0; i < audioTracks.length; i++) {
+                tracks.push(audioTracks[i]);
+            }
+        }
+        self._combinedStream = new MediaStream(tracks);
+
+        /* We pick the best supported mimeType */
+        var mimeType = self._pickMimeType();
+        var recOpts = { videoBitsPerSecond: self._videoBitrate };
+        if (mimeType) recOpts.mimeType = mimeType;
+
+        self.recorder = new MediaRecorder(self._combinedStream, recOpts);
+
+        /* We tell the server to start vodcast recording */
+        return fetch('/app/api/producer.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                action: 'start_vodcast',
+                show_id: showId,
+                title: title,
+                format: self.format
+            })
+        }).then(function(r) { return r.json(); });
+    }).then(function(d) {
+        if (!d || !d.ok) {
+            throw new Error(d ? (d.error || 'Server error') : 'No response');
+        }
+
+        self.vodcastId = d.vodcast_id;
+
+        /* We listen for data chunks and upload them */
+        self.recorder.ondataavailable = function(e) {
+            if (e.data && e.data.size > 0) {
+                self._uploadChunk(e.data);
+            }
+        };
+
+        self.recorder.start(self._chunkIntervalMs);
+        self.recording = true;
+        self.startTime = Date.now();
+        self.producer.isRecording = true;
+        return self.vodcastId;
+    });
+};
+
+/**
+ * stopVodcastRecording -- stop recording, finalize on server, create episode.
+ * Returns { episode_id, filename, duration_sec, file_size } after server
+ * processes the file.
+ *
+ * @return {Promise<object>}
+ */
+VodcastRecorder.prototype.stopVodcastRecording = function() {
+    if (!this.recording || !this.recorder) return Promise.resolve(null);
+    var self = this;
+
+    return new Promise(function(resolve) {
+        self.recorder.onstop = function() {
+            self.recording = false;
+            self.producer.isRecording = false;
+
+            /* We clean up audio element + streams */
+            if (self._audioEl) {
+                self._audioEl.pause();
+                self._audioEl.removeAttribute('src');
+                self._audioEl.load();
+                self._audioEl = null;
+            }
+            if (self._combinedStream) {
+                self._combinedStream.getTracks().forEach(function(t) { t.stop(); });
+                self._combinedStream = null;
+            }
+
+            /* We tell the server to finalize the recording and create the episode */
+            fetch('/app/api/producer.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    action: 'stop_vodcast',
+                    vodcast_id: self.vodcastId
+                })
+            }).then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d && d.ok) {
+                    self.episodeId = d.episode_id || 0;
+                }
+                resolve(d);
+            }).catch(function(e) {
+                resolve({ ok: false, error: e.message || 'Stop failed' });
+            });
+        };
+        self.recorder.stop();
+    });
+};
+
+/**
+ * getRecordingStatus -- return current vodcast recording state
+ */
+VodcastRecorder.prototype.getRecordingStatus = function() {
+    return {
+        recording: this.recording,
+        vodcastId: this.vodcastId,
+        episodeId: this.episodeId,
+        showId: this.showId,
+        title: this.title,
+        format: this.format,
+        duration: this.recording ? Date.now() - this.startTime : 0,
+        bytesUploaded: this.bytesUploaded,
+        chunkIndex: this.chunkIndex
+    };
+};
+
+/**
+ * _getAudioStream -- reuse the same approach as StreamEngine
+ */
+VodcastRecorder.prototype._getAudioStream = StreamEngine.prototype._getAudioStream;
+
+/**
+ * _uploadChunk -- POST a recorded WebM blob to the server for file assembly
+ */
+VodcastRecorder.prototype._uploadChunk = function(blob) {
+    var self = this;
+    var idx = this.chunkIndex++;
+
+    fetch('/app/api/producer.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/octet-stream',
+            'X-Vodcast-Id': String(self.vodcastId),
+            'X-Chunk-Index': String(idx)
+        },
+        credentials: 'same-origin',
+        body: blob
+    }).then(function(r) {
+        self.bytesUploaded += blob.size;
+        return r.json();
+    }).catch(function(e) {
+        console.error('VodcastRecorder: chunk upload failed:', e);
+    });
+};
+
+/**
+ * _pickMimeType -- select the best supported WebM codec for recording
+ */
+VodcastRecorder.prototype._pickMimeType = StreamEngine.prototype._pickMimeType;
+
+/* ======================================================================
  * Resolution presets
  * ====================================================================== */
 
@@ -898,6 +1368,7 @@ window.Mc1VideoProducer = {
     VideoSource: VideoSource,
     VideoProducer: VideoProducer,
     StreamEngine: StreamEngine,
+    VodcastRecorder: VodcastRecorder,
     RESOLUTIONS: RESOLUTIONS,
     STREAM_BITRATE_PRESETS: STREAM_BITRATE_PRESETS
 };

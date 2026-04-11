@@ -88,16 +88,32 @@ class PodcastFeed {
             $xml .= '    <itunes:image href="' . self::xa($cover_url) . '"/>' . "\n";
         }
 
+        /* We check if this show has any video episodes to set serial type */
+        $has_video = false;
         foreach ($episodes as $ep) {
-            $audio_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
-            $mime = self::mimeFor($ep['format'] ?? 'mp3');
+            if (self::isVideoFormat($ep['format'] ?? '')) {
+                $has_video = true;
+                break;
+            }
+        }
+        if ($has_video) {
+            $xml .= '    <itunes:type>serial</itunes:type>' . "\n";
+        }
+
+        foreach ($episodes as $ep) {
+            $media_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
+            $fmt  = $ep['format'] ?? 'mp3';
+            $mime = self::mimeFor($fmt);
+            $is_video = self::isVideoFormat($fmt);
 
             $xml .= "    <item>\n";
             $xml .= '      <title>' . self::xe($ep['title']) . "</title>\n";
             $xml .= '      <description>' . self::xe($ep['description'] ?? '') . "</description>\n";
-            $xml .= '      <enclosure url="' . self::xa($audio_url) . '" '
+            $xml .= '      <enclosure url="' . self::xa($media_url) . '" '
                   . 'length="' . (int)$ep['file_size_bytes'] . '" '
                   . 'type="' . $mime . '"/>' . "\n";
+
+            $xml .= '      <itunes:episodeType>full</itunes:episodeType>' . "\n";
 
             $dur = (int)$ep['duration_sec'];
             $xml .= '      <itunes:duration>' . sprintf('%02d:%02d:%02d',
@@ -145,8 +161,16 @@ class PodcastFeed {
             'flac'        => 'audio/flac',
             'aac', 'm4a'  => 'audio/mp4',
             'wav'         => 'audio/wav',
+            'mp4'         => 'video/mp4',
+            'webm'        => 'video/webm',
+            'mkv'         => 'video/x-matroska',
             default       => 'audio/mpeg',
         };
+    }
+
+    private static function isVideoFormat(string $fmt): bool
+    {
+        return in_array($fmt, ['mp4', 'webm', 'mkv', 'avi', 'mov'], true);
     }
 }
 

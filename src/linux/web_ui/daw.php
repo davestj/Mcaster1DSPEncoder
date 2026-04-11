@@ -5,7 +5,7 @@
  * Cubasis/Audacity-style multi-track audio editor with WebGL waveform rendering,
  * Web Audio API playback, drag-drop clip management, and server-side ffmpeg mixdown.
  *
- * Phase:   DAW-3
+ * Phase:   DAW-4
  * Author:  Dave St. John <davestj@gmail.com>
  * Date:    2026-03-27
  *
@@ -188,6 +188,22 @@ require_once __DIR__ . '/app/inc/header.php';
 .track-fx-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:3px;background:rgba(255,255,255,.04);color:var(--text-dim);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
 .track-fx-btn:hover{background:rgba(255,255,255,.1);color:var(--text)}
 .track-fx-btn.has-fx{background:rgba(20,184,166,.15);color:var(--teal);border-color:rgba(20,184,166,.4)}
+.track-fx-btn.frozen-fx{opacity:.4;cursor:not-allowed;pointer-events:none}
+
+/* ── Track Denoise / Freeze Buttons ── */
+.track-denoise-btn.has-nr{background:rgba(168,85,247,.2);color:#a855f7;border-color:rgba(168,85,247,.4)}
+.track-freeze-btn.frozen{background:rgba(96,165,250,.25);color:#60a5fa;border-color:rgba(96,165,250,.5);animation:freeze-glow 2s ease-in-out infinite}
+@keyframes freeze-glow{0%,100%{box-shadow:0 0 4px rgba(96,165,250,.3)}50%{box-shadow:0 0 8px rgba(96,165,250,.6)}}
+
+/* ── Marker / Region List Panel ── */
+.markers-panel{max-height:200px;overflow-y:auto;margin-top:6px}
+.marker-row,.region-row{display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:11px;color:var(--text-dim);border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+.marker-row:hover,.region-row:hover{background:rgba(255,255,255,.04)}
+.marker-row .m-color,.region-row .r-color{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.marker-row .m-name,.region-row .r-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.marker-row .m-time,.region-row .r-time{font-family:monospace;font-size:10px;color:var(--muted)}
+.marker-row .m-del,.region-row .r-del{color:var(--red);cursor:pointer;opacity:.4;font-size:10px}
+.marker-row .m-del:hover,.region-row .r-del:hover{opacity:1}
 </style>
 
 <!-- Toolbar -->
@@ -221,6 +237,11 @@ require_once __DIR__ . '/app/inc/header.php';
     </select>
     <div class="sep"></div>
     <button class="btn btn-secondary btn-sm" id="btn-buses" title="Aux Buses"><i class="fa-solid fa-diagram-project"></i> Buses</button>
+    <div class="sep"></div>
+    <button class="btn btn-secondary btn-sm" id="btn-add-marker" title="Add Marker (M key)"><i class="fa-solid fa-flag"></i></button>
+    <button class="btn btn-secondary btn-sm" id="btn-prev-marker" title="Previous Marker"><i class="fa-solid fa-chevron-left"></i></button>
+    <button class="btn btn-secondary btn-sm" id="btn-next-marker" title="Next Marker"><i class="fa-solid fa-chevron-right"></i></button>
+    <button class="btn btn-secondary btn-sm" id="btn-marker-list" title="Markers / Regions"><i class="fa-solid fa-list"></i></button>
     <div class="sep"></div>
     <select class="form-select" id="snap-select" style="width:90px;padding:4px 6px;font-size:11px" title="Snap to grid">
       <option value="0">No Snap</option>
@@ -292,6 +313,9 @@ require_once __DIR__ . '/app/inc/header.php';
   <div class="daw-ctx-item" data-action="fadein"><i class="fa-solid fa-arrow-trend-up fa-fw"></i> Fade In (0.5s)</div>
   <div class="daw-ctx-item" data-action="fadeout"><i class="fa-solid fa-arrow-trend-down fa-fw"></i> Fade Out (0.5s)</div>
   <div class="daw-ctx-item" data-action="clearenv"><i class="fa-solid fa-eraser fa-fw"></i> Clear Gain Envelope</div>
+  <div class="daw-ctx-sep"></div>
+  <div class="daw-ctx-item" data-action="timestretch"><i class="fa-solid fa-clock fa-fw"></i> Time Stretch...</div>
+  <div class="daw-ctx-item" data-action="pitchshift"><i class="fa-solid fa-music fa-fw"></i> Pitch Shift...</div>
   <div class="daw-ctx-sep"></div>
   <div class="daw-ctx-item danger" data-action="delete"><i class="fa-solid fa-trash fa-fw"></i> Delete Clip</div>
 </div>
@@ -445,6 +469,104 @@ require_once __DIR__ . '/app/inc/header.php';
       <option value="delay">Delay Bus</option>
       <option value="compressor">Compressor Bus</option>
     </select>
+  </div>
+</div>
+
+<!-- Time Stretch Dialog -->
+<div class="daw-modal-bg" id="modal-timestretch">
+  <div class="daw-modal" style="width:360px">
+    <h3><i class="fa-solid fa-clock fa-fw" style="color:var(--teal)"></i> Time Stretch <span class="close-btn" id="close-timestretch"><i class="fa-solid fa-xmark"></i></span></h3>
+    <div class="form-group">
+      <label class="form-label">Stretch Factor</label>
+      <input type="range" class="form-range" id="ts-factor" min="50" max="200" value="100" style="width:100%">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+        <span>0.5x (slower)</span>
+        <span id="ts-factor-val" style="font-weight:700;color:var(--teal)">1.00x</span>
+        <span>2.0x (faster)</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-timestretch').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btn-do-timestretch"><i class="fa-solid fa-check"></i> Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pitch Shift Dialog -->
+<div class="daw-modal-bg" id="modal-pitchshift">
+  <div class="daw-modal" style="width:360px">
+    <h3><i class="fa-solid fa-music fa-fw" style="color:var(--teal)"></i> Pitch Shift <span class="close-btn" id="close-pitchshift"><i class="fa-solid fa-xmark"></i></span></h3>
+    <div class="form-group">
+      <label class="form-label">Semitones</label>
+      <input type="range" class="form-range" id="ps-semitones" min="-12" max="12" value="0" step="1" style="width:100%">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+        <span>-12</span>
+        <span id="ps-semitones-val" style="font-weight:700;color:var(--teal)">0 st</span>
+        <span>+12</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-pitchshift').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="btn-do-pitchshift"><i class="fa-solid fa-check"></i> Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Denoise Track Dialog -->
+<div class="daw-modal-bg" id="modal-denoise">
+  <div class="daw-modal" style="width:400px">
+    <h3><i class="fa-solid fa-wand-magic-sparkles fa-fw" style="color:var(--teal)"></i> Denoise Track <span class="close-btn" id="close-denoise"><i class="fa-solid fa-xmark"></i></span></h3>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px">
+      Step 1: Select a silent section on the timeline, then capture the noise profile.<br>
+      Step 2: Adjust strength and apply noise reduction to all clips on this track.
+    </p>
+    <div class="form-group">
+      <label class="form-label">Noise Print</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-secondary btn-sm" id="btn-capture-noise"><i class="fa-solid fa-microphone"></i> Capture from Selection</button>
+        <span id="noise-print-status" style="font-size:11px;color:var(--muted)">No noise print</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Reduction Strength</label>
+      <input type="range" class="form-range" id="nr-strength" min="0" max="200" value="100" style="width:100%">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted)">
+        <span>0 (off)</span>
+        <span id="nr-strength-val" style="font-weight:700;color:var(--teal)">1.0</span>
+        <span>2.0 (max)</span>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" id="btn-restore-audio"><i class="fa-solid fa-rotate-left"></i> Restore Original</button>
+      <button class="btn btn-primary btn-sm" id="btn-apply-denoise"><i class="fa-solid fa-check"></i> Apply Denoise</button>
+    </div>
+  </div>
+</div>
+
+<!-- Markers / Regions List Panel -->
+<div class="daw-modal-bg" id="modal-markers">
+  <div class="daw-modal" style="width:420px">
+    <h3><i class="fa-solid fa-flag fa-fw" style="color:var(--teal)"></i> Markers &amp; Regions <span class="close-btn" id="close-markers"><i class="fa-solid fa-xmark"></i></span></h3>
+
+    <div style="margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <strong style="font-size:12px;color:var(--text)">Markers</strong>
+        <button class="btn btn-secondary btn-xs" id="btn-add-marker-modal" title="Add marker at playhead"><i class="fa-solid fa-plus"></i></button>
+      </div>
+      <div class="markers-panel" id="marker-list-panel">
+        <div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">No markers</div>
+      </div>
+    </div>
+
+    <div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+        <strong style="font-size:12px;color:var(--text)">Regions</strong>
+        <button class="btn btn-secondary btn-xs" id="btn-add-region-modal" title="Add region (2s from playhead)"><i class="fa-solid fa-plus"></i></button>
+      </div>
+      <div class="markers-panel" id="region-list-panel">
+        <div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">No regions</div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -626,7 +748,17 @@ require_once __DIR__ . '/app/inc/header.php';
         document.querySelectorAll('#ctx-menu .daw-ctx-item').forEach(function(el){
             el.addEventListener('click', function(){
                 var act = el.dataset.action;
-                daw.handleContextAction(act);
+                if (act === 'timestretch') {
+                    document.getElementById('ts-factor').value = 100;
+                    document.getElementById('ts-factor-val').textContent = '1.00x';
+                    document.getElementById('modal-timestretch').classList.add('open');
+                } else if (act === 'pitchshift') {
+                    document.getElementById('ps-semitones').value = 0;
+                    document.getElementById('ps-semitones-val').textContent = '0 st';
+                    document.getElementById('modal-pitchshift').classList.add('open');
+                } else {
+                    daw.handleContextAction(act);
+                }
                 document.getElementById('ctx-menu').style.display = 'none';
             });
         });
@@ -650,8 +782,162 @@ require_once __DIR__ . '/app/inc/header.php';
             if (e.ctrlKey && e.code === 'KeyS') { e.preventDefault(); daw.saveProject(); }
             if (e.ctrlKey && e.code === 'KeyZ') { e.preventDefault(); daw.undo(); }
             if (e.ctrlKey && e.code === 'KeyY') { e.preventDefault(); daw.redo(); }
+            if (e.code === 'KeyM' && !e.ctrlKey && !e.altKey) { e.preventDefault(); daw.addMarker(daw.playPos); }
+        });
+
+        // ── Marker / Region toolbar buttons ──
+        document.getElementById('btn-add-marker').addEventListener('click', function(){
+            daw.addMarker(daw.playPos);
+        });
+        document.getElementById('btn-prev-marker').addEventListener('click', function(){
+            daw.jumpToPrevMarker();
+        });
+        document.getElementById('btn-next-marker').addEventListener('click', function(){
+            daw.jumpToNextMarker();
+        });
+        document.getElementById('btn-marker-list').addEventListener('click', function(){
+            document.getElementById('modal-markers').classList.add('open');
+            renderMarkerList();
+        });
+        document.getElementById('close-markers').addEventListener('click', function(){
+            document.getElementById('modal-markers').classList.remove('open');
+        });
+        document.getElementById('btn-add-marker-modal').addEventListener('click', function(){
+            daw.addMarker(daw.playPos);
+            renderMarkerList();
+        });
+        document.getElementById('btn-add-region-modal').addEventListener('click', function(){
+            daw.addRegion(daw.playPos, daw.playPos + 2, 'Region');
+            renderMarkerList();
+        });
+
+        // ── Time Stretch Dialog ──
+        document.getElementById('ts-factor').addEventListener('input', function(){
+            var v = (parseFloat(this.value) / 100).toFixed(2);
+            document.getElementById('ts-factor-val').textContent = v + 'x';
+        });
+        document.getElementById('close-timestretch').addEventListener('click', function(){
+            document.getElementById('modal-timestretch').classList.remove('open');
+        });
+        document.getElementById('btn-do-timestretch').addEventListener('click', function(){
+            var factor = parseFloat(document.getElementById('ts-factor').value) / 100;
+            if (daw.ctxClip) {
+                daw.stretchClip(daw.ctxClip.id, factor);
+            } else if (daw.selectedClip) {
+                daw.stretchClip(daw.selectedClip, factor);
+            }
+            document.getElementById('modal-timestretch').classList.remove('open');
+        });
+
+        // ── Pitch Shift Dialog ──
+        document.getElementById('ps-semitones').addEventListener('input', function(){
+            var v = parseInt(this.value);
+            document.getElementById('ps-semitones-val').textContent = (v >= 0 ? '+' : '') + v + ' st';
+        });
+        document.getElementById('close-pitchshift').addEventListener('click', function(){
+            document.getElementById('modal-pitchshift').classList.remove('open');
+        });
+        document.getElementById('btn-do-pitchshift').addEventListener('click', function(){
+            var semitones = parseInt(document.getElementById('ps-semitones').value);
+            if (daw.ctxClip) {
+                daw.pitchShiftClip(daw.ctxClip.id, semitones);
+            } else if (daw.selectedClip) {
+                daw.pitchShiftClip(daw.selectedClip, semitones);
+            }
+            document.getElementById('modal-pitchshift').classList.remove('open');
+        });
+
+        // ── Denoise Dialog ──
+        var denoiseTrackId = null;
+        window._openDenoiseDialog = function(trackId) {
+            denoiseTrackId = trackId;
+            var hasNP = !!daw.trackNoisePrints[trackId];
+            document.getElementById('noise-print-status').textContent = hasNP ? 'Noise print captured' : 'No noise print';
+            document.getElementById('nr-strength').value = 100;
+            document.getElementById('nr-strength-val').textContent = '1.0';
+            document.getElementById('modal-denoise').classList.add('open');
+        };
+        document.getElementById('close-denoise').addEventListener('click', function(){
+            document.getElementById('modal-denoise').classList.remove('open');
+        });
+        document.getElementById('nr-strength').addEventListener('input', function(){
+            document.getElementById('nr-strength-val').textContent = (parseFloat(this.value) / 100).toFixed(1);
+        });
+        document.getElementById('btn-capture-noise').addEventListener('click', function(){
+            if (!denoiseTrackId) return;
+            // Use playPos as center, capture 1 second
+            var start = Math.max(0, daw.playPos - 0.5);
+            var end = daw.playPos + 0.5;
+            daw.captureTrackNoisePrint(denoiseTrackId, start, end);
+            document.getElementById('noise-print-status').textContent =
+                daw.trackNoisePrints[denoiseTrackId] ? 'Noise print captured' : 'Failed';
+        });
+        document.getElementById('btn-apply-denoise').addEventListener('click', function(){
+            if (!denoiseTrackId) return;
+            var strength = parseFloat(document.getElementById('nr-strength').value) / 100;
+            daw.applyTrackNoiseReduction(denoiseTrackId, strength);
+            document.getElementById('modal-denoise').classList.remove('open');
+        });
+        document.getElementById('btn-restore-audio').addEventListener('click', function(){
+            if (!denoiseTrackId) return;
+            daw.restoreTrackOriginalAudio(denoiseTrackId);
+            document.getElementById('noise-print-status').textContent = 'No noise print';
         });
     });
+
+    function renderMarkerList() {
+        if (!daw) return;
+        // Markers
+        var mp = document.getElementById('marker-list-panel');
+        if (daw.markers.length === 0) {
+            mp.innerHTML = '<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">No markers</div>';
+        } else {
+            mp.innerHTML = '';
+            daw.markers.forEach(function(m) {
+                var row = document.createElement('div');
+                row.className = 'marker-row';
+                row.innerHTML = '<div class="m-color" style="background:' + esc(m.color) + '"></div>' +
+                    '<span class="m-name">' + esc(m.name) + '</span>' +
+                    '<span class="m-time">' + fmtTime(m.time) + '</span>' +
+                    '<span class="m-del" data-id="' + esc(m.id) + '"><i class="fa-solid fa-trash"></i></span>';
+                row.addEventListener('click', function(e) {
+                    if (e.target.closest('.m-del')) return;
+                    daw.seek(m.time);
+                });
+                row.querySelector('.m-del').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    daw.removeMarker(m.id);
+                    renderMarkerList();
+                });
+                mp.appendChild(row);
+            });
+        }
+        // Regions
+        var rp = document.getElementById('region-list-panel');
+        if (daw.regions.length === 0) {
+            rp.innerHTML = '<div style="text-align:center;padding:10px;color:var(--muted);font-size:11px">No regions</div>';
+        } else {
+            rp.innerHTML = '';
+            daw.regions.forEach(function(r) {
+                var row = document.createElement('div');
+                row.className = 'region-row';
+                row.innerHTML = '<div class="r-color" style="background:' + esc(r.color) + '"></div>' +
+                    '<span class="r-name">' + esc(r.name) + '</span>' +
+                    '<span class="r-time">' + fmtTime(r.startTime) + ' - ' + fmtTime(r.endTime) + '</span>' +
+                    '<span class="r-del" data-id="' + esc(r.id) + '"><i class="fa-solid fa-trash"></i></span>';
+                row.addEventListener('click', function(e) {
+                    if (e.target.closest('.r-del')) return;
+                    daw.seek(r.startTime);
+                });
+                row.querySelector('.r-del').addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    daw.removeRegion(r.id);
+                    renderMarkerList();
+                });
+                rp.appendChild(row);
+            });
+        }
+    }
 
     function doLibSearch() {
         var q = document.getElementById('lib-search').value.trim();

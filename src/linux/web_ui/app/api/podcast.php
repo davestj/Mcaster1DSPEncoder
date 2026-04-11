@@ -449,17 +449,32 @@ class PodcastApi {
             $xml .= '    <itunes:image href="' . self::xmlAttrEscape($cover_url) . '"/>' . "\n";
         }
 
+        // We check if this show has any video episodes to set serial type
+        $has_video = false;
         foreach ($episodes as $ep) {
-            // We construct the audio URL for the enclosure
-            $audio_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
-            $mime_type = self::mimeForFormat($ep['format'] ?? 'mp3');
+            if (self::isVideoFormat($ep['format'] ?? '')) {
+                $has_video = true;
+                break;
+            }
+        }
+        if ($has_video) {
+            $xml .= '    <itunes:type>serial</itunes:type>' . "\n";
+        }
+
+        foreach ($episodes as $ep) {
+            // We construct the media URL for the enclosure
+            $media_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
+            $fmt       = $ep['format'] ?? 'mp3';
+            $mime_type = self::mimeForFormat($fmt);
 
             $xml .= "    <item>\n";
             $xml .= '      <title>' . self::xmlEscape($ep['title']) . "</title>\n";
             $xml .= '      <description>' . self::xmlEscape($ep['description'] ?? '') . "</description>\n";
-            $xml .= '      <enclosure url="' . self::xmlAttrEscape($audio_url) . '" '
+            $xml .= '      <enclosure url="' . self::xmlAttrEscape($media_url) . '" '
                   . 'length="' . (int)$ep['file_size_bytes'] . '" '
                   . 'type="' . $mime_type . '"/>' . "\n";
+
+            $xml .= '      <itunes:episodeType>full</itunes:episodeType>' . "\n";
 
             // We format duration as HH:MM:SS
             $dur = (int)$ep['duration_sec'];
@@ -501,8 +516,9 @@ class PodcastApi {
             return ['error' => 'Archive directory not found: ' . basename($dir)];
         }
 
-        // We find all audio files in the directory
-        $extensions = ['mp3', 'wav', 'ogg', 'opus', 'flac', 'aac', 'm4a'];
+        // We find all audio and video files in the directory
+        $extensions = ['mp3', 'wav', 'ogg', 'opus', 'flac', 'aac', 'm4a',
+                       'mp4', 'webm', 'mkv'];
         $files = [];
         $limit = 500;
 
@@ -1859,8 +1875,16 @@ class PodcastApi {
             'flac'          => 'audio/flac',
             'aac', 'm4a'    => 'audio/mp4',
             'wav'           => 'audio/wav',
+            'mp4'           => 'video/mp4',
+            'webm'          => 'video/webm',
+            'mkv'           => 'video/x-matroska',
             default         => 'audio/mpeg',
         };
+    }
+
+    private static function isVideoFormat(string $fmt): bool
+    {
+        return in_array($fmt, ['mp4', 'webm', 'mkv', 'avi', 'mov'], true);
     }
 }
 

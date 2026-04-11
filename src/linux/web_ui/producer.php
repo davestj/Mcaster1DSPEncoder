@@ -43,12 +43,17 @@ require_once __DIR__ . '/app/inc/header.php';
 ?>
 
 <style>
-/* Producer layout */
+/* Producer layout -- 6 sources in 2 rows of 3 + program output on right */
 .producer-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr 1.5fr;
+    grid-template-rows: auto auto;
     gap: 12px;
     margin-bottom: 16px;
+}
+.program-slot {
+    grid-row: 1 / 3;
+    grid-column: 4;
 }
 .source-slot {
     background: var(--card);
@@ -67,6 +72,36 @@ require_once __DIR__ . '/app/inc/header.php';
 .source-slot.pvw-slot {
     border-color: rgba(234,179,8,.6);
     box-shadow: 0 0 0 1px rgba(234,179,8,.15), 0 4px 16px rgba(234,179,8,.06);
+}
+/* Tally lights */
+.tally-pgm {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: rgba(239,68,68,.90);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: .08em;
+    z-index: 3;
+    animation: tally-pulse 1.5s ease-in-out infinite;
+}
+.tally-pvw {
+    position: absolute;
+    top: 4px; right: 4px;
+    background: rgba(34,197,94,.85);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: .08em;
+    z-index: 3;
+}
+@keyframes tally-pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: .6; }
 }
 .source-slot .slot-label {
     display: flex;
@@ -502,6 +537,79 @@ require_once __DIR__ . '/app/inc/header.php';
 .scene-name { flex: 1; color: var(--text); font-weight: 500; }
 .scene-date { font-size: 10px; color: var(--muted); }
 
+/* Scene preset buttons bar */
+.scene-presets-bar {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 10px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.scene-preset-btn {
+    width: 44px;
+    height: 36px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,.03);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.scene-preset-btn:hover { background: rgba(255,255,255,.08); color: var(--text); }
+.scene-preset-btn.active { background: rgba(20,184,166,.15); border-color: var(--teal); color: var(--teal); }
+.scene-preset-btn.saved { border-color: rgba(234,179,8,.4); color: var(--yellow); }
+.scene-preset-btn .preset-label {
+    font-size: 8px;
+    display: block;
+    line-height: 1;
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40px;
+}
+
+/* Overlays panel */
+.overlays-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.overlays-panel .sec-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--teal);
+    margin-bottom: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.overlay-section {
+    border-bottom: 1px solid rgba(51,65,85,.3);
+    padding: 10px 0;
+}
+.overlay-section:last-child { border-bottom: none; }
+.overlay-section .sub-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-bottom: 8px;
+}
+
 /* Color picker small */
 input[type="color"].sm-color {
     width: 28px;
@@ -512,6 +620,80 @@ input[type="color"].sm-color {
     cursor: pointer;
     background: transparent;
 }
+
+/* Vodcast recording panel */
+.vodcast-panel {
+    background: var(--card);
+    border: 1px solid rgba(168,85,247,.3);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.vodcast-panel .sec-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #a855f7;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.vodcast-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.vodcast-row label {
+    font-size: 11px;
+    color: var(--text-dim);
+    width: 80px;
+    flex-shrink: 0;
+}
+.vodcast-row .form-input,
+.vodcast-row .form-select {
+    font-size: 12px;
+    padding: 5px 8px;
+}
+.vodcast-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px 12px;
+    font-size: 12px;
+    margin-top: 10px;
+    padding: 10px;
+    background: rgba(30,41,59,.5);
+    border-radius: var(--radius-sm);
+}
+.vodcast-stats span.vl { color: var(--muted); }
+.vodcast-stats span.vv { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.vodcast-rec-btn {
+    padding: 6px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid rgba(168,85,247,.3);
+    background: rgba(168,85,247,.12);
+    color: #a855f7;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s;
+}
+.vodcast-rec-btn:hover { background: rgba(168,85,247,.22); }
+.vodcast-rec-btn.active {
+    background: #a855f7;
+    color: #fff;
+    border-color: #a855f7;
+    animation: rec-pulse 1.2s ease-in-out infinite;
+}
+.vodcast-rec-btn:disabled { opacity: .4; cursor: default; }
+
+/* Thumbnail modal */
+.thumb-preview { max-width: 320px; border-radius: var(--radius-sm); margin-top: 8px; }
 
 /* File picker modal */
 .file-modal-overlay {
@@ -553,7 +735,12 @@ input[type="color"].sm-color {
 .file-list-item:hover { background: rgba(255,255,255,.05); color: var(--text); }
 .file-list-item i { color: var(--teal); width: 16px; text-align: center; }
 
-@media(max-width:1100px) {
+@media(max-width:1200px) {
+    .producer-grid { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto; }
+    .program-slot { grid-column: 1 / -1; grid-row: auto; }
+    .switcher-panels { grid-template-columns: 1fr 1fr; }
+}
+@media(max-width:900px) {
     .producer-grid { grid-template-columns: 1fr 1fr; }
     .program-slot { grid-column: 1 / -1; }
     .switcher-panels { grid-template-columns: 1fr; }
@@ -589,6 +776,8 @@ input[type="color"].sm-color {
         <div class="preview-wrap">
             <canvas id="preview-0"></canvas>
             <div class="preview-overlay" id="overlay-0"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-0" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-0" style="display:none">NEXT</div>
             <div class="bus-btns">
                 <button class="bus-btn pgm-btn" onclick="setPGM(0)">PGM</button>
                 <button class="bus-btn pvw-btn" onclick="setPVW(0)">PVW</button>
@@ -609,6 +798,9 @@ input[type="color"].sm-color {
                     <option value="480p">480p (SD)</option>
                     <option value="720p" selected>720p (HD)</option>
                     <option value="1080p">1080p (Full HD)</option>
+                </select>
+                <select class="form-select" id="audio-device-0" style="margin-top:4px;font-size:11px">
+                    <option value="">-- Audio Device --</option>
                 </select>
             </div>
             <div id="ctrl-file-0" style="display:none">
@@ -635,6 +827,8 @@ input[type="color"].sm-color {
         <div class="preview-wrap">
             <canvas id="preview-1"></canvas>
             <div class="preview-overlay" id="overlay-1"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-1" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-1" style="display:none">NEXT</div>
             <div class="bus-btns">
                 <button class="bus-btn pgm-btn" onclick="setPGM(1)">PGM</button>
                 <button class="bus-btn pvw-btn" onclick="setPVW(1)">PVW</button>
@@ -655,6 +849,9 @@ input[type="color"].sm-color {
                     <option value="480p">480p (SD)</option>
                     <option value="720p" selected>720p (HD)</option>
                     <option value="1080p">1080p (Full HD)</option>
+                </select>
+                <select class="form-select" id="audio-device-1" style="margin-top:4px;font-size:11px">
+                    <option value="">-- Audio Device --</option>
                 </select>
             </div>
             <div id="ctrl-file-1">
@@ -681,6 +878,8 @@ input[type="color"].sm-color {
         <div class="preview-wrap">
             <canvas id="preview-2"></canvas>
             <div class="preview-overlay" id="overlay-2"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-2" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-2" style="display:none">NEXT</div>
             <div class="bus-btns">
                 <button class="bus-btn pgm-btn" onclick="setPGM(2)">PGM</button>
                 <button class="bus-btn pvw-btn" onclick="setPVW(2)">PVW</button>
@@ -702,6 +901,9 @@ input[type="color"].sm-color {
                     <option value="720p" selected>720p (HD)</option>
                     <option value="1080p">1080p (Full HD)</option>
                 </select>
+                <select class="form-select" id="audio-device-2" style="margin-top:4px;font-size:11px">
+                    <option value="">-- Audio Device --</option>
+                </select>
             </div>
             <div id="ctrl-file-2" style="display:none">
                 <button class="btn btn-secondary btn-xs" onclick="openFilePicker(2)"><i class="fa-solid fa-folder-open"></i> Browse</button>
@@ -709,6 +911,156 @@ input[type="color"].sm-color {
             </div>
             <div id="ctrl-library-2">
                 <select class="form-select" id="category-2" onchange="onCategoryChange(2)">
+                    <option value="">-- Category --</option>
+                    <?php foreach ($categories as $cat): ?>
+                    <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source 4 (Camera 4) -->
+    <div class="source-slot" id="source-slot-3">
+        <div class="slot-label">
+            <span>Source 4</span>
+            <span class="source-badge off-badge" id="badge-3">OFF</span>
+        </div>
+        <div class="preview-wrap">
+            <canvas id="preview-3"></canvas>
+            <div class="preview-overlay" id="overlay-3"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-3" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-3" style="display:none">NEXT</div>
+            <div class="bus-btns">
+                <button class="bus-btn pgm-btn" onclick="setPGM(3)">PGM</button>
+                <button class="bus-btn pvw-btn" onclick="setPVW(3)">PVW</button>
+            </div>
+        </div>
+        <div class="source-controls">
+            <select class="form-select" id="type-3" onchange="onTypeChange(3)">
+                <option value="none" selected>-- Select Type --</option>
+                <option value="webcam">Webcam</option>
+                <option value="file">Video File</option>
+                <option value="library">Media Library</option>
+            </select>
+            <div id="ctrl-webcam-3" style="display:none">
+                <select class="form-select" id="camera-3" onchange="onCameraChange(3)" style="margin-bottom:4px">
+                    <option value="">Detecting cameras...</option>
+                </select>
+                <select class="form-select" id="res-3" onchange="onResChange(3)">
+                    <option value="480p">480p (SD)</option>
+                    <option value="720p" selected>720p (HD)</option>
+                    <option value="1080p">1080p (Full HD)</option>
+                </select>
+            </div>
+            <div id="ctrl-file-3" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="openFilePicker(3)"><i class="fa-solid fa-folder-open"></i> Browse</button>
+                <span id="file-name-3" style="font-size:11px;color:var(--text-dim);margin-left:6px"></span>
+            </div>
+            <div id="ctrl-library-3" style="display:none">
+                <select class="form-select" id="category-3" onchange="onCategoryChange(3)">
+                    <option value="">-- Category --</option>
+                    <?php foreach ($categories as $cat): ?>
+                    <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source 5 (Video File) -->
+    <div class="source-slot" id="source-slot-4">
+        <div class="slot-label">
+            <span>Source 5</span>
+            <span class="source-badge off-badge" id="badge-4">OFF</span>
+        </div>
+        <div class="preview-wrap">
+            <canvas id="preview-4"></canvas>
+            <div class="preview-overlay" id="overlay-4"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-4" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-4" style="display:none">NEXT</div>
+            <div class="bus-btns">
+                <button class="bus-btn pgm-btn" onclick="setPGM(4)">PGM</button>
+                <button class="bus-btn pvw-btn" onclick="setPVW(4)">PVW</button>
+            </div>
+        </div>
+        <div class="source-controls">
+            <select class="form-select" id="type-4" onchange="onTypeChange(4)">
+                <option value="none" selected>-- Select Type --</option>
+                <option value="webcam">Webcam</option>
+                <option value="file">Video File</option>
+                <option value="library">Media Library</option>
+            </select>
+            <div id="ctrl-webcam-4" style="display:none">
+                <select class="form-select" id="camera-4" onchange="onCameraChange(4)" style="margin-bottom:4px">
+                    <option value="">Detecting cameras...</option>
+                </select>
+                <select class="form-select" id="res-4" onchange="onResChange(4)">
+                    <option value="480p">480p (SD)</option>
+                    <option value="720p" selected>720p (HD)</option>
+                    <option value="1080p">1080p (Full HD)</option>
+                </select>
+                <select class="form-select" id="audio-device-4" style="margin-top:4px;font-size:11px">
+                    <option value="">-- Audio Device --</option>
+                </select>
+            </div>
+            <div id="ctrl-file-4" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="openFilePicker(4)"><i class="fa-solid fa-folder-open"></i> Browse</button>
+                <span id="file-name-4" style="font-size:11px;color:var(--text-dim);margin-left:6px"></span>
+            </div>
+            <div id="ctrl-library-4" style="display:none">
+                <select class="form-select" id="category-4" onchange="onCategoryChange(4)">
+                    <option value="">-- Category --</option>
+                    <?php foreach ($categories as $cat): ?>
+                    <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source 6 (Media Library Auto-Play) -->
+    <div class="source-slot" id="source-slot-5">
+        <div class="slot-label">
+            <span>Source 6</span>
+            <span class="source-badge off-badge" id="badge-5">OFF</span>
+        </div>
+        <div class="preview-wrap">
+            <canvas id="preview-5"></canvas>
+            <div class="preview-overlay" id="overlay-5"><i class="fa-solid fa-video-slash"></i>&nbsp; No source</div>
+            <div class="tally-pgm" id="tally-pgm-5" style="display:none">ON AIR</div>
+            <div class="tally-pvw" id="tally-pvw-5" style="display:none">NEXT</div>
+            <div class="bus-btns">
+                <button class="bus-btn pgm-btn" onclick="setPGM(5)">PGM</button>
+                <button class="bus-btn pvw-btn" onclick="setPVW(5)">PVW</button>
+            </div>
+        </div>
+        <div class="source-controls">
+            <select class="form-select" id="type-5" onchange="onTypeChange(5)">
+                <option value="none" selected>-- Select Type --</option>
+                <option value="webcam">Webcam</option>
+                <option value="file">Video File</option>
+                <option value="library">Media Library</option>
+            </select>
+            <div id="ctrl-webcam-5" style="display:none">
+                <select class="form-select" id="camera-5" onchange="onCameraChange(5)" style="margin-bottom:4px">
+                    <option value="">Detecting cameras...</option>
+                </select>
+                <select class="form-select" id="res-5" onchange="onResChange(5)">
+                    <option value="480p">480p (SD)</option>
+                    <option value="720p" selected>720p (HD)</option>
+                    <option value="1080p">1080p (Full HD)</option>
+                </select>
+                <select class="form-select" id="audio-device-5" style="margin-top:4px;font-size:11px">
+                    <option value="">-- Audio Device --</option>
+                </select>
+            </div>
+            <div id="ctrl-file-5" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="openFilePicker(5)"><i class="fa-solid fa-folder-open"></i> Browse</button>
+                <span id="file-name-5" style="font-size:11px;color:var(--text-dim);margin-left:6px"></span>
+            </div>
+            <div id="ctrl-library-5" style="display:none">
+                <select class="form-select" id="category-5" onchange="onCategoryChange(5)">
                     <option value="">-- Category --</option>
                     <?php foreach ($categories as $cat): ?>
                     <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
@@ -754,6 +1106,11 @@ input[type="color"].sm-color {
     <div class="ctrl-divider"></div>
     <button class="cut-btn" onclick="doCut()"><i class="fa-solid fa-scissors"></i> CUT</button>
     <button class="auto-btn" id="auto-trans-btn" onclick="doAutoTransition()"><i class="fa-solid fa-play"></i> AUTO</button>
+    <div class="ctrl-divider"></div>
+    <label style="font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" id="afv-toggle" onchange="toggleAudioFollowsVideo()">
+        <i class="fa-solid fa-microphone" style="font-size:11px"></i> Audio Follows Video
+    </label>
 </div>
 
 <!-- Control Bar -->
@@ -768,6 +1125,7 @@ input[type="color"].sm-color {
         <button class="trans-btn" id="trans-wipe_circle" onclick="setTransition('wipe_circle')">Circle</button>
         <button class="trans-btn" id="trans-zoom" onclick="setTransition('zoom')">Zoom</button>
         <button class="trans-btn" id="trans-slide" onclick="setTransition('slide')">Slide</button>
+        <button class="trans-btn" id="trans-stinger" onclick="setTransition('stinger')">Stinger</button>
     </div>
     <div class="ctrl-divider"></div>
     <div class="ctrl-group">
@@ -780,6 +1138,9 @@ input[type="color"].sm-color {
     <div class="ctrl-group">
         <button class="rec-btn rec-off" id="rec-btn" onclick="toggleRecord()">
             <i class="fa-solid fa-circle"></i> Record
+        </button>
+        <button class="vodcast-rec-btn" id="vodcast-btn" onclick="toggleVodcastPanel()">
+            <i class="fa-solid fa-video"></i> Vodcast <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>
         </button>
         <div style="position:relative;display:inline-block">
             <button class="stream-btn" id="stream-btn" onclick="toggleStreamPanel()">
@@ -886,6 +1247,103 @@ input[type="color"].sm-color {
     </div>
 </div>
 
+<!-- Vodcast Recording Panel (dropdown) -->
+<div id="vodcast-panel" style="display:none;margin-top:12px">
+    <div class="vodcast-panel">
+        <div class="sec-title"><i class="fa-solid fa-video"></i> Record Vodcast Episode</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+                <div class="vodcast-row">
+                    <label>Show</label>
+                    <select class="form-select" id="vodcast-show" style="flex:1">
+                        <option value="">-- Select Podcast Show --</option>
+                    </select>
+                </div>
+                <div class="vodcast-row">
+                    <label>Title</label>
+                    <input type="text" class="form-input" id="vodcast-title" style="flex:1" placeholder="Episode title">
+                </div>
+                <div class="vodcast-row">
+                    <label>Format</label>
+                    <select class="form-select" id="vodcast-format" style="flex:1">
+                        <option value="webm">WebM (VP9+Opus, native)</option>
+                        <option value="mp4">MP4 (H264+AAC, transcoded)</option>
+                    </select>
+                </div>
+                <div class="vodcast-row">
+                    <label>Audio Src</label>
+                    <select class="form-select" id="vodcast-audio-slot" style="flex:1">
+                        <option value="0">No Audio</option>
+                        <option value="1">Encoder Slot 1</option>
+                        <option value="2">Encoder Slot 2</option>
+                        <option value="3">Encoder Slot 3</option>
+                    </select>
+                </div>
+                <div style="margin-top:10px;display:flex;gap:8px">
+                    <button class="vodcast-rec-btn" id="vodcast-start-btn" onclick="startVodcast()">
+                        <i class="fa-solid fa-circle"></i> Start Recording
+                    </button>
+                    <button class="vodcast-rec-btn active" id="vodcast-stop-btn" onclick="stopVodcast()" style="display:none">
+                        <i class="fa-solid fa-stop"></i> Stop &amp; Create Episode
+                    </button>
+                </div>
+            </div>
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#a855f7;margin-bottom:8px">
+                    Recording Status
+                </div>
+                <div class="vodcast-stats">
+                    <div><span class="vl">Status:</span></div>
+                    <div><span class="vv" id="vodcast-status">Idle</span></div>
+                    <div></div>
+                    <div><span class="vl">Duration:</span></div>
+                    <div><span class="vv" id="vodcast-duration">00:00:00</span></div>
+                    <div></div>
+                    <div><span class="vl">Uploaded:</span></div>
+                    <div><span class="vv" id="vodcast-bytes">0 MB</span></div>
+                    <div></div>
+                    <div><span class="vl">Chunks:</span></div>
+                    <div><span class="vv" id="vodcast-chunks">0</span></div>
+                    <div></div>
+                    <div><span class="vl">Format:</span></div>
+                    <div><span class="vv" id="vodcast-fmt">--</span></div>
+                    <div></div>
+                </div>
+                <div id="vodcast-result" style="display:none;margin-top:10px;padding:10px;background:rgba(16,185,129,.08);border-radius:var(--radius-sm);border:1px solid rgba(16,185,129,.2)">
+                    <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:6px"><i class="fa-solid fa-check"></i> Episode Created</div>
+                    <div style="font-size:11px;color:var(--text-dim)" id="vodcast-result-info"></div>
+                    <div style="margin-top:8px;display:flex;gap:6px">
+                        <button class="btn btn-secondary btn-xs" id="vodcast-thumb-btn" onclick="showThumbnailPicker()">
+                            <i class="fa-solid fa-image"></i> Set Thumbnail
+                        </button>
+                        <a class="btn btn-secondary btn-xs" id="vodcast-edit-link" href="#" target="_blank">
+                            <i class="fa-solid fa-pen"></i> Edit Episode
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Vodcast Thumbnail Modal -->
+<div id="vodcast-thumb-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:440px;max-width:95vw">
+        <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+            <i class="fa-solid fa-image" style="color:#a855f7"></i> Extract Thumbnail
+        </div>
+        <div style="margin-bottom:12px">
+            <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:4px">Timestamp (HH:MM:SS or seconds)</label>
+            <input type="text" class="form-input" id="vodcast-thumb-time" value="00:00:30" placeholder="00:00:30" style="width:160px">
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="extractThumbnail()"><i class="fa-solid fa-camera"></i> Extract Frame</button>
+        <div id="vodcast-thumb-preview" style="margin-top:10px"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+            <button class="btn btn-secondary" onclick="closeThumbnailModal()">Close</button>
+        </div>
+    </div>
+</div>
+
 <!-- Switcher Panels: Chroma Key, PIP, Color Correction -->
 <div class="switcher-panels">
     <!-- Chroma Key Panel -->
@@ -901,6 +1359,9 @@ input[type="color"].sm-color {
                 <option value="0">Source 1</option>
                 <option value="1">Source 2</option>
                 <option value="2">Source 3</option>
+                <option value="3">Source 4</option>
+                <option value="4">Source 5</option>
+                <option value="5">Source 6</option>
             </select>
         </div>
         <div class="sw-row">
@@ -933,6 +1394,9 @@ input[type="color"].sm-color {
                 <option value="0">Source 1</option>
                 <option value="1">Source 2</option>
                 <option value="2">Source 3</option>
+                <option value="3">Source 4</option>
+                <option value="4">Source 5</option>
+                <option value="5">Source 6</option>
             </select>
         </div>
         <div class="sw-row">
@@ -963,6 +1427,9 @@ input[type="color"].sm-color {
                 <option value="0">Source 1</option>
                 <option value="1">Source 2</option>
                 <option value="2">Source 3</option>
+                <option value="3">Source 4</option>
+                <option value="4">Source 5</option>
+                <option value="5">Source 6</option>
             </select>
         </div>
         <div class="sw-row">
@@ -1018,6 +1485,148 @@ input[type="color"].sm-color {
     </div>
 </div>
 
+<!-- Overlays Panel (collapsible) -->
+<div class="overlays-panel" id="overlays-panel">
+    <div class="sec-title" onclick="toggleOverlaysPanel()" style="cursor:pointer">
+        <i class="fa-solid fa-layer-group"></i> Overlays &amp; Graphics
+        <i class="fa-solid fa-chevron-down" id="overlays-chevron" style="margin-left:auto;font-size:10px;transition:transform .2s"></i>
+    </div>
+    <div id="overlays-body">
+        <!-- Logo / Watermark -->
+        <div class="overlay-section">
+            <div class="sub-title"><i class="fa-solid fa-image" style="margin-right:4px"></i> Logo / Watermark</div>
+            <div class="sw-row">
+                <label style="width:72px">Image</label>
+                <input type="file" id="logo-file" accept="image/png,image/gif,image/webp,image/svg+xml" style="font-size:11px;flex:1"
+                       onchange="onLogoFileChange()">
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Or URL</label>
+                <input type="text" class="form-input" id="logo-url" placeholder="https://..." style="flex:1;font-size:11px;padding:3px 6px">
+                <button class="btn btn-secondary btn-xs" onclick="loadLogoFromURL()">Load</button>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Position</label>
+                <select class="form-select" id="logo-position" style="flex:1;font-size:11px;padding:3px 6px" onchange="updateLogoOverlay()">
+                    <option value="tl">Top Left</option>
+                    <option value="tr" selected>Top Right</option>
+                    <option value="bl">Bottom Left</option>
+                    <option value="br">Bottom Right</option>
+                    <option value="center">Center</option>
+                </select>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Opacity</label>
+                <input type="range" id="logo-opacity" min="0" max="100" value="100" oninput="updateLogoOverlay()">
+                <span class="val-label" id="logo-opacity-val">1.00</span>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Scale</label>
+                <input type="range" id="logo-scale" min="10" max="200" value="100" oninput="updateLogoOverlay()">
+                <span class="val-label" id="logo-scale-val">1.00</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="auto-btn" onclick="showLogoOverlay()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-eye"></i> Show</button>
+                <button class="btn btn-secondary btn-xs" onclick="hideLogoOverlay()"><i class="fa-solid fa-eye-slash"></i> Hide</button>
+            </div>
+        </div>
+
+        <!-- Text Crawl (News Ticker) -->
+        <div class="overlay-section">
+            <div class="sub-title"><i class="fa-solid fa-text-width" style="margin-right:4px"></i> Text Crawl (Ticker)</div>
+            <div class="sw-row">
+                <label style="width:72px">Text</label>
+                <input type="text" class="form-input" id="crawl-text" placeholder="Breaking news ticker text..." style="flex:1;font-size:11px;padding:3px 6px">
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Speed</label>
+                <input type="range" id="crawl-speed" min="1" max="10" value="3" oninput="updateCrawlLabel()">
+                <span class="val-label" id="crawl-speed-val">3</span>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Font Size</label>
+                <input type="number" class="form-input" id="crawl-fontsize" value="28" min="12" max="48" step="2" style="width:60px;font-size:11px;padding:3px 6px">
+                <label style="width:auto;margin-left:8px">BG</label>
+                <input type="color" class="sm-color" id="crawl-bgcolor" value="#0f172a">
+                <label style="width:auto;margin-left:8px">Text</label>
+                <input type="color" class="sm-color" id="crawl-textcolor" value="#ffffff">
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="auto-btn" onclick="showTextCrawl()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-play"></i> Start</button>
+                <button class="btn btn-secondary btn-xs" onclick="hideTextCrawl()"><i class="fa-solid fa-stop"></i> Stop</button>
+            </div>
+        </div>
+
+        <!-- Timer / Clock -->
+        <div class="overlay-section">
+            <div class="sub-title"><i class="fa-solid fa-clock" style="margin-right:4px"></i> Timer / Clock</div>
+            <div class="sw-row">
+                <label style="width:72px">Mode</label>
+                <select class="form-select" id="timer-mode" style="flex:1;font-size:11px;padding:3px 6px" onchange="onTimerModeChange()">
+                    <option value="clock">Real-Time Clock</option>
+                    <option value="timer">Elapsed Timer</option>
+                    <option value="countdown">Countdown</option>
+                </select>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Format</label>
+                <select class="form-select" id="timer-format" style="flex:1;font-size:11px;padding:3px 6px">
+                    <option value="HH:MM:SS">HH:MM:SS</option>
+                    <option value="MM:SS">MM:SS</option>
+                </select>
+            </div>
+            <div class="sw-row" id="timer-countdown-row" style="display:none">
+                <label style="width:72px">Start At</label>
+                <input type="number" class="form-input" id="timer-countdown-sec" value="300" min="1" max="86400" style="width:80px;font-size:11px;padding:3px 6px">
+                <span style="font-size:10px;color:var(--muted);margin-left:4px">seconds</span>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Position</label>
+                <select class="form-select" id="timer-position" style="flex:1;font-size:11px;padding:3px 6px">
+                    <option value="tl">Top Left</option>
+                    <option value="tr" selected>Top Right</option>
+                    <option value="bl">Bottom Left</option>
+                    <option value="br">Bottom Right</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:6px">
+                <button class="auto-btn" onclick="showTimerOverlay()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-play"></i> Show</button>
+                <button class="btn btn-secondary btn-xs" onclick="hideTimerOverlay()"><i class="fa-solid fa-stop"></i> Hide</button>
+            </div>
+        </div>
+
+        <!-- Stinger Transition -->
+        <div class="overlay-section">
+            <div class="sub-title"><i class="fa-solid fa-wand-magic-sparkles" style="margin-right:4px"></i> Stinger Transition</div>
+            <div class="sw-row">
+                <label style="width:72px">Clip</label>
+                <input type="file" id="stinger-file" accept="video/mp4,video/webm,video/quicktime" style="font-size:11px;flex:1"
+                       onchange="onStingerFileChange()">
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Status</label>
+                <span id="stinger-status" style="font-size:11px;color:var(--muted)">No stinger loaded</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene Presets Bar (1-8) -->
+<div class="scene-presets-bar">
+    <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-right:8px;white-space:nowrap">
+        <i class="fa-solid fa-bookmark" style="margin-right:4px"></i>Scenes
+    </span>
+    <?php for ($i = 1; $i <= 8; $i++): ?>
+    <button class="scene-preset-btn" id="scene-btn-<?= $i ?>"
+            onclick="recallScenePreset(<?= $i - 1 ?>)"
+            oncontextmenu="saveScenePreset(<?= $i - 1 ?>, event); return false;"
+            ondblclick="renameScenePreset(<?= $i - 1 ?>)"
+            title="Click=recall, Right-click=save, Dbl-click=rename">
+        <span><?= $i ?></span>
+    </button>
+    <?php endfor; ?>
+</div>
+
 <!-- File Picker Modal -->
 <div class="file-modal-overlay" id="file-modal">
     <div class="file-modal">
@@ -1042,16 +1651,16 @@ var filePickerSlot = -1;
 var videoFiles = [];
 var recStartTime = 0;
 var recTimerInterval = null;
-var TRANS_TYPES = ['cut','fade','dissolve','wipe_left','wipe_right','wipe_circle','zoom','slide'];
+var NUM_SOURCES = 6;
+var TRANS_TYPES = ['cut','fade','dissolve','wipe_left','wipe_right','wipe_circle','zoom','slide','stinger'];
 
 /* -- Initialization -------------------------------------------------- */
 
 function initProducer() {
-    var canvases = [
-        document.getElementById('preview-0'),
-        document.getElementById('preview-1'),
-        document.getElementById('preview-2')
-    ];
+    var canvases = [];
+    for (var i = 0; i < NUM_SOURCES; i++) {
+        canvases.push(document.getElementById('preview-' + i));
+    }
     var pgmCanvas = document.getElementById('program-canvas');
 
     producer = new Mc1VideoProducer.VideoProducer({
@@ -1060,16 +1669,18 @@ function initProducer() {
     });
 
     refreshCameras();
+    refreshAudioDevices();
 
     producer.onDeviceChange(function(devices) {
         populateCameraSelects(devices);
     });
 
-    onTypeChange(0);
-    onTypeChange(1);
-    onTypeChange(2);
+    for (var j = 0; j < NUM_SOURCES; j++) {
+        onTypeChange(j);
+    }
 
     initTbar();
+    startTallyUpdate();
 }
 
 /* -- Camera enumeration ---------------------------------------------- */
@@ -1084,7 +1695,7 @@ function refreshCameras() {
 }
 
 function populateCameraSelects(devices) {
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < NUM_SOURCES; i++) {
         var sel = document.getElementById('camera-' + i);
         if (!sel) continue;
         var current = sel.value;
@@ -1311,7 +1922,7 @@ function takeSource(idx) {
 }
 
 function updateBadges() {
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < NUM_SOURCES; i++) {
         var badge = document.getElementById('badge-' + i);
         var slot = document.getElementById('source-slot-' + i);
         var src = producer.getSource(i);
@@ -1346,7 +1957,7 @@ function updateProgramInfo() {
         pgmBadge.className = 'source-badge pgm-badge';
         pgmBadge.textContent = 'LIVE';
         pgmLabel.style.display = '';
-        var types = { webcam: 'Webcam', file: 'Video File', library: 'Media Library' };
+        var types = { webcam: 'Camera', file: 'Video File', library: 'Media Library', none: 'None' };
         pgmSrc.textContent = 'Source ' + (producer.pgmSourceIdx + 1) + ' - ' + (types[src.type] || 'Unknown');
     } else {
         pgmBadge.className = 'source-badge off-badge';
@@ -1789,6 +2400,181 @@ function updateStreamStatus() {
     }).catch(function() {});
 }
 
+/* -- Vodcast Recording ----------------------------------------------- */
+
+var vodcastRecorder = null;
+var vodcastStatusTimer = null;
+var vodcastEpisodeId = 0;
+
+function toggleVodcastPanel() {
+    var panel = document.getElementById('vodcast-panel');
+    if (panel.style.display === 'none') {
+        panel.style.display = '';
+        loadVodcastShows();
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+function loadVodcastShows() {
+    mc1Api('POST', '/app/api/podcast.php', { action: 'list_shows' }).then(function(d) {
+        if (!d || !d.ok || !d.shows) return;
+        var sel = document.getElementById('vodcast-show');
+        var current = sel.value;
+        sel.innerHTML = '<option value="">-- Select Podcast Show --</option>';
+        d.shows.forEach(function(s) {
+            var opt = document.createElement('option');
+            opt.value = s.id;
+            opt.textContent = s.title;
+            sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+    }).catch(function() {});
+}
+
+function startVodcast() {
+    var showId = parseInt(document.getElementById('vodcast-show').value);
+    var title = document.getElementById('vodcast-title').value.trim();
+    var format = document.getElementById('vodcast-format').value;
+    var audioSlot = parseInt(document.getElementById('vodcast-audio-slot').value) || 0;
+
+    if (!showId) { mc1Toast('Select a podcast show first', 'warn'); return; }
+    if (!title) { mc1Toast('Enter an episode title', 'warn'); return; }
+
+    if (!vodcastRecorder) {
+        vodcastRecorder = new Mc1VideoProducer.VodcastRecorder(producer);
+    }
+
+    document.getElementById('vodcast-start-btn').disabled = true;
+    document.getElementById('vodcast-status').textContent = 'Starting...';
+    document.getElementById('vodcast-status').style.color = 'var(--yellow)';
+    document.getElementById('vodcast-result').style.display = 'none';
+
+    vodcastRecorder.startVodcastRecording(showId, title, format, {
+        audioSlotId: audioSlot
+    }).then(function(vodcastId) {
+        mc1Toast('Vodcast recording started');
+        document.getElementById('vodcast-start-btn').style.display = 'none';
+        document.getElementById('vodcast-stop-btn').style.display = '';
+        document.getElementById('vodcast-start-btn').disabled = false;
+        document.getElementById('vodcast-status').textContent = 'Recording';
+        document.getElementById('vodcast-status').style.color = 'var(--red)';
+        document.getElementById('vodcast-fmt').textContent = format.toUpperCase();
+
+        var btn = document.getElementById('vodcast-btn');
+        btn.classList.add('active');
+        btn.innerHTML = '<i class="fa-solid fa-video"></i> REC <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>';
+
+        vodcastStatusTimer = setInterval(updateVodcastStatus, 1000);
+    }).catch(function(e) {
+        mc1Toast('Vodcast start failed: ' + (e.message || e), 'err');
+        document.getElementById('vodcast-start-btn').disabled = false;
+        document.getElementById('vodcast-status').textContent = 'Error';
+        document.getElementById('vodcast-status').style.color = 'var(--red)';
+    });
+}
+
+function stopVodcast() {
+    if (!vodcastRecorder || !vodcastRecorder.recording) return;
+
+    document.getElementById('vodcast-stop-btn').disabled = true;
+    document.getElementById('vodcast-status').textContent = 'Finalizing...';
+    document.getElementById('vodcast-status').style.color = 'var(--yellow)';
+
+    vodcastRecorder.stopVodcastRecording().then(function(d) {
+        if (vodcastStatusTimer) {
+            clearInterval(vodcastStatusTimer);
+            vodcastStatusTimer = null;
+        }
+
+        document.getElementById('vodcast-start-btn').style.display = '';
+        document.getElementById('vodcast-start-btn').disabled = false;
+        document.getElementById('vodcast-stop-btn').style.display = 'none';
+        document.getElementById('vodcast-stop-btn').disabled = false;
+
+        var btn = document.getElementById('vodcast-btn');
+        btn.classList.remove('active');
+        btn.innerHTML = '<i class="fa-solid fa-video"></i> Vodcast <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>';
+
+        if (d && d.ok) {
+            vodcastEpisodeId = d.episode_id || 0;
+            document.getElementById('vodcast-status').textContent = 'Complete';
+            document.getElementById('vodcast-status').style.color = 'var(--teal)';
+
+            document.getElementById('vodcast-result').style.display = '';
+            var durSec = d.duration_sec || 0;
+            var szBytes = d.file_size || 0;
+            var durH = Math.floor(durSec / 3600), durM = Math.floor((durSec % 3600) / 60), durS = durSec % 60;
+            var durStr = (durH > 0 ? durH + ':' : '') + (durM < 10 ? '0' : '') + durM + ':' + (durS < 10 ? '0' : '') + durS;
+            var szStr = szBytes < 1048576 ? (szBytes / 1024).toFixed(1) + ' KB' : (szBytes / 1048576).toFixed(1) + ' MB';
+            var info = 'Episode #' + vodcastEpisodeId
+                     + ' &middot; ' + (d.format || 'webm').toUpperCase()
+                     + ' &middot; ' + durStr
+                     + ' &middot; ' + szStr;
+            document.getElementById('vodcast-result-info').innerHTML = info;
+            document.getElementById('vodcast-edit-link').href = '/podcast.php';
+
+            mc1Toast('Vodcast episode created: ' + (d.filename || ''));
+        } else {
+            document.getElementById('vodcast-status').textContent = 'Error';
+            document.getElementById('vodcast-status').style.color = 'var(--red)';
+            mc1Toast('Vodcast stop error: ' + (d ? d.error : 'Unknown'), 'err');
+        }
+    });
+}
+
+function updateVodcastStatus() {
+    if (!vodcastRecorder || !vodcastRecorder.recording) return;
+
+    var st = vodcastRecorder.getRecordingStatus();
+    var elapsed = Math.floor(st.duration / 1000);
+    var hh = Math.floor(elapsed / 3600);
+    var mm = Math.floor((elapsed % 3600) / 60);
+    var ss = elapsed % 60;
+    document.getElementById('vodcast-duration').textContent =
+        (hh < 10 ? '0' : '') + hh + ':' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+    document.getElementById('vodcast-bytes').textContent = (st.bytesUploaded / 1048576).toFixed(1) + ' MB';
+    document.getElementById('vodcast-chunks').textContent = String(st.chunkIndex);
+}
+
+/* -- Vodcast Thumbnail ----------------------------------------------- */
+
+function showThumbnailPicker() {
+    if (!vodcastEpisodeId) { mc1Toast('No episode created yet', 'warn'); return; }
+    document.getElementById('vodcast-thumb-preview').innerHTML = '';
+    document.getElementById('vodcast-thumb-modal').style.display = 'flex';
+}
+
+function closeThumbnailModal() {
+    document.getElementById('vodcast-thumb-modal').style.display = 'none';
+}
+
+function extractThumbnail() {
+    if (!vodcastEpisodeId) return;
+    var timestamp = document.getElementById('vodcast-thumb-time').value || '00:00:30';
+
+    document.getElementById('vodcast-thumb-preview').innerHTML = '<span class="spinner"></span> Extracting...';
+
+    mc1Api('POST', '/app/api/producer.php', {
+        action: 'get_vodcast_thumbnail',
+        episode_id: vodcastEpisodeId,
+        timestamp: timestamp
+    }).then(function(d) {
+        if (d && d.ok) {
+            document.getElementById('vodcast-thumb-preview').innerHTML =
+                '<div style="font-size:12px;color:var(--teal);margin-bottom:6px"><i class="fa-solid fa-check"></i> Thumbnail saved: '
+                + esc(d.filename) + ' (' + (d.size < 1024 ? d.size + ' B' : (d.size / 1024).toFixed(1) + ' KB') + ')</div>';
+            mc1Toast('Thumbnail extracted successfully');
+        } else {
+            document.getElementById('vodcast-thumb-preview').innerHTML =
+                '<div style="font-size:12px;color:var(--red)">' + esc(d ? d.error : 'Failed') + '</div>';
+        }
+    }).catch(function() {
+        document.getElementById('vodcast-thumb-preview').innerHTML =
+            '<div style="font-size:12px;color:var(--red)">Network error</div>';
+    });
+}
+
 /* -- Scene save/load ------------------------------------------------- */
 
 function saveScene() {
@@ -1833,6 +2619,253 @@ function loadScene() {
     });
 }
 
+/* -- Audio Follows Video --------------------------------------------- */
+
+function toggleAudioFollowsVideo() {
+    var enabled = document.getElementById('afv-toggle').checked;
+    producer.setAudioFollowsVideo(enabled);
+    mc1Toast(enabled ? 'Audio follows video enabled' : 'Audio follows video disabled');
+}
+
+function refreshAudioDevices() {
+    producer.enumerateAudioDevices().then(function(devices) {
+        for (var i = 0; i < NUM_SOURCES; i++) {
+            var sel = document.getElementById('audio-device-' + i);
+            if (!sel) continue;
+            sel.innerHTML = '<option value="">-- Audio Device --</option>';
+            for (var j = 0; j < devices.length; j++) {
+                var opt = document.createElement('option');
+                opt.value = devices[j].deviceId;
+                opt.textContent = devices[j].label || ('Mic ' + (j + 1));
+                sel.appendChild(opt);
+            }
+            sel.onchange = (function(slot) {
+                return function() { onAudioDeviceChange(slot); };
+            })(i);
+        }
+    }).catch(function() {});
+}
+
+function onAudioDeviceChange(slot) {
+    var sel = document.getElementById('audio-device-' + slot);
+    if (!sel) return;
+    var src = producer.getSource(slot);
+    if (src) src.setAudioDevice(sel.value);
+}
+
+/* -- Tally Lights ---------------------------------------------------- */
+
+var tallyTimer = null;
+
+function startTallyUpdate() {
+    tallyTimer = setInterval(updateTallyLights, 200);
+}
+
+function updateTallyLights() {
+    if (!producer) return;
+    var state = producer.getTallyState();
+    for (var i = 0; i < state.length; i++) {
+        var pgmEl = document.getElementById('tally-pgm-' + i);
+        var pvwEl = document.getElementById('tally-pvw-' + i);
+        if (pgmEl) pgmEl.style.display = state[i].pgm ? '' : 'none';
+        if (pvwEl) pvwEl.style.display = state[i].pvw ? '' : 'none';
+    }
+}
+
+/* -- Overlay Controls: Logo ------------------------------------------ */
+
+function onLogoFileChange() {
+    var input = document.getElementById('logo-file');
+    if (!input.files || !input.files[0]) return;
+    producer.loadLogoFile(input.files[0]).then(function() {
+        mc1Toast('Logo loaded');
+    }).catch(function() {
+        mc1Toast('Failed to load logo image', 'err');
+    });
+}
+
+function loadLogoFromURL() {
+    var url = document.getElementById('logo-url').value.trim();
+    if (!url) { mc1Toast('Enter a URL', 'warn'); return; }
+    producer.loadLogoImage(url).then(function() {
+        mc1Toast('Logo loaded from URL');
+    }).catch(function() {
+        mc1Toast('Failed to load logo from URL', 'err');
+    });
+}
+
+function updateLogoOverlay() {
+    var opacity = parseInt(document.getElementById('logo-opacity').value) / 100;
+    var scale = parseInt(document.getElementById('logo-scale').value) / 100;
+    var position = document.getElementById('logo-position').value;
+    document.getElementById('logo-opacity-val').textContent = opacity.toFixed(2);
+    document.getElementById('logo-scale-val').textContent = scale.toFixed(2);
+    producer.logoOverlay.opacity = opacity;
+    producer.logoOverlay.scale = scale;
+    producer.logoOverlay.position = position;
+    if (producer.logoOverlay.isVisible()) {
+        producer.logoOverlay._render();
+    }
+}
+
+function showLogoOverlay() {
+    if (!producer.logoOverlay.loaded) {
+        mc1Toast('Load a logo image first', 'warn');
+        return;
+    }
+    var opacity = parseInt(document.getElementById('logo-opacity').value) / 100;
+    var scale = parseInt(document.getElementById('logo-scale').value) / 100;
+    var position = document.getElementById('logo-position').value;
+    producer.showLogo({ opacity: opacity, scale: scale, position: position });
+    mc1Toast('Logo overlay shown');
+}
+
+function hideLogoOverlay() {
+    producer.hideLogo();
+    mc1Toast('Logo overlay hidden');
+}
+
+/* -- Overlay Controls: Text Crawl ------------------------------------ */
+
+function updateCrawlLabel() {
+    document.getElementById('crawl-speed-val').textContent = document.getElementById('crawl-speed').value;
+}
+
+function showTextCrawl() {
+    var text = document.getElementById('crawl-text').value;
+    if (!text) { mc1Toast('Enter ticker text', 'warn'); return; }
+    var speed = parseInt(document.getElementById('crawl-speed').value) || 3;
+    var fontSize = parseInt(document.getElementById('crawl-fontsize').value) || 28;
+    var bgHex = document.getElementById('crawl-bgcolor').value;
+    var textColor = document.getElementById('crawl-textcolor').value;
+    var br = parseInt(bgHex.substring(1, 3), 16);
+    var bg = parseInt(bgHex.substring(3, 5), 16);
+    var bb = parseInt(bgHex.substring(5, 7), 16);
+    var bgRgba = 'rgba(' + br + ',' + bg + ',' + bb + ',0.85)';
+    producer.showTextCrawl(text, {
+        speed: speed,
+        fontSize: fontSize,
+        bgColor: bgRgba,
+        textColor: textColor
+    });
+    mc1Toast('Text crawl started');
+}
+
+function hideTextCrawl() {
+    producer.hideTextCrawl();
+    mc1Toast('Text crawl stopped');
+}
+
+/* -- Overlay Controls: Timer / Clock --------------------------------- */
+
+function onTimerModeChange() {
+    var mode = document.getElementById('timer-mode').value;
+    document.getElementById('timer-countdown-row').style.display = (mode === 'countdown') ? '' : 'none';
+}
+
+function showTimerOverlay() {
+    var mode = document.getElementById('timer-mode').value;
+    var format = document.getElementById('timer-format').value;
+    var position = document.getElementById('timer-position').value;
+    var opts = { mode: mode, format: format, position: position };
+    if (mode === 'countdown') {
+        opts.countdownSeconds = parseInt(document.getElementById('timer-countdown-sec').value) || 300;
+    }
+    producer.showTimer(opts);
+    mc1Toast('Timer overlay shown');
+}
+
+function hideTimerOverlay() {
+    producer.hideTimer();
+    mc1Toast('Timer overlay hidden');
+}
+
+/* -- Overlay Controls: Stinger --------------------------------------- */
+
+function onStingerFileChange() {
+    var input = document.getElementById('stinger-file');
+    if (!input.files || !input.files[0]) return;
+    var status = document.getElementById('stinger-status');
+    status.textContent = 'Loading...';
+    status.style.color = 'var(--yellow)';
+    producer.loadStingerFile(input.files[0]).then(function() {
+        status.textContent = 'Stinger ready: ' + input.files[0].name;
+        status.style.color = 'var(--teal)';
+        mc1Toast('Stinger transition loaded');
+    }).catch(function() {
+        status.textContent = 'Failed to load stinger';
+        status.style.color = 'var(--red)';
+        mc1Toast('Failed to load stinger clip', 'err');
+    });
+}
+
+/* -- Overlays Panel Toggle ------------------------------------------- */
+
+function toggleOverlaysPanel() {
+    var body = document.getElementById('overlays-body');
+    var chevron = document.getElementById('overlays-chevron');
+    if (body.style.display === 'none') {
+        body.style.display = '';
+        chevron.style.transform = '';
+    } else {
+        body.style.display = 'none';
+        chevron.style.transform = 'rotate(-90deg)';
+    }
+}
+
+/* -- Scene Presets (1-8 bar) ----------------------------------------- */
+
+function recallScenePreset(idx) {
+    var loaded = producer.loadScenePreset(idx);
+    if (loaded) {
+        updateBadges();
+        updateProgramInfo();
+        updateScenePresetButtons();
+        mc1Toast('Scene ' + (idx + 1) + ' recalled');
+        // Sync UI from loaded config
+        setTransition(producer.transitionType);
+        document.getElementById('trans-duration').value = producer.transitionDuration;
+        document.getElementById('pip-enable').checked = producer.pip.enabled;
+        document.getElementById('pip-source').value = producer.pip.sourceIdx;
+        document.getElementById('pip-position').value = producer.pip.position;
+        document.getElementById('pip-size').value = producer.pip.size;
+        document.getElementById('afv-toggle').checked = producer.audioFollowsVideo;
+        updatePIP();
+    } else {
+        mc1Toast('Scene ' + (idx + 1) + ' is empty -- right-click to save', 'warn');
+    }
+}
+
+function saveScenePreset(idx, e) {
+    if (e) e.preventDefault();
+    producer.saveScenePreset(idx);
+    updateScenePresetButtons();
+    mc1Toast('Scene ' + (idx + 1) + ' saved');
+}
+
+function renameScenePreset(idx) {
+    var current = producer.getScenePresetName(idx);
+    var name = prompt('Rename scene preset ' + (idx + 1) + ':', current);
+    if (name !== null && name.trim()) {
+        producer.renameScenePreset(idx, name.trim());
+        updateScenePresetButtons();
+    }
+}
+
+function updateScenePresetButtons() {
+    for (var i = 0; i < 8; i++) {
+        var btn = document.getElementById('scene-btn-' + (i + 1));
+        if (!btn) continue;
+        if (producer.isScenePresetSaved(i)) {
+            btn.classList.add('saved');
+            btn.title = producer.getScenePresetName(i) + ' (Click=recall, Right-click=save, Dbl-click=rename)';
+        } else {
+            btn.classList.remove('saved');
+            btn.title = 'Empty (Right-click to save current scene)';
+        }
+    }
+}
+
 /* -- DOMContentLoaded ------------------------------------------------ */
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -1846,18 +2879,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
-        // 1/2/3 = PVW source
+        // 1-6 = PVW source
         if (e.key === '1') { setPVW(0); return; }
         if (e.key === '2') { setPVW(1); return; }
         if (e.key === '3') { setPVW(2); return; }
+        if (e.key === '4') { setPVW(3); return; }
+        if (e.key === '5') { setPVW(4); return; }
+        if (e.key === '6') { setPVW(5); return; }
         // Spacebar = auto transition
         if (e.key === ' ') { e.preventDefault(); doAutoTransition(); return; }
         // Enter = cut
         if (e.key === 'Enter') { doCut(); return; }
-        // Shift+1/2/3 = PGM source (direct)
+        // Shift+1-6 = PGM source (direct)
         if (e.shiftKey && e.code === 'Digit1') { setPGM(0); return; }
         if (e.shiftKey && e.code === 'Digit2') { setPGM(1); return; }
         if (e.shiftKey && e.code === 'Digit3') { setPGM(2); return; }
+        if (e.shiftKey && e.code === 'Digit4') { setPGM(3); return; }
+        if (e.shiftKey && e.code === 'Digit5') { setPGM(4); return; }
+        if (e.shiftKey && e.code === 'Digit6') { setPGM(5); return; }
     });
 });
 </script>
