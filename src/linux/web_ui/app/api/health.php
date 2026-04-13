@@ -142,6 +142,99 @@ if (!$authed) {
     }
     mc1_api_respond(['ok' => true, 'swap' => $swap]);
 
+} elseif ($action === 'daemon_status') {
+
+    /* We check all 4 daemons: admin, encoder, voictune, producer */
+    $daemon_defs = [
+        'admin'    => ['proc' => 'mcaster1-dsp-encoder-admin', 'port' => 8330, 'host' => '127.0.0.1', 'path' => '/api/v1/status'],
+        'encoder'  => ['proc' => 'mcaster1-dsp-encoder',       'port' => 8331, 'host' => '127.0.0.1', 'path' => '/api/v1/status'],
+        'voictune' => ['proc' => 'mcaster1-voictune',          'port' => 8350, 'host' => '127.0.0.1', 'path' => '/api/v1/voictune/health'],
+        'producer' => ['proc' => 'mcaster1-producer',          'port' => 8360, 'host' => '127.0.0.1', 'path' => '/api/v1/producer/health'],
+    ];
+
+    $results = [];
+    foreach ($daemon_defs as $key => $def) {
+        $pid = null;
+        $rss_mb = null;
+        $uptime = null;
+        $version = null;
+
+        /* Check if process exists */
+        $pgrep_out = [];
+        @exec("pgrep -f " . escapeshellarg($def['proc']) . " 2>/dev/null", $pgrep_out);
+        if (!empty($pgrep_out)) {
+            $pid = (int)trim($pgrep_out[0]);
+
+            /* RSS from /proc */
+            $status_file = "/proc/{$pid}/status";
+            if (is_readable($status_file)) {
+                $lines = @file($status_file, FILE_IGNORE_NEW_LINES);
+                if (is_array($lines)) {
+                    foreach ($lines as $line) {
+                        if (strpos($line, 'VmRSS:') === 0) {
+                            $kb = (int)preg_replace('/[^0-9]/', '', $line);
+                            $rss_mb = round($kb / 1024, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            /* Uptime from /proc */
+            $stat_file = "/proc/{$pid}/stat";
+            if (is_readable($stat_file)) {
+                $stat_raw = @file_get_contents($stat_file);
+                if ($stat_raw !== false) {
+                    $after_comm = strrchr($stat_raw, ')');
+                    if ($after_comm) {
+                        $fields = preg_split('/\s+/', trim(substr($after_comm, 2)));
+                        if (isset($fields[19])) {
+                            $starttime_ticks = (float)$fields[19];
+                            $uptime_raw = @file_get_contents('/proc/uptime');
+                            if ($uptime_raw !== false) {
+                                $sys_uptime = (float)$uptime_raw;
+                                $proc_start_sec = $starttime_ticks / 100;
+                                $uptime = max(0, (int)($sys_uptime - $proc_start_sec));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        /* HTTP health check */
+        $status = 'not_configured';
+        if ($pid !== null) {
+            $ctx = stream_context_create(['http' => ['timeout' => 2, 'method' => 'GET']]);
+            $url = "http://{$def['host']}:{$def['port']}{$def['path']}";
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                $status = 'running';
+                $data = json_decode($resp, true);
+                if (is_array($data) && isset($data['version'])) {
+                    $version = $data['version'];
+                }
+            } else {
+                $status = 'down';
+            }
+        }
+
+        /* Admin is always considered running (it serves this page) */
+        if ($key === 'admin') {
+            $status = 'running';
+        }
+
+        $results[$key] = [
+            'status'  => $status,
+            'pid'     => $pid,
+            'port'    => $def['port'],
+            'rss_mb'  => $rss_mb,
+            'uptime'  => $uptime,
+            'version' => $version,
+        ];
+    }
+    mc1_api_respond(['ok' => true, 'daemons' => $results]);
+
 } else {
     mc1_api_respond(['ok' => false, 'error' => 'Unknown action'], 400);
 }

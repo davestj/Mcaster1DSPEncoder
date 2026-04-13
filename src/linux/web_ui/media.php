@@ -1473,9 +1473,12 @@ function renderTrackList(wrap, d) {
         var dur   = t.duration_ms ? fmtDur(t.duration_ms) : '—';
         var stars = '';
         for (var i = 1; i <= 5; i++) { stars += (i <= (t.rating||0)) ? '★' : '☆'; }
-        var art = t.art_url
-            ? '<img class="art-thumb" src="' + esc(t.art_url) + '" onerror="this.outerHTML=\'<span class=art-ph><i class=fa-solid\\ fa-music></i></span>\'">'
-            : '<span class="art-ph"><i class="fa-solid fa-music"></i></span>';
+        var _isVid = t.file_path && /\.(mp4|webm|mkv|avi|mov|ogv)$/i.test(t.file_path);
+        var art = _isVid
+            ? '<span class="art-ph" style="color:var(--orange,#f97316)"><i class="fa-solid fa-film"></i></span>'
+            : (t.art_url
+                ? '<img class="art-thumb" src="' + esc(t.art_url) + '" onerror="this.outerHTML=\'<span class=art-ph><i class=fa-solid\\ fa-music></i></span>\'">'
+                : '<span class="art-ph"><i class="fa-solid fa-music"></i></span>');
         var badges = '';
         if (t.is_jingle)  badges += '<span class="badge badge-gray" style="font-size:9px">Jingle</span>';
         if (t.is_sweeper) badges += '<span class="badge badge-gray" style="font-size:9px">Sweep</span>';

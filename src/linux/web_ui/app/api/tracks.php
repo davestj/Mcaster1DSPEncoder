@@ -254,10 +254,11 @@ if ($action === 'remove_library_path') {
 /* ══════════════════════════════════════════════════════════════════════════
  * action: list — Paginated track list with optional search and folder filter
  * ══════════════════════════════════════════════════════════════════════════ */
-if ($action === 'list') {
+if ($action === 'list' || $action === 'search') {
     $page   = max(1, (int)($body['page']   ?? 1));
     $limit  = min(200, max(1, (int)($body['limit'] ?? 50)));
-    $q      = trim((string)($body['q']      ?? ''));
+    /* We support both 'q' and 'query' param names for search compatibility */
+    $q      = trim((string)($body['q'] ?? $body['query'] ?? ''));
     $folder = trim((string)($body['folder'] ?? ''));
 
     $offset  = ($page - 1) * $limit;
@@ -316,7 +317,9 @@ if ($action === 'list') {
         }
         unset($r);
 
-        mc1_api_respond(['ok' => true, 'total' => $total, 'pages' => $pages, 'page' => $page, 'data' => $rows]);
+        /* We include 'tracks' as alias for 'data' so the search action is backward-compatible
+         * with pages (DAW, media picker) that expect d.tracks in the response. */
+        mc1_api_respond(['ok' => true, 'total' => $total, 'pages' => $pages, 'page' => $page, 'data' => $rows, 'tracks' => $rows]);
         return;
     } catch (Exception $e) {
         mc1_log(2, 'tracks list failed', json_encode(['err' => $e->getMessage()]));
@@ -1059,7 +1062,9 @@ if ($action === 'scan') {
         return;
     }
 
-    $allowed_ext = ['mp3','ogg','flac','opus','aac','m4a','wav'];
+    $allowed_ext = ['mp3','ogg','flac','opus','aac','m4a','wav','wma','aiff','aif','ape','alac','m4p',
+                     'mp4','webm','mkv','avi','mov','ogv'];
+    $video_ext   = ['mp4','webm','mkv','avi','mov','ogv'];
     $added   = 0;
     $skipped = 0;
     $errors  = [];
@@ -1096,12 +1101,25 @@ if ($action === 'scan') {
                 $title  = trim($nm[2]);
             }
 
+            /* We try ffprobe for video files to extract duration_ms */
+            $duration_ms = 0;
+            if (in_array($ext, $video_ext)) {
+                $probe_cmd = 'ffprobe -v quiet -print_format json -show_format ' . escapeshellarg($fp) . ' 2>/dev/null';
+                $probe_out = shell_exec($probe_cmd);
+                if ($probe_out) {
+                    $probe = @json_decode($probe_out, true);
+                    if (isset($probe['format']['duration'])) {
+                        $duration_ms = (int)(floatval($probe['format']['duration']) * 1000);
+                    }
+                }
+            }
+
             try {
                 $stmt = $pdo->prepare(
-                    'INSERT IGNORE INTO tracks (file_path, title, artist, file_size_bytes, date_added, date_scanned)
-                     VALUES (?, ?, ?, ?, NOW(), NOW())'
+                    'INSERT IGNORE INTO tracks (file_path, title, artist, file_size_bytes, duration_ms, date_added, date_scanned)
+                     VALUES (?, ?, ?, ?, ?, NOW(), NOW())'
                 );
-                $stmt->execute([$fp, $title, $artist, $file->getSize()]);
+                $stmt->execute([$fp, $title, $artist, $file->getSize(), $duration_ms]);
                 $added   += ($stmt->rowCount() > 0) ? 1 : 0;
                 $skipped += ($stmt->rowCount() === 0) ? 1 : 0;
             } catch (\Exception $e) {
@@ -1474,7 +1492,7 @@ if ($action === 'list_category_tracks') {
         }
         unset($r);
 
-        mc1_api_respond(['ok' => true, 'total' => $total, 'pages' => $pages, 'page' => $page, 'data' => $rows]);
+        mc1_api_respond(['ok' => true, 'total' => $total, 'pages' => $pages, 'page' => $page, 'data' => $rows, 'tracks' => $rows]);
         return;
     } catch (Exception $e) {
         mc1_api_respond(['error' => 'Database error: ' . $e->getMessage()], 500);
@@ -1629,7 +1647,8 @@ if ($action === 'create_playlist_from_folder') {
  * ══════════════════════════════════════════════════════════════════════════ */
 if ($action === 'sync_library') {
     $pdo         = mc1_db('mcaster1_media');
-    $allowed_ext = ['mp3','ogg','flac','opus','aac','m4a','wav','wma','aiff','aif','ape','alac','m4p'];
+    $allowed_ext = ['mp3','ogg','flac','opus','aac','m4a','wav','wma','aiff','aif','ape','alac','m4p',
+                    'mp4','webm','mkv','avi','mov','ogv'];
     $added       = 0;
     $skipped     = 0;
     $missing     = 0;

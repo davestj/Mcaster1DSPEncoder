@@ -55,6 +55,8 @@ input,select,textarea{font-family:inherit;font-size:14px}
 
 /* Layout */
 .layout{display:grid;grid-template-columns:var(--sidebar-w) 1fr;grid-template-rows:var(--topbar-h) 1fr;height:100vh;overflow:hidden}
+/* Elements inside .layout that must NOT create grid rows — position:fixed removes from grid flow */
+.sidebar-backdrop,.mobile-tab-bar,.mobile-more-panel,.mobile-more-backdrop{position:fixed !important;display:none}
 
 /* Topbar */
 .topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--bg2);border-bottom:1px solid var(--border);height:var(--topbar-h);z-index:100}
@@ -262,6 +264,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(20,184,166,.25);border-top-color:var(--teal);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* Mode selector */
+.mode-selector{position:relative}
+.mode-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:16px;font-size:11px;font-weight:700;border:1px solid var(--border);background:rgba(255,255,255,.05);color:var(--text-dim);cursor:pointer;transition:all .15s;white-space:nowrap}
+.mode-badge:hover{background:rgba(255,255,255,.1);color:var(--text);border-color:var(--teal)}
+.mode-badge i:first-child{font-size:12px}
+.mode-dropdown{display:none;position:absolute;top:calc(100% + 6px);right:0;width:220px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:500;padding:6px 0;animation:modeDropIn .15s ease-out}
+.mode-dropdown.open{display:block}
+@keyframes modeDropIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.mode-option{display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;transition:background .1s;flex-wrap:wrap}
+.mode-option:hover{background:rgba(255,255,255,.06)}
+.mode-option.active{background:rgba(20,184,166,.08)}
+.mode-option i{width:18px;text-align:center;font-size:14px;flex-shrink:0}
+.mode-option span{font-size:13px;font-weight:600;color:var(--text)}
+.mode-option small{width:100%;padding-left:28px;font-size:10px;color:var(--muted);margin-top:-2px}
+.mode-divider{height:1px;background:var(--border);margin:4px 0}
+/* Nav section headers hide when all their children are hidden */
+.nav-section-wrap{display:contents}
+
 /* Responsive */
 @media(max-width:860px){
   .layout{grid-template-columns:1fr}
@@ -301,6 +321,42 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <span style="width:7px;height:7px;border-radius:50%;background:var(--teal);display:inline-block;animation:live-dot 1.4s ease-in-out infinite;box-shadow:0 0 6px var(--teal)"></span>
       <span id="enc-live-label">0 Live</span>
     </div>
+    <!-- Mode selector dropdown -->
+    <div class="mode-selector" id="mode-selector">
+      <button class="mode-badge" id="mode-badge" onclick="toggleModeDropdown(event)" title="Switch app mode">
+        <i class="fa-solid fa-border-all" id="mode-badge-icon"></i>
+        <span id="mode-badge-label">All</span>
+        <i class="fa-solid fa-chevron-down" style="font-size:9px;opacity:.6;margin-left:2px"></i>
+      </button>
+      <div class="mode-dropdown" id="mode-dropdown">
+        <div class="mode-option" data-mode="broadcast" onclick="setAppMode('broadcast')">
+          <i class="fa-solid fa-tower-broadcast" style="color:#0ea5e9"></i>
+          <span>Broadcast</span>
+          <small>Encoders, streaming, metrics</small>
+        </div>
+        <div class="mode-option" data-mode="dj" onclick="setAppMode('dj')">
+          <i class="fa-solid fa-compact-disc" style="color:#a855f7"></i>
+          <span>DJ</span>
+          <small>Crossfader, effects, mixer</small>
+        </div>
+        <div class="mode-option" data-mode="podcast" onclick="setAppMode('podcast')">
+          <i class="fa-solid fa-podcast" style="color:#22c55e"></i>
+          <span>Podcast</span>
+          <small>Recording, episodes, analytics</small>
+        </div>
+        <div class="mode-option" data-mode="producer" onclick="setAppMode('producer')">
+          <i class="fa-solid fa-tv" style="color:#f59e0b"></i>
+          <span>Producer</span>
+          <small>Video, DAW, forensic</small>
+        </div>
+        <div class="mode-divider"></div>
+        <div class="mode-option" data-mode="all" onclick="setAppMode('all')">
+          <i class="fa-solid fa-border-all" style="color:#14b8a6"></i>
+          <span>All Features</span>
+          <small>Show everything</small>
+        </div>
+      </div>
+    </div>
     <a class="topbar-user" href="/profile.php" title="View your profile" style="text-decoration:none;cursor:pointer">
       <div class="topbar-avatar"><?= h(strtoupper(substr($display, 0, 1))) ?></div>
       <div>
@@ -316,15 +372,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- Sidebar -->
 <nav class="sidebar">
-  <div class="nav-section">Monitor</div>
+  <div class="nav-section" data-nav-section="monitor">Monitor</div>
   <a class="nav-item <?= $active_nav === 'dashboard' ? 'active' : '' ?>" href="/dashboard.php">
     <i class="fa-solid fa-gauge fa-fw"></i> Dashboard
   </a>
-  <a class="nav-item <?= $active_nav === 'encoders' ? 'active' : '' ?>" href="/encoders.php">
+  <a class="nav-item <?= $active_nav === 'encoders' ? 'active' : '' ?>" href="/encoders.php" data-modes="broadcast">
     <i class="fa-solid fa-tower-broadcast fa-fw"></i> Encoders
   </a>
 
-  <div class="nav-section">Library</div>
+  <div class="nav-section" data-nav-section="library">Library</div>
   <a class="nav-item <?= $active_nav === 'media' ? 'active' : '' ?>" href="/media.php">
     <i class="fa-solid fa-music fa-fw"></i> Media Library
   </a>
@@ -334,67 +390,79 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
   <a class="nav-item <?= $active_nav === 'mediaplayer' ? 'active' : '' ?>" href="/mediaplayer.php">
     <i class="fa-solid fa-headphones fa-fw"></i> Media Player
   </a>
+  <a class="nav-item" href="#" onclick="window.open('/mediaplayerpro.php','mc1pro','width=1200,height=750,menubar=no,toolbar=no');return false;">
+    <i class="fa-solid fa-up-right-from-square fa-fw"></i> Pro Player <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
+  </a>
 
-  <div class="nav-section">DJ</div>
-  <a class="nav-item <?= $active_nav === 'crossfader' ? 'active' : '' ?>" href="/crossfader.php">
+  <div class="nav-section" data-nav-section="dj">DJ</div>
+  <a class="nav-item <?= $active_nav === 'crossfader' ? 'active' : '' ?>" href="/crossfader.php" data-modes="dj">
     <i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader
   </a>
-  <a class="nav-item <?= $active_nav === 'effects' ? 'active' : '' ?>" href="/effects-rack.php">
+  <a class="nav-item <?= $active_nav === 'dualdeck' ? 'active' : '' ?>" href="#" onclick="window.open('/dualdeck-player.php','mc1dualdeck','width=1200,height=700,menubar=no,toolbar=no');return false;" data-modes="dj">
+    <i class="fa-solid fa-compact-disc fa-fw"></i> Dual Deck <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
+  </a>
+  <a class="nav-item <?= $active_nav === 'effects' ? 'active' : '' ?>" href="/effects-rack.php" data-modes="dj,producer">
     <i class="fa-solid fa-sliders fa-fw"></i> Effects Rack
   </a>
-  <a class="nav-item <?= $active_nav === 'mixer' ? 'active' : '' ?>" href="/mixer.php">
+  <a class="nav-item <?= $active_nav === 'mixer' ? 'active' : '' ?>" href="/mixer.php" data-modes="dj,broadcast">
     <i class="fa-solid fa-sliders fa-fw" style="transform:rotate(90deg)"></i> Mixer
   </a>
-  <a class="nav-item <?= $active_nav === 'jack' ? 'active' : '' ?>" href="/jack.php">
+  <a class="nav-item <?= $active_nav === 'jack' ? 'active' : '' ?>" href="/jack.php" data-modes="dj">
     <i class="fa-solid fa-plug fa-fw"></i> JACK Audio
   </a>
 
-  <div class="nav-section">Voice Tools</div>
-  <a class="nav-item <?= $active_nav === 'voictune' ? 'active' : '' ?>" href="/voictune.php">
+  <div class="nav-section" data-nav-section="voice">Voice Tools</div>
+  <a class="nav-item <?= $active_nav === 'voictune' ? 'active' : '' ?>" href="/voictune.php" data-modes="podcast,producer">
     <i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune
   </a>
 
-  <div class="nav-section">Producer</div>
-  <a class="nav-item <?= $active_nav === 'producer' ? 'active' : '' ?>" href="/producer.php">
+  <div class="nav-section" data-nav-section="producer">Producer</div>
+  <a class="nav-item <?= $active_nav === 'producer' ? 'active' : '' ?>" href="/producer.php" data-modes="producer">
     <i class="fa-solid fa-tv fa-fw"></i> Video Producer
   </a>
-  <a class="nav-item <?= $active_nav === 'daw' ? 'active' : '' ?>" href="/daw.php">
+  <a class="nav-item <?= $active_nav === 'daw' ? 'active' : '' ?>" href="/daw.php" data-modes="producer">
     <i class="fa-solid fa-timeline fa-fw"></i> Multi-Track Editor
   </a>
-  <a class="nav-item <?= $active_nav === 'forensic' ? 'active' : '' ?>" href="/forensic.php">
+  <a class="nav-item <?= $active_nav === 'forensic' ? 'active' : '' ?>" href="/forensic.php" data-modes="producer">
     <i class="fa-solid fa-microscope fa-fw"></i> Forensic Analysis
   </a>
 
-  <div class="nav-section">Publish</div>
-  <a class="nav-item <?= $active_nav === 'podcast' ? 'active' : '' ?>" href="/podcast.php">
-    <i class="fa-solid fa-podcast fa-fw"></i> Podcast
+  <div class="nav-section" data-nav-section="publish">Publish</div>
+  <a class="nav-item <?= $active_nav === 'podcast' ? 'active' : '' ?>" href="/podcast.php" data-modes="podcast">
+    <i class="fa-solid fa-podcast fa-fw"></i> Podcast Manager
   </a>
-  <a class="nav-item <?= $active_nav === 'recording' ? 'active' : '' ?>" href="/recording.php">
-    <i class="fa-solid fa-circle fa-fw" style="color:#ef4444;"></i> Recording
+  <a class="nav-item <?= $active_nav === 'recording' ? 'active' : '' ?>" href="/recording.php" data-modes="podcast">
+    <i class="fa-solid fa-circle fa-fw" style="color:#ef4444;"></i> Recording Studio
   </a>
-  <a class="nav-item <?= $active_nav === 'remote-recording' ? 'active' : '' ?>" href="/remote-host.php">
+  <a class="nav-item <?= $active_nav === 'episode-editor' ? 'active' : '' ?>" href="/episode-editor.php" data-modes="podcast">
+    <i class="fa-solid fa-wave-square fa-fw"></i> Episode Editor
+  </a>
+  <a class="nav-item <?= $active_nav === 'remote-recording' ? 'active' : '' ?>" href="/remote-host.php" data-modes="podcast">
     <i class="fa-solid fa-satellite-dish fa-fw"></i> Remote Recording
   </a>
-  <a class="nav-item <?= $active_nav === 'podcast-analytics' ? 'active' : '' ?>" href="/podcast-analytics.php">
+  <a class="nav-item <?= $active_nav === 'podcast-analytics' ? 'active' : '' ?>" href="/podcast-analytics.php" data-modes="podcast">
     <i class="fa-solid fa-chart-line fa-fw"></i> Analytics
   </a>
+  <a class="nav-item <?= $active_nav === 'monetization' ? 'active' : '' ?>" href="/monetization.php" data-modes="podcast">
+    <i class="fa-solid fa-dollar-sign fa-fw"></i> Monetization
+  </a>
 
-  <div class="nav-section">Automation</div>
-  <a class="nav-item <?= $active_nav === 'schedule' ? 'active' : '' ?>" href="/schedule.php">
+  <div class="nav-section" data-nav-section="automation">Automation</div>
+  <a class="nav-item <?= $active_nav === 'schedule' ? 'active' : '' ?>" href="/schedule.php" data-modes="broadcast">
     <i class="fa-solid fa-clock fa-fw"></i> Schedule
   </a>
 
-  <div class="nav-section">Engagement</div>
-  <a class="nav-item <?= $active_nav === 'requests' ? 'active' : '' ?>" href="/requests.php">
+  <div class="nav-section" data-nav-section="engagement">Engagement</div>
+  <a class="nav-item <?= $active_nav === 'requests' ? 'active' : '' ?>" href="/requests.php" data-modes="broadcast,podcast">
     <i class="fa-solid fa-hand fa-fw"></i> Requests
   </a>
 
-  <div class="nav-section">Analytics</div>
-  <a class="nav-item <?= $active_nav === 'metrics' ? 'active' : '' ?>" href="/metrics.php">
+  <div class="nav-section" data-nav-section="analytics">Analytics</div>
+  <a class="nav-item <?= $active_nav === 'metrics' ? 'active' : '' ?>" href="/metrics.php" data-modes="broadcast">
     <i class="fa-solid fa-chart-line fa-fw"></i> Listener Metrics
   </a>
 
-  <div class="nav-section">System</div>
+  <div class="nav-section" data-nav-section="system">System</div>
   <a class="nav-item <?= $active_nav === 'settings' ? 'active' : '' ?>" href="/settings.php">
     <i class="fa-solid fa-gear fa-fw"></i> Settings
   </a>
@@ -421,49 +489,230 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 <!-- Sidebar backdrop (mobile) -->
 <div class="sidebar-backdrop"></div>
 
-<!-- Bottom Tab Bar (mobile) — hidden on desktop via responsive.css -->
-<nav class="mobile-tab-bar" style="display:none">
-  <a href="/dashboard.php" data-page="dashboard">
+<!-- Bottom Tab Bar (mobile) — hidden on desktop via responsive.css, mode-aware -->
+<nav class="mobile-tab-bar" style="display:none" id="mobile-tab-bar">
+  <!-- Tab slots filled by JS based on active mode -->
+  <a href="/dashboard.php" data-page="dashboard" data-tab-slot="0">
     <i class="fa-solid fa-gauge"></i>
     <span>Dashboard</span>
   </a>
-  <a href="/encoders.php" data-page="encoders,edit_encoders">
+  <a href="/encoders.php" data-page="encoders,edit_encoders" data-tab-slot="1" data-tab-modes="broadcast,all">
     <i class="fa-solid fa-tower-broadcast"></i>
     <span>Encoders</span>
   </a>
-  <a href="/media.php" data-page="media,mediaplayer">
+  <a href="/crossfader.php" data-page="crossfader" data-tab-slot="1" data-tab-modes="dj" style="display:none">
+    <i class="fa-solid fa-arrows-left-right"></i>
+    <span>Crossfader</span>
+  </a>
+  <a href="/podcast.php" data-page="podcast" data-tab-slot="1" data-tab-modes="podcast" style="display:none">
+    <i class="fa-solid fa-podcast"></i>
+    <span>Podcast</span>
+  </a>
+  <a href="/producer.php" data-page="producer" data-tab-slot="1" data-tab-modes="producer" style="display:none">
+    <i class="fa-solid fa-tv"></i>
+    <span>Producer</span>
+  </a>
+  <a href="/media.php" data-page="media,mediaplayer" data-tab-slot="2" data-tab-modes="broadcast,podcast,all">
     <i class="fa-solid fa-music"></i>
     <span>Media</span>
   </a>
-  <a href="/mixer.php" data-page="mixer,crossfader,effects">
+  <a href="/effects-rack.php" data-page="effects" data-tab-slot="2" data-tab-modes="dj" style="display:none">
+    <i class="fa-solid fa-sliders"></i>
+    <span>Effects</span>
+  </a>
+  <a href="/recording.php" data-page="recording" data-tab-slot="2" data-tab-modes="podcast" style="display:none">
+    <i class="fa-solid fa-circle" style="color:#ef4444"></i>
+    <span>Recording</span>
+  </a>
+  <a href="/daw.php" data-page="daw" data-tab-slot="2" data-tab-modes="producer" style="display:none">
+    <i class="fa-solid fa-timeline"></i>
+    <span>DAW</span>
+  </a>
+  <a href="/mixer.php" data-page="mixer,crossfader,effects" data-tab-slot="3" data-tab-modes="broadcast">
     <i class="fa-solid fa-sliders"></i>
     <span>Mixer</span>
   </a>
-  <button class="mobile-tab-more" type="button">
+  <a href="/mixer.php" data-page="mixer" data-tab-slot="3" data-tab-modes="dj" style="display:none">
+    <i class="fa-solid fa-sliders" style="transform:rotate(90deg)"></i>
+    <span>Mixer</span>
+  </a>
+  <a href="/podcast-analytics.php" data-page="podcast-analytics" data-tab-slot="3" data-tab-modes="podcast" style="display:none">
+    <i class="fa-solid fa-chart-line"></i>
+    <span>Analytics</span>
+  </a>
+  <a href="/forensic.php" data-page="forensic" data-tab-slot="3" data-tab-modes="producer" style="display:none">
+    <i class="fa-solid fa-microscope"></i>
+    <span>Forensic</span>
+  </a>
+  <a href="/metrics.php" data-page="metrics" data-tab-slot="3" data-tab-modes="all" style="display:none">
+    <i class="fa-solid fa-chart-line"></i>
+    <span>Metrics</span>
+  </a>
+  <button class="mobile-tab-more" type="button" data-tab-slot="4">
     <i class="fa-solid fa-ellipsis"></i>
     <span>More</span>
   </button>
 </nav>
 
-<!-- "More" slide-up menu (mobile) -->
+<!-- "More" slide-up menu (mobile) — items with data-modes for filtering -->
 <div class="mobile-more-backdrop"></div>
 <div class="mobile-more-panel">
   <a href="/playlists.php"><i class="fa-solid fa-list-ul fa-fw"></i> Playlists</a>
-  <a href="/crossfader.php"><i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader</a>
-  <a href="/effects-rack.php"><i class="fa-solid fa-sliders fa-fw"></i> Effects Rack</a>
-  <a href="/jack.php"><i class="fa-solid fa-plug fa-fw"></i> JACK Audio</a>
-  <a href="/voictune.php"><i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune</a>
-  <a href="/producer.php"><i class="fa-solid fa-tv fa-fw"></i> Video Producer</a>
-  <a href="/podcast.php"><i class="fa-solid fa-podcast fa-fw"></i> Podcast</a>
-  <a href="/recording.php"><i class="fa-solid fa-circle fa-fw" style="color:#ef4444"></i> Recording</a>
-  <a href="/schedule.php"><i class="fa-solid fa-clock fa-fw"></i> Schedule</a>
-  <a href="/requests.php"><i class="fa-solid fa-hand fa-fw"></i> Requests</a>
-  <a href="/metrics.php"><i class="fa-solid fa-chart-line fa-fw"></i> Metrics</a>
+  <a href="/crossfader.php" data-modes="dj"><i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader</a>
+  <a href="/effects-rack.php" data-modes="dj,producer"><i class="fa-solid fa-sliders fa-fw"></i> Effects Rack</a>
+  <a href="/jack.php" data-modes="dj"><i class="fa-solid fa-plug fa-fw"></i> JACK Audio</a>
+  <a href="/voictune.php" data-modes="podcast,producer"><i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune</a>
+  <a href="/producer.php" data-modes="producer"><i class="fa-solid fa-tv fa-fw"></i> Video Producer</a>
+  <a href="/podcast.php" data-modes="podcast"><i class="fa-solid fa-podcast fa-fw"></i> Podcast</a>
+  <a href="/recording.php" data-modes="podcast"><i class="fa-solid fa-circle fa-fw" style="color:#ef4444"></i> Recording</a>
+  <a href="/schedule.php" data-modes="broadcast"><i class="fa-solid fa-clock fa-fw"></i> Schedule</a>
+  <a href="/requests.php" data-modes="broadcast,podcast"><i class="fa-solid fa-hand fa-fw"></i> Requests</a>
+  <a href="/metrics.php" data-modes="broadcast"><i class="fa-solid fa-chart-line fa-fw"></i> Metrics</a>
   <a href="/settings.php"><i class="fa-solid fa-gear fa-fw"></i> Settings</a>
   <a href="/profile.php"><i class="fa-solid fa-circle-user fa-fw"></i> My Profile</a>
   <a href="/compliance.php"><i class="fa-solid fa-shield-halved fa-fw"></i> Compliance</a>
 </div>
 
+<script>
+/* ── Mode-Based Navigation System ────────────────────────────────────── */
+(function(){
+'use strict';
+
+var MODE_CONFIG = {
+  broadcast: { color: '#0ea5e9', icon: 'fa-tower-broadcast', label: 'Broadcast' },
+  dj:        { color: '#a855f7', icon: 'fa-compact-disc',    label: 'DJ' },
+  podcast:   { color: '#22c55e', icon: 'fa-podcast',         label: 'Podcast' },
+  producer:  { color: '#f59e0b', icon: 'fa-tv',              label: 'Producer' },
+  all:       { color: '#14b8a6', icon: 'fa-border-all',      label: 'All Features' }
+};
+
+/* Apply mode filtering to sidebar nav items + section headers */
+function applyModeFilter(mode) {
+  /* Filter sidebar nav items */
+  var items = document.querySelectorAll('.sidebar .nav-item[data-modes]');
+  for (var i = 0; i < items.length; i++) {
+    var modes = items[i].getAttribute('data-modes').split(',');
+    items[i].style.display = (mode === 'all' || modes.indexOf(mode) !== -1) ? '' : 'none';
+  }
+
+  /* Hide section headers if all their child nav items are hidden */
+  var sections = document.querySelectorAll('.sidebar .nav-section[data-nav-section]');
+  for (var s = 0; s < sections.length; s++) {
+    var next = sections[s].nextElementSibling;
+    var hasVisible = false;
+    while (next && !next.classList.contains('nav-section') && !next.classList.contains('sidebar-spacer') && !next.classList.contains('sidebar-footer')) {
+      if (next.classList.contains('nav-item') && next.style.display !== 'none') {
+        hasVisible = true;
+        break;
+      }
+      next = next.nextElementSibling;
+    }
+    sections[s].style.display = hasVisible ? '' : 'none';
+  }
+
+  /* Filter mobile "More" panel items */
+  var moreItems = document.querySelectorAll('.mobile-more-panel a[data-modes]');
+  for (var m = 0; m < moreItems.length; m++) {
+    var mm = moreItems[m].getAttribute('data-modes').split(',');
+    moreItems[m].style.display = (mode === 'all' || mm.indexOf(mode) !== -1) ? '' : 'none';
+  }
+
+  /* Update mobile tab bar based on mode */
+  updateMobileTabBar(mode);
+}
+
+/* Update mode badge in topbar */
+function updateModeBadge(mode) {
+  var cfg = MODE_CONFIG[mode] || MODE_CONFIG.all;
+  var icon = document.getElementById('mode-badge-icon');
+  var label = document.getElementById('mode-badge-label');
+  var badge = document.getElementById('mode-badge');
+  if (icon) icon.className = 'fa-solid ' + cfg.icon;
+  if (label) label.textContent = cfg.label;
+  if (badge) {
+    badge.style.borderColor = cfg.color;
+    badge.style.color = cfg.color;
+  }
+
+  /* Highlight active option in dropdown */
+  var opts = document.querySelectorAll('.mode-option');
+  for (var i = 0; i < opts.length; i++) {
+    if (opts[i].getAttribute('data-mode') === mode) {
+      opts[i].classList.add('active');
+    } else {
+      opts[i].classList.remove('active');
+    }
+  }
+}
+
+/* Update mobile tab bar icons/labels based on mode */
+function updateMobileTabBar(mode) {
+  var tabBar = document.getElementById('mobile-tab-bar');
+  if (!tabBar) return;
+
+  var tabs = tabBar.querySelectorAll('a[data-tab-slot], button[data-tab-slot]');
+  for (var i = 0; i < tabs.length; i++) {
+    var el = tabs[i];
+    var tabModes = el.getAttribute('data-tab-modes');
+
+    /* Dashboard (slot 0) and More (slot 4) always visible */
+    if (!tabModes) {
+      el.style.display = '';
+      continue;
+    }
+
+    var modes = tabModes.split(',');
+    /* Show if mode matches, or if mode is 'all' and this tab has 'all' in its modes */
+    var show = modes.indexOf(mode) !== -1;
+    el.style.display = show ? '' : 'none';
+  }
+}
+
+/* Toggle mode dropdown */
+window.toggleModeDropdown = function(e) {
+  e.stopPropagation();
+  var dd = document.getElementById('mode-dropdown');
+  if (dd) dd.classList.toggle('open');
+};
+
+/* Close dropdown on outside click */
+document.addEventListener('click', function(e) {
+  var dd = document.getElementById('mode-dropdown');
+  var sel = document.getElementById('mode-selector');
+  if (dd && dd.classList.contains('open') && sel && !sel.contains(e.target)) {
+    dd.classList.remove('open');
+  }
+});
+
+/* Set mode — called from dropdown */
+window.setAppMode = function(mode) {
+  if (!MODE_CONFIG[mode]) mode = 'all';
+  localStorage.setItem('mc1_app_mode', mode);
+  applyModeFilter(mode);
+  updateModeBadge(mode);
+
+  /* Close dropdown */
+  var dd = document.getElementById('mode-dropdown');
+  if (dd) dd.classList.remove('open');
+
+  /* Dispatch custom event for other widgets (daemon monitor, etc.) */
+  window.dispatchEvent(new CustomEvent('mc1-mode-changed', { detail: { mode: mode } }));
+
+  /* Save to server for cross-device sync (fire-and-forget) */
+  if (window.mc1Api) {
+    mc1Api('POST', '/app/api/profile.php', { action: 'set_preference', key: 'app_mode', value: mode }).catch(function(){});
+  }
+};
+
+/* Initialize mode on page load */
+document.addEventListener('DOMContentLoaded', function() {
+  var mode = localStorage.getItem('mc1_app_mode') || 'all';
+  applyModeFilter(mode);
+  updateModeBadge(mode);
+});
+
+})();
+</script>
 <script src="/js/mobile-nav.js"></script>
 
 <!-- Main -->

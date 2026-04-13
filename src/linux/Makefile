@@ -98,7 +98,8 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 bin_PROGRAMS = mcaster1-dsp-encoder-admin$(EXEEXT) \
-	mcaster1-dsp-encoder$(EXEEXT) mcaster1-voictune$(EXEEXT)
+	mcaster1-dsp-encoder$(EXEEXT) mcaster1-voictune$(EXEEXT) \
+	mcaster1-producer$(EXEEXT)
 
 # Admin links all codec/audio libs too (shares source files with encoder for symbols).
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
@@ -250,6 +251,14 @@ mcaster1_dsp_encoder_admin_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
 	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
 	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
+am_mcaster1_producer_OBJECTS =  \
+	producer/mcaster1_producer-main_producer.$(OBJEXT) \
+	producer/mcaster1_producer-pr_http_api.$(OBJEXT) \
+	producer/mcaster1_producer-pr_config.$(OBJEXT) \
+	producer/mcaster1_producer-pr_worker_pool.$(OBJEXT)
+mcaster1_producer_OBJECTS = $(am_mcaster1_producer_OBJECTS)
+mcaster1_producer_DEPENDENCIES = $(am__DEPENDENCIES_1) \
+	$(am__DEPENDENCIES_1)
 am_mcaster1_voictune_OBJECTS =  \
 	voictune/mcaster1_voictune-main_voictune.$(OBJEXT) \
 	voictune/mcaster1_voictune-vt_http_api.$(OBJEXT) \
@@ -323,6 +332,10 @@ am__depfiles_remade = ./$(DEPDIR)/archive_writer.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po \
 	dsp/$(DEPDIR)/sidechain_ducker.Po \
+	producer/$(DEPDIR)/mcaster1_producer-main_producer.Po \
+	producer/$(DEPDIR)/mcaster1_producer-pr_config.Po \
+	producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po \
+	producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po \
 	voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po \
 	voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po \
 	voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po \
@@ -357,10 +370,10 @@ am__v_CXXLD_0 = @echo "  CXXLD   " $@;
 am__v_CXXLD_1 = 
 SOURCES = $(mcaster1_dsp_encoder_SOURCES) \
 	$(mcaster1_dsp_encoder_admin_SOURCES) \
-	$(mcaster1_voictune_SOURCES)
+	$(mcaster1_producer_SOURCES) $(mcaster1_voictune_SOURCES)
 DIST_SOURCES = $(am__mcaster1_dsp_encoder_SOURCES_DIST) \
 	$(am__mcaster1_dsp_encoder_admin_SOURCES_DIST) \
-	$(mcaster1_voictune_SOURCES)
+	$(mcaster1_producer_SOURCES) $(mcaster1_voictune_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
@@ -624,6 +637,23 @@ mcaster1_voictune_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
 	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_31) \
 	$(am__append_32)
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCER BINARY — Video encoding, audio mixdown, forensic FFT (Phase PR)
+# ══════════════════════════════════════════════════════════════════════════════
+mcaster1_producer_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_PRODUCER_BUILD
+mcaster1_producer_SOURCES = \
+    producer/main_producer.cpp \
+    producer/pr_http_api.cpp \
+    producer/pr_config.cpp \
+    producer/pr_worker_pool.cpp
+
+mcaster1_producer_LDADD = \
+    $(OPENSSL_LIBS) \
+    $(LIBYAML_LIBS) \
+    -lpthread \
+    -lm
+
+
 # ── Extra dist ─────────────────────────────────────────────────────────────────
 EXTRA_DIST = \
     make_phase4.sh \
@@ -758,6 +788,24 @@ voictune/mcaster1_dsp_encoder_admin-ollama_client.$(OBJEXT):  \
 mcaster1-dsp-encoder-admin$(EXEEXT): $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_DEPENDENCIES) $(EXTRA_mcaster1_dsp_encoder_admin_DEPENDENCIES) 
 	@rm -f mcaster1-dsp-encoder-admin$(EXEEXT)
 	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_dsp_encoder_admin_OBJECTS) $(mcaster1_dsp_encoder_admin_LDADD) $(LIBS)
+producer/$(am__dirstamp):
+	@$(MKDIR_P) producer
+	@: > producer/$(am__dirstamp)
+producer/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) producer/$(DEPDIR)
+	@: > producer/$(DEPDIR)/$(am__dirstamp)
+producer/mcaster1_producer-main_producer.$(OBJEXT):  \
+	producer/$(am__dirstamp) producer/$(DEPDIR)/$(am__dirstamp)
+producer/mcaster1_producer-pr_http_api.$(OBJEXT):  \
+	producer/$(am__dirstamp) producer/$(DEPDIR)/$(am__dirstamp)
+producer/mcaster1_producer-pr_config.$(OBJEXT):  \
+	producer/$(am__dirstamp) producer/$(DEPDIR)/$(am__dirstamp)
+producer/mcaster1_producer-pr_worker_pool.$(OBJEXT):  \
+	producer/$(am__dirstamp) producer/$(DEPDIR)/$(am__dirstamp)
+
+mcaster1-producer$(EXEEXT): $(mcaster1_producer_OBJECTS) $(mcaster1_producer_DEPENDENCIES) $(EXTRA_mcaster1_producer_DEPENDENCIES) 
+	@rm -f mcaster1-producer$(EXEEXT)
+	$(AM_V_CXXLD)$(CXXLINK) $(mcaster1_producer_OBJECTS) $(mcaster1_producer_LDADD) $(LIBS)
 voictune/mcaster1_voictune-main_voictune.$(OBJEXT):  \
 	voictune/$(am__dirstamp) voictune/$(DEPDIR)/$(am__dirstamp)
 voictune/mcaster1_voictune-vt_http_api.$(OBJEXT):  \
@@ -792,6 +840,7 @@ mcaster1-voictune$(EXEEXT): $(mcaster1_voictune_OBJECTS) $(mcaster1_voictune_DEP
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 	-rm -f dsp/*.$(OBJEXT)
+	-rm -f producer/*.$(OBJEXT)
 	-rm -f voictune/*.$(OBJEXT)
 
 distclean-compile:
@@ -846,6 +895,10 @@ include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po # am--include-m
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po # am--include-marker
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po # am--include-marker
 include dsp/$(DEPDIR)/sidechain_ducker.Po # am--include-marker
+include producer/$(DEPDIR)/mcaster1_producer-main_producer.Po # am--include-marker
+include producer/$(DEPDIR)/mcaster1_producer-pr_config.Po # am--include-marker
+include producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po # am--include-marker
+include producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po # am--include-marker
 include voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po # am--include-marker
 include voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po # am--include-marker
 include voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po # am--include-marker
@@ -1261,6 +1314,62 @@ mcaster1_dsp_encoder_admin-jack_manager.obj: jack_manager.cpp
 #	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
 #	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o mcaster1_dsp_encoder_admin-jack_manager.obj `if test -f 'jack_manager.cpp'; then $(CYGPATH_W) 'jack_manager.cpp'; else $(CYGPATH_W) '$(srcdir)/jack_manager.cpp'; fi`
 
+producer/mcaster1_producer-main_producer.o: producer/main_producer.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-main_producer.o -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-main_producer.Tpo -c -o producer/mcaster1_producer-main_producer.o `test -f 'producer/main_producer.cpp' || echo '$(srcdir)/'`producer/main_producer.cpp
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-main_producer.Tpo producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
+#	$(AM_V_CXX)source='producer/main_producer.cpp' object='producer/mcaster1_producer-main_producer.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-main_producer.o `test -f 'producer/main_producer.cpp' || echo '$(srcdir)/'`producer/main_producer.cpp
+
+producer/mcaster1_producer-main_producer.obj: producer/main_producer.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-main_producer.obj -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-main_producer.Tpo -c -o producer/mcaster1_producer-main_producer.obj `if test -f 'producer/main_producer.cpp'; then $(CYGPATH_W) 'producer/main_producer.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/main_producer.cpp'; fi`
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-main_producer.Tpo producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
+#	$(AM_V_CXX)source='producer/main_producer.cpp' object='producer/mcaster1_producer-main_producer.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-main_producer.obj `if test -f 'producer/main_producer.cpp'; then $(CYGPATH_W) 'producer/main_producer.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/main_producer.cpp'; fi`
+
+producer/mcaster1_producer-pr_http_api.o: producer/pr_http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_http_api.o -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Tpo -c -o producer/mcaster1_producer-pr_http_api.o `test -f 'producer/pr_http_api.cpp' || echo '$(srcdir)/'`producer/pr_http_api.cpp
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po
+#	$(AM_V_CXX)source='producer/pr_http_api.cpp' object='producer/mcaster1_producer-pr_http_api.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_http_api.o `test -f 'producer/pr_http_api.cpp' || echo '$(srcdir)/'`producer/pr_http_api.cpp
+
+producer/mcaster1_producer-pr_http_api.obj: producer/pr_http_api.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_http_api.obj -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Tpo -c -o producer/mcaster1_producer-pr_http_api.obj `if test -f 'producer/pr_http_api.cpp'; then $(CYGPATH_W) 'producer/pr_http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_http_api.cpp'; fi`
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po
+#	$(AM_V_CXX)source='producer/pr_http_api.cpp' object='producer/mcaster1_producer-pr_http_api.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_http_api.obj `if test -f 'producer/pr_http_api.cpp'; then $(CYGPATH_W) 'producer/pr_http_api.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_http_api.cpp'; fi`
+
+producer/mcaster1_producer-pr_config.o: producer/pr_config.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_config.o -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_config.Tpo -c -o producer/mcaster1_producer-pr_config.o `test -f 'producer/pr_config.cpp' || echo '$(srcdir)/'`producer/pr_config.cpp
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_config.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_config.Po
+#	$(AM_V_CXX)source='producer/pr_config.cpp' object='producer/mcaster1_producer-pr_config.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_config.o `test -f 'producer/pr_config.cpp' || echo '$(srcdir)/'`producer/pr_config.cpp
+
+producer/mcaster1_producer-pr_config.obj: producer/pr_config.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_config.obj -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_config.Tpo -c -o producer/mcaster1_producer-pr_config.obj `if test -f 'producer/pr_config.cpp'; then $(CYGPATH_W) 'producer/pr_config.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_config.cpp'; fi`
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_config.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_config.Po
+#	$(AM_V_CXX)source='producer/pr_config.cpp' object='producer/mcaster1_producer-pr_config.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_config.obj `if test -f 'producer/pr_config.cpp'; then $(CYGPATH_W) 'producer/pr_config.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_config.cpp'; fi`
+
+producer/mcaster1_producer-pr_worker_pool.o: producer/pr_worker_pool.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_worker_pool.o -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Tpo -c -o producer/mcaster1_producer-pr_worker_pool.o `test -f 'producer/pr_worker_pool.cpp' || echo '$(srcdir)/'`producer/pr_worker_pool.cpp
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po
+#	$(AM_V_CXX)source='producer/pr_worker_pool.cpp' object='producer/mcaster1_producer-pr_worker_pool.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_worker_pool.o `test -f 'producer/pr_worker_pool.cpp' || echo '$(srcdir)/'`producer/pr_worker_pool.cpp
+
+producer/mcaster1_producer-pr_worker_pool.obj: producer/pr_worker_pool.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT producer/mcaster1_producer-pr_worker_pool.obj -MD -MP -MF producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Tpo -c -o producer/mcaster1_producer-pr_worker_pool.obj `if test -f 'producer/pr_worker_pool.cpp'; then $(CYGPATH_W) 'producer/pr_worker_pool.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_worker_pool.cpp'; fi`
+	$(AM_V_at)$(am__mv) producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Tpo producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po
+#	$(AM_V_CXX)source='producer/pr_worker_pool.cpp' object='producer/mcaster1_producer-pr_worker_pool.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_producer_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o producer/mcaster1_producer-pr_worker_pool.obj `if test -f 'producer/pr_worker_pool.cpp'; then $(CYGPATH_W) 'producer/pr_worker_pool.cpp'; else $(CYGPATH_W) '$(srcdir)/producer/pr_worker_pool.cpp'; fi`
+
 voictune/mcaster1_voictune-main_voictune.o: voictune/main_voictune.cpp
 	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_voictune_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT voictune/mcaster1_voictune-main_voictune.o -MD -MP -MF voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo -c -o voictune/mcaster1_voictune-main_voictune.o `test -f 'voictune/main_voictune.cpp' || echo '$(srcdir)/'`voictune/main_voictune.cpp
 	$(AM_V_at)$(am__mv) voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Tpo voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
@@ -1562,6 +1671,8 @@ distclean-generic:
 	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
 	-rm -f dsp/$(DEPDIR)/$(am__dirstamp)
 	-rm -f dsp/$(am__dirstamp)
+	-rm -f producer/$(DEPDIR)/$(am__dirstamp)
+	-rm -f producer/$(am__dirstamp)
 	-rm -f voictune/$(DEPDIR)/$(am__dirstamp)
 	-rm -f voictune/$(am__dirstamp)
 
@@ -1622,6 +1733,10 @@ distclean: distclean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_config.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po
@@ -1730,6 +1845,10 @@ maintainer-clean: maintainer-clean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_config.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_http_api.Po
+	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_worker_pool.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_dsp_encoder_admin-ollama_client.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-main_voictune.Po
 	-rm -f voictune/$(DEPDIR)/mcaster1_voictune-ollama_client.Po

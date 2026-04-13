@@ -70,6 +70,7 @@ require __DIR__ . '/app/inc/header.php';
 .rec-marker-ts { font-family: monospace; color: var(--teal); min-width: 60px; font-weight: 600; }
 .rec-marker-title { flex: 1; color: var(--text); }
 .rec-marker-type { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: rgba(20,184,166,.1); color: var(--teal); }
+.rec-marker-type.ad_break { background: rgba(249,115,22,.15); color: var(--orange); }
 .rec-marker-del { cursor: pointer; color: var(--muted); font-size: 11px; }
 .rec-marker-del:hover { color: #ef4444; }
 .rec-marker-empty { text-align: center; padding: 40px 10px; color: var(--muted); font-size: 13px; }
@@ -120,6 +121,9 @@ require __DIR__ . '/app/inc/header.php';
         <button class="btn btn-secondary" id="btnRecMarker" onclick="recAddMarker()" disabled>
           <i class="fa-solid fa-bookmark"></i> Marker (M)
         </button>
+        <button class="btn btn-secondary" id="btnRecAdBreak" onclick="recAddAdBreak()" disabled style="border-color:rgba(249,115,22,.3);color:var(--orange)">
+          <i class="fa-solid fa-rectangle-ad"></i> Ad Break (A)
+        </button>
       </div>
 
       <div class="rec-form-row">
@@ -161,16 +165,26 @@ require __DIR__ . '/app/inc/header.php';
 
       <div class="rec-form-row">
         <label>Pre-roll</label>
-        <select id="recPreRoll" class="form-control">
-          <option value="">None</option>
-        </select>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="recPreRoll" class="form-control" style="flex:1">
+            <option value="">None</option>
+          </select>
+          <button class="btn btn-secondary btn-xs" onclick="mc1MediaPicker.open({type:'audio', onSelect:function(t){ setPrePostRoll('recPreRoll', t); }})" title="Browse media library">
+            <i class="fa-solid fa-database"></i>
+          </button>
+        </div>
       </div>
 
       <div class="rec-form-row">
         <label>Post-roll</label>
-        <select id="recPostRoll" class="form-control">
-          <option value="">None</option>
-        </select>
+        <div style="display:flex;gap:4px;align-items:center">
+          <select id="recPostRoll" class="form-control" style="flex:1">
+            <option value="">None</option>
+          </select>
+          <button class="btn btn-secondary btn-xs" onclick="mc1MediaPicker.open({type:'audio', onSelect:function(t){ setPrePostRoll('recPostRoll', t); }})" title="Browse media library">
+            <i class="fa-solid fa-database"></i>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -459,6 +473,7 @@ function updateRecUI() {
     var btnSplit  = document.getElementById('btnRecSplit');
     var btnMarker = document.getElementById('btnRecMarker');
     var btnMAdd   = document.getElementById('btnMarkerAdd');
+    var btnAdBreak = document.getElementById('btnRecAdBreak');
 
     if (REC.recording) {
         panel.classList.add('is-recording');
@@ -469,6 +484,7 @@ function updateRecUI() {
         btnSplit.disabled  = false;
         btnMarker.disabled = false;
         btnMAdd.disabled   = false;
+        if (btnAdBreak) btnAdBreak.disabled = false;
         document.getElementById('recSlotInfo').textContent = 'Slot ' + REC.slotId;
         document.getElementById('recFormatInfo').textContent = document.getElementById('recFormat').value.toUpperCase();
     } else {
@@ -480,6 +496,7 @@ function updateRecUI() {
         btnSplit.disabled  = true;
         btnMarker.disabled = true;
         btnMAdd.disabled   = true;
+        if (btnAdBreak) btnAdBreak.disabled = true;
     }
 }
 
@@ -496,7 +513,7 @@ function renderMarkers() {
         html += '<div class="rec-marker-item">';
         html += '<span class="rec-marker-ts">' + fmtMs(m.timestamp_ms) + '</span>';
         html += '<span class="rec-marker-title">' + esc(m.title) + '</span>';
-        html += '<span class="rec-marker-type">' + esc(m.marker_type) + '</span>';
+        html += '<span class="rec-marker-type ' + esc(m.marker_type) + '">' + esc(m.marker_type === 'ad_break' ? 'AD BREAK' : m.marker_type) + '</span>';
         html += '<span class="rec-marker-del" onclick="deleteMarker(' + idx + ',' + m.id + ')" title="Delete marker"><i class="fa-solid fa-xmark"></i></span>';
         html += '</div>';
     });
@@ -585,12 +602,26 @@ function checkExistingRecording() {
 
 /* ── Keyboard shortcut: M for marker ── */
 
+function recAddAdBreak() {
+    if (!REC.recording) return;
+    /* We force marker type to ad_break for the 'A' shortcut */
+    var prevType = document.getElementById('recMarkerType').value;
+    document.getElementById('recMarkerType').value = 'ad_break';
+    document.getElementById('recMarkerTitle').value = 'Ad Break';
+    recAddMarker();
+    document.getElementById('recMarkerType').value = prevType;
+}
+
 function onKeyDown(e) {
     // We skip if user is typing in an input or select
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         recAddMarker();
+    }
+    if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        recAddAdBreak();
     }
 }
 
@@ -605,6 +636,27 @@ document.addEventListener('DOMContentLoaded', function() {
     checkExistingRecording();
     document.addEventListener('keydown', onKeyDown);
 });
+</script>
+
+<?php require_once __DIR__ . '/app/inc/media_picker.php'; ?>
+
+<script>
+/* We add a helper for the media picker to set a pre/post roll from the media library.
+ * The selected track is added as a new option in the select and automatically selected. */
+function setPrePostRoll(selectId, track) {
+    var sel = document.getElementById(selectId);
+    if (!sel || !track) return;
+    /* We use the track's file_path as the value and title as the display name */
+    var existing = sel.querySelector('option[value="' + track.file_path + '"]');
+    if (!existing) {
+        var opt = document.createElement('option');
+        opt.value = track.file_path;
+        opt.textContent = (track.title || track.file_path.split('/').pop()) + ' [Library]';
+        sel.appendChild(opt);
+    }
+    sel.value = track.file_path;
+    mc1Toast('Selected: ' + (track.title || 'track'), 'ok');
+}
 </script>
 
 <?php require __DIR__ . '/app/inc/footer.php'; ?>

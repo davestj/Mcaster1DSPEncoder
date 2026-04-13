@@ -188,6 +188,22 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
 .ee-modal-box { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 420px; max-width: 95vw; }
 .ee-modal-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 14px; }
 .ee-modal-acts { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+/* Ad break markers */
+.ee-ad-item { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-bottom: 1px solid rgba(51,65,85,.4); font-size: 12px; }
+.ee-ad-item:last-child { border-bottom: none; }
+.ee-ad-ts { font-family: 'SF Mono','Fira Code',monospace; color: var(--orange); min-width: 70px; flex-shrink: 0; cursor: pointer; }
+.ee-ad-ts:hover { text-decoration: underline; }
+.ee-ad-label { flex: 1; color: var(--text-dim); }
+.ee-ad-badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; background: rgba(249,115,22,.12); color: var(--orange); font-weight: 600; }
+.ee-ad-del { cursor: pointer; color: var(--muted); font-size: 11px; }
+.ee-ad-del:hover { color: var(--red); }
+.ee-ad-campaign-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; font-size: 11px; color: var(--text-dim); border-bottom: 1px solid rgba(51,65,85,.3); }
+.ee-ad-campaign-row:last-child { border-bottom: none; }
+
+/* Ad break lines on waveform overlay (drawn by JS) */
+.ee-ad-break-line { position: absolute; top: 0; height: 100%; width: 2px; background: var(--orange); opacity: 0.7; pointer-events: none; z-index: 5; }
+.ee-ad-break-flag { position: absolute; top: 2px; background: var(--orange); color: #fff; font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 2px; pointer-events: none; z-index: 6; white-space: nowrap; }
 </style>
 
 <!-- Header bar -->
@@ -202,6 +218,10 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
     <?php else: ?>
     <span class="badge badge-gray"><i class="fa-solid fa-eye-slash"></i> Draft</span>
     <?php endif; ?>
+    <button class="btn btn-secondary btn-xs" style="margin-left:auto"
+            onclick="mc1MediaPicker.open({type:'audio', onSelect:function(t){ eeImportFromLibrary(t.id, t.title); }})">
+        <i class="fa-solid fa-database"></i> Import from Library
+    </button>
 </div>
 
 <!-- Waveform -->
@@ -346,6 +366,73 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
             </div>
         </div>
 
+        <!-- Captions Panel -->
+        <div class="ee-panel">
+            <div class="ee-panel-hdr">
+                <i class="fa-solid fa-closed-captioning"></i> Captions
+                <button class="btn btn-xs btn-primary" id="ee-cc-auto-btn" onclick="window.eeCaptionsAutoGenerate()" style="margin-left:auto">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Generate
+                </button>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <label style="font-size:11px;color:var(--muted)">Language</label>
+                    <select class="form-select" id="ee-cc-language" style="font-size:11px;padding:3px 8px;width:auto">
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="ja">Japanese</option>
+                    </select>
+                </div>
+                <button class="btn btn-xs btn-secondary" onclick="window.eeCaptionsImport()">
+                    <i class="fa-solid fa-file-import"></i> Import SRT/VTT
+                </button>
+                <input type="file" id="ee-cc-import-input" accept=".srt,.vtt" style="display:none" onchange="window.eeCaptionsHandleImport(this)">
+                <button class="btn btn-xs btn-secondary" onclick="window.eeCaptionsExport('srt')">
+                    <i class="fa-solid fa-download"></i> SRT
+                </button>
+                <button class="btn btn-xs btn-secondary" onclick="window.eeCaptionsExport('vtt')">
+                    <i class="fa-solid fa-download"></i> VTT
+                </button>
+                <button class="btn btn-xs btn-secondary" onclick="window.eeCaptionsSave()">
+                    <i class="fa-solid fa-floppy-disk"></i> Save
+                </button>
+                <button class="btn btn-xs btn-secondary" onclick="window.eeCaptionsLoad()">
+                    <i class="fa-solid fa-rotate"></i> Load
+                </button>
+            </div>
+            <div id="ee-cc-status" style="display:none;font-size:11px;color:var(--teal);margin-bottom:8px;padding:6px 10px;
+                 background:rgba(20,184,166,.08);border-radius:var(--radius-sm)">
+                <i class="fa-solid fa-spinner fa-spin"></i> Generating captions...
+            </div>
+            <div id="ee-cc-cue-list" style="max-height:200px;overflow-y:auto;background:rgba(0,0,0,.15);border:1px solid var(--border);
+                 border-radius:var(--radius-sm);font-size:11px;font-family:'SF Mono','Fira Code',monospace">
+                <div style="color:var(--muted);text-align:center;padding:16px">No captions. Click Auto-Generate or Import.</div>
+            </div>
+            <div style="font-size:10px;color:var(--muted);margin-top:6px">
+                Click a cue timestamp to seek. Click text to edit inline. Auto-generate uses Whisper (if installed) or Ollama.
+            </div>
+        </div>
+
+        <!-- Ad Placements Panel -->
+        <div class="ee-panel">
+            <div class="ee-panel-hdr">
+                <i class="fa-solid fa-rectangle-ad" style="color:var(--orange)"></i> Ad Placements
+                <button class="btn btn-xs btn-secondary" onclick="window.eeInsertAdBreak()" title="Insert ad break marker at current playhead position">
+                    <i class="fa-solid fa-plus"></i> Insert Ad Break
+                </button>
+            </div>
+            <div id="ee-ad-breaks" style="max-height:180px;overflow-y:auto">
+                <div class="ee-ch-empty" id="ee-ad-empty">No ad breaks. Click "Insert Ad Break" to mark insertion points.</div>
+            </div>
+            <div id="ee-ad-campaigns" style="margin-top:10px;display:none">
+                <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Assigned Campaigns</div>
+                <div id="ee-ad-campaign-list"></div>
+            </div>
+        </div>
+
         <!-- Export Panel -->
         <div class="ee-panel">
             <div class="ee-panel-hdr">
@@ -425,6 +512,7 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
 
 <script src="/js/webgl-viz.js"></script>
 <script src="/js/episode-editor.js"></script>
+<script src="/js/captions-engine.js"></script>
 <script>
 /* ── AI Tools for Episode Editor (Phase PC-6) ── */
 var VT_BASE = '';  /* same origin — proxied through admin server */
@@ -547,6 +635,345 @@ window.eeAiNormalize = function() {
     });
 };
 
+/* ── Captions for Episode Editor ── */
+
+var eeCaptionsEngine = null;
+
+function eeInitCaptions() {
+    if (typeof Mc1CaptionsEngine === 'undefined') return;
+    eeCaptionsEngine = new Mc1CaptionsEngine.CaptionsEngine({
+        language: document.getElementById('ee-cc-language').value || 'en'
+    });
+}
+
+function eeCcEsc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+function eeCcFmtTime(sec) {
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s2 = Math.floor(sec % 60);
+    var ms = Math.round((sec - Math.floor(sec)) * 1000);
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':'
+         + (s2 < 10 ? '0' : '') + s2 + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
+}
+
+window.eeCaptionsAutoGenerate = function() {
+    if (!EP_DATA || !EP_DATA.id) return;
+    var lang = document.getElementById('ee-cc-language').value || 'en';
+    var status = document.getElementById('ee-cc-status');
+    var btn = document.getElementById('ee-cc-auto-btn');
+
+    status.style.display = '';
+    status.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating captions (this may take a few minutes)...';
+    btn.disabled = true;
+
+    mc1Api('POST', '/app/api/captions.php', {
+        action: 'transcribe_file',
+        episode_id: EP_DATA.id,
+        language: lang,
+        format: 'srt'
+    }).then(function(d) {
+        btn.disabled = false;
+        if (d.ok && d.caption_text) {
+            if (!eeCaptionsEngine) eeInitCaptions();
+            eeCaptionsEngine.loadSRT(d.caption_text);
+            eeCcRefreshList();
+            status.innerHTML = '<i class="fa-solid fa-check"></i> Generated ' + (d.cue_count || eeCaptionsEngine.cues.length) + ' caption cues';
+            if (typeof mc1Toast === 'function') mc1Toast('Captions generated successfully');
+        } else {
+            status.innerHTML = '<i class="fa-solid fa-exclamation-triangle"></i> ' + eeCcEsc(d.error || 'Failed');
+            status.style.color = 'var(--muted)';
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'Transcription failed', 'err');
+        }
+        setTimeout(function() { status.style.display = 'none'; status.style.color = 'var(--teal)'; }, 8000);
+    }).catch(function(e) {
+        btn.disabled = false;
+        status.innerHTML = '<i class="fa-solid fa-xmark"></i> Request failed';
+        status.style.color = 'var(--muted)';
+        if (typeof mc1Toast === 'function') mc1Toast('Captions request failed', 'err');
+        setTimeout(function() { status.style.display = 'none'; status.style.color = 'var(--teal)'; }, 5000);
+    });
+};
+
+window.eeCaptionsImport = function() {
+    document.getElementById('ee-cc-import-input').click();
+};
+
+window.eeCaptionsHandleImport = function(input) {
+    if (!input.files || !input.files[0]) return;
+    if (!eeCaptionsEngine) eeInitCaptions();
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function() {
+        if (file.name.toLowerCase().endsWith('.vtt')) {
+            eeCaptionsEngine.loadVTT(reader.result);
+        } else {
+            eeCaptionsEngine.loadSRT(reader.result);
+        }
+        eeCcRefreshList();
+        if (typeof mc1Toast === 'function') mc1Toast('Imported ' + eeCaptionsEngine.cues.length + ' cues');
+    };
+    reader.readAsText(file);
+    input.value = '';
+};
+
+window.eeCaptionsExport = function(format) {
+    if (!eeCaptionsEngine || eeCaptionsEngine.cues.length === 0) {
+        if (typeof mc1Toast === 'function') mc1Toast('No captions to export', 'warn');
+        return;
+    }
+    var text = format === 'vtt' ? eeCaptionsEngine.exportVTT() : eeCaptionsEngine.exportSRT();
+    var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (EP_DATA.title || 'episode').replace(/[^a-zA-Z0-9_-]/g, '_') + '.' + format;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+};
+
+window.eeCaptionsSave = function() {
+    if (!eeCaptionsEngine || eeCaptionsEngine.cues.length === 0) {
+        if (typeof mc1Toast === 'function') mc1Toast('No captions to save', 'warn');
+        return;
+    }
+    mc1Api('POST', '/app/api/captions.php', {
+        action: 'save_captions',
+        episode_id: EP_DATA.id,
+        language: document.getElementById('ee-cc-language').value || 'en',
+        format: 'srt',
+        caption_text: eeCaptionsEngine.exportSRT(),
+        is_auto_generated: 0
+    }).then(function(d) {
+        if (d.ok) {
+            if (typeof mc1Toast === 'function') mc1Toast('Captions saved');
+        } else {
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'Save failed', 'err');
+        }
+    });
+};
+
+window.eeCaptionsLoad = function() {
+    if (!eeCaptionsEngine) eeInitCaptions();
+    mc1Api('POST', '/app/api/captions.php', {
+        action: 'load_captions',
+        episode_id: EP_DATA.id,
+        language: document.getElementById('ee-cc-language').value || 'en'
+    }).then(function(d) {
+        if (d.ok && d.found && d.caption_text) {
+            if (d.format === 'vtt') {
+                eeCaptionsEngine.loadVTT(d.caption_text);
+            } else {
+                eeCaptionsEngine.loadSRT(d.caption_text);
+            }
+            eeCcRefreshList();
+            if (typeof mc1Toast === 'function') mc1Toast('Loaded ' + eeCaptionsEngine.cues.length + ' cues');
+        } else if (d.ok && !d.found) {
+            if (typeof mc1Toast === 'function') mc1Toast('No saved captions found', 'warn');
+        } else {
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'Load failed', 'err');
+        }
+    });
+};
+
+function eeCcRefreshList() {
+    var list = document.getElementById('ee-cc-cue-list');
+    if (!eeCaptionsEngine || eeCaptionsEngine.cues.length === 0) {
+        list.innerHTML = '<div style="color:var(--muted);text-align:center;padding:16px">No captions. Click Auto-Generate or Import.</div>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < eeCaptionsEngine.cues.length; i++) {
+        var c = eeCaptionsEngine.cues[i];
+        html += '<div style="display:flex;gap:6px;padding:3px 4px;border-bottom:1px solid rgba(51,65,85,.3)">'
+              + '<span style="color:var(--teal);min-width:90px;flex-shrink:0;cursor:pointer" '
+              + 'onclick="eeCcSeek(' + c.start.toFixed(3) + ')" title="Click to seek">'
+              + eeCcEsc(eeCcFmtTime(c.start)) + '</span>'
+              + '<span style="color:var(--text-dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+              + 'cursor:pointer" onclick="eeCcEditCue(' + i + ')" title="Click to edit">'
+              + eeCcEsc(c.text) + '</span>'
+              + '<button onclick="eeCcDeleteCue(' + i + ')" style="background:none;border:none;color:var(--muted);'
+              + 'cursor:pointer;padding:0 3px;font-size:10px;flex-shrink:0" title="Delete">'
+              + '<i class="fa-solid fa-xmark"></i></button>'
+              + '</div>';
+    }
+    list.innerHTML = html;
+}
+
+function eeCcSeek(timeSec) {
+    if (window.eeEditor && typeof window.eeEditor.seekTo === 'function') {
+        window.eeEditor.seekTo(timeSec);
+    }
+}
+
+function eeCcEditCue(idx) {
+    if (!eeCaptionsEngine || idx < 0 || idx >= eeCaptionsEngine.cues.length) return;
+    var c = eeCaptionsEngine.cues[idx];
+    var newText = prompt('Edit caption text:', c.text);
+    if (newText !== null) {
+        eeCaptionsEngine.editCue(idx, newText);
+        eeCcRefreshList();
+    }
+}
+
+function eeCcDeleteCue(idx) {
+    if (!eeCaptionsEngine) return;
+    eeCaptionsEngine.deleteCue(idx);
+    eeCcRefreshList();
+}
+
+/* ── Ad Placement Functions for Episode Editor ── */
+
+function eeFmtMs(ms) {
+    var sec = Math.floor(ms / 1000);
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function eeEsc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* We insert an ad break marker at the current playhead position */
+window.eeInsertAdBreak = function() {
+    if (!window.eeEditor) return;
+    var pos_ms = 0;
+    if (window.eeEditor.getPlayheadMs) {
+        pos_ms = Math.floor(window.eeEditor.getPlayheadMs());
+    } else if (window.eeEditor.currentTime) {
+        pos_ms = Math.floor(window.eeEditor.currentTime * 1000);
+    }
+
+    /* We add a marker of type 'ad_break' via the podcast API */
+    if (typeof mc1Api === 'function') {
+        mc1Api('/app/api/podcast.php', {method:'POST', body:JSON.stringify({
+            action: 'add_marker',
+            episode_id: EP_DATA.id,
+            marker_type: 'ad_break',
+            title: 'Ad Break',
+            timestamp_ms: pos_ms
+        })}).then(function(d) {
+            if (d && d.ok) {
+                eeRefreshAdBreaks();
+                if (typeof mc1Toast === 'function') mc1Toast('Ad break inserted at ' + eeFmtMs(pos_ms), 'ok');
+                /* We also add a visual marker in the editor */
+                if (window.eeEditor && typeof window.eeEditor.addChapter === 'function') {
+                    window.eeEditor.addChapter(pos_ms, 'Ad Break');
+                }
+            } else {
+                if (typeof mc1Toast === 'function') mc1Toast((d && d.error) || 'Failed to insert ad break', 'err');
+            }
+        });
+    }
+};
+
+/* We refresh the ad breaks list from the database */
+function eeRefreshAdBreaks() {
+    if (!EP_DATA || !EP_DATA.id) return;
+
+    if (typeof mc1Api === 'function') {
+        mc1Api('/app/api/podcast.php', {method:'POST', body:JSON.stringify({
+            action: 'list_markers',
+            episode_id: EP_DATA.id
+        })}).then(function(d) {
+            var container = document.getElementById('ee-ad-breaks');
+            var empty = document.getElementById('ee-ad-empty');
+            if (!container) return;
+
+            var adMarkers = (d && d.ok && d.markers) ? d.markers.filter(function(m) {
+                return m.marker_type === 'ad_break';
+            }) : [];
+
+            if (adMarkers.length === 0) {
+                container.innerHTML = '<div class="ee-ch-empty" id="ee-ad-empty">No ad breaks. Click "Insert Ad Break" to mark insertion points.</div>';
+                document.getElementById('ee-ad-campaigns').style.display = 'none';
+                return;
+            }
+
+            var html = '';
+            adMarkers.forEach(function(m) {
+                html += '<div class="ee-ad-item">';
+                html += '<span class="ee-ad-ts" onclick="if(window.eeEditor&&window.eeEditor.seekTo)window.eeEditor.seekTo(' + (parseInt(m.timestamp_ms)/1000) + ')">' + eeFmtMs(parseInt(m.timestamp_ms)) + '</span>';
+                html += '<span class="ee-ad-label">' + eeEsc(m.title || 'Ad Break') + '</span>';
+                html += '<span class="ee-ad-badge">AD BREAK</span>';
+                html += '<span class="ee-ad-del" onclick="eeDeleteAdBreak(' + m.id + ')" title="Remove ad break"><i class="fa-solid fa-xmark"></i></span>';
+                html += '</div>';
+            });
+            container.innerHTML = html;
+
+            /* We also load ad placements for this episode */
+            eeLoadAdPlacements();
+        });
+    }
+}
+
+function eeDeleteAdBreak(markerId) {
+    if (typeof mc1Api === 'function') {
+        mc1Api('/app/api/podcast.php', {method:'POST', body:JSON.stringify({
+            action: 'delete_marker', id: markerId
+        })}).then(function(d) {
+            if (d && d.ok) {
+                eeRefreshAdBreaks();
+                if (typeof mc1Toast === 'function') mc1Toast('Ad break removed', 'ok');
+            }
+        });
+    }
+}
+
+/* We load any existing ad placements (campaigns assigned to this episode) */
+function eeLoadAdPlacements() {
+    if (!EP_DATA || !EP_DATA.id) return;
+
+    if (typeof mc1Api === 'function') {
+        mc1Api('/app/api/ads.php', {method:'POST', body:JSON.stringify({
+            action: 'list_placements', episode_id: EP_DATA.id
+        })}).then(function(d) {
+            var panel = document.getElementById('ee-ad-campaigns');
+            var list = document.getElementById('ee-ad-campaign-list');
+            if (!panel || !list) return;
+
+            if (!d || !d.ok || !d.placements || d.placements.length === 0) {
+                panel.style.display = 'none';
+                return;
+            }
+
+            panel.style.display = 'block';
+            var html = '';
+            d.placements.forEach(function(p) {
+                html += '<div class="ee-ad-campaign-row">';
+                html += '<span class="ee-ad-badge" style="font-size:9px">' + eeEsc(p.position.replace('_', '-')) + '</span>';
+                html += '<span style="flex:1">' + eeEsc(p.campaign_name || 'Campaign #' + p.campaign_id) + '</span>';
+                if (p.position === 'mid_roll' && p.timestamp_ms > 0) {
+                    html += '<span style="font-family:monospace;font-size:10px;color:var(--muted)">@ ' + eeFmtMs(parseInt(p.timestamp_ms)) + '</span>';
+                }
+                html += '<span class="ee-ad-del" onclick="eeRemovePlacement(' + p.id + ')" title="Remove placement"><i class="fa-solid fa-xmark"></i></span>';
+                html += '</div>';
+            });
+            list.innerHTML = html;
+        });
+    }
+}
+
+function eeRemovePlacement(placementId) {
+    if (typeof mc1Api === 'function') {
+        mc1Api('/app/api/ads.php', {method:'POST', body:JSON.stringify({
+            action: 'remove_placement', id: placementId
+        })}).then(function(d) {
+            if (d && d.ok) {
+                eeLoadAdPlacements();
+                if (typeof mc1Toast === 'function') mc1Toast('Ad placement removed', 'ok');
+            }
+        });
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     window.eeEditor = new EpisodeEditor({
         episodeData: EP_DATA,
@@ -555,8 +982,60 @@ document.addEventListener('DOMContentLoaded', function() {
         overlayId: 'ee-wave-overlay',
         rulerId: 'ee-ruler',
     });
+
+    /* Initialize captions engine and auto-load saved captions */
+    eeInitCaptions();
+    if (eeCaptionsEngine && EP_DATA && EP_DATA.id) {
+        mc1Api('POST', '/app/api/captions.php', {
+            action: 'load_captions',
+            episode_id: EP_DATA.id,
+            language: 'en'
+        }).then(function(d) {
+            if (d && d.ok && d.found && d.caption_text) {
+                if (d.format === 'vtt') {
+                    eeCaptionsEngine.loadVTT(d.caption_text);
+                } else {
+                    eeCaptionsEngine.loadSRT(d.caption_text);
+                }
+                eeCcRefreshList();
+            }
+        }).catch(function() { /* silent on auto-load failure */ });
+    }
+
+    /* We load ad break markers and placements for this episode */
+    eeRefreshAdBreaks();
 });
 </script>
 
 <?php endif; ?>
+<?php require_once __DIR__ . '/app/inc/media_picker.php'; ?>
+
+<script>
+/* We allow importing audio from the media library into the episode editor.
+ * This fetches the file as an ArrayBuffer and feeds it to the editor as if
+ * it were a local file load. */
+function eeImportFromLibrary(trackId, title) {
+    mc1Toast('Loading "' + (title || 'track') + '" from library...', 'info');
+    fetch('/app/api/audio.php?id=' + trackId).then(function(r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+    }).then(function(buf) {
+        if (window.eeEditor && typeof window.eeEditor.loadAudioBuffer === 'function') {
+            /* We feed the raw buffer to the editor's AudioContext decoder */
+            var ctx = window.eeEditor.audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+            ctx.decodeAudioData(buf, function(decoded) {
+                window.eeEditor.setAudioBuffer(decoded);
+                mc1Toast('Loaded: ' + (title || 'track'), 'ok');
+            }, function(e) {
+                mc1Toast('Audio decode failed: ' + (e.message || 'unknown'), 'err');
+            });
+        } else {
+            mc1Toast('Editor not ready', 'warn');
+        }
+    }).catch(function(e) {
+        mc1Toast('Failed to load from library: ' + e.message, 'err');
+    });
+}
+</script>
+
 <?php require __DIR__ . '/app/inc/footer.php'; ?>

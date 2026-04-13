@@ -92,6 +92,7 @@ if (!$file_path || !is_readable($file_path)) {
 
 /* ── Determine MIME type from file extension ─────────────────────────────── */
 $mime_map = [
+    /* Audio formats */
     'mp3'  => 'audio/mpeg',
     'ogg'  => 'audio/ogg',
     'flac' => 'audio/flac',
@@ -100,6 +101,15 @@ $mime_map = [
     'm4a'  => 'audio/mp4',
     'wav'  => 'audio/wav',
     'wma'  => 'audio/x-ms-wma',
+    'aiff' => 'audio/aiff',
+    'aif'  => 'audio/aiff',
+    /* Video formats */
+    'mp4'  => 'video/mp4',
+    'webm' => 'video/webm',
+    'mkv'  => 'video/x-matroska',
+    'avi'  => 'video/x-msvideo',
+    'mov'  => 'video/quicktime',
+    'ogv'  => 'video/ogg',
 ];
 $ext       = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
 $mime_type = $mime_map[$ext] ?? 'application/octet-stream';

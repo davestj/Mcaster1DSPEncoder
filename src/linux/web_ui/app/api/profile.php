@@ -209,5 +209,67 @@ if ($action === 'set_session_ttl') {
     return;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * action: set_preference — store a key-value user preference
+ * We store preferences as a JSON blob in the user_preferences table (or
+ * fall back to localStorage on the client if the table does not exist).
+ * ══════════════════════════════════════════════════════════════════════════ */
+if ($action === 'set_preference') {
+    $pref_key   = (string)($body['key'] ?? '');
+    $pref_value = (string)($body['value'] ?? '');
+
+    if ($pref_key === '') {
+        mc1_api_respond(['error' => 'key required'], 400);
+        return;
+    }
+
+    /* We allow only known safe preference keys */
+    $allowed_keys = ['app_mode', 'theme', 'sidebar_collapsed', 'dashboard_view'];
+    if (!in_array($pref_key, $allowed_keys, true)) {
+        mc1_api_respond(['error' => 'Unknown preference key: ' . $pref_key], 400);
+        return;
+    }
+
+    /* We attempt to store in user_preferences table; if it does not exist,
+       we silently return ok (client stores in localStorage as primary) */
+    try {
+        $pdo = mc1_db('mcaster1_encoder');
+        /* We use REPLACE INTO for upsert behavior */
+        $stmt = $pdo->prepare('REPLACE INTO user_preferences (user_id, pref_key, pref_value, updated_at) VALUES (?, ?, ?, NOW())');
+        $stmt->execute([$user_id, $pref_key, $pref_value]);
+        mc1_api_respond(['ok' => true]);
+    } catch (Exception $e) {
+        /* Table may not exist yet -- that is fine, localStorage is primary */
+        mc1_api_respond(['ok' => true, 'note' => 'stored_locally_only']);
+    }
+    return;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * action: get_preference — retrieve a user preference by key
+ * ══════════════════════════════════════════════════════════════════════════ */
+if ($action === 'get_preference') {
+    $pref_key = (string)($body['key'] ?? '');
+    if ($pref_key === '') {
+        mc1_api_respond(['error' => 'key required'], 400);
+        return;
+    }
+
+    try {
+        $pdo = mc1_db('mcaster1_encoder');
+        $stmt = $pdo->prepare('SELECT pref_value FROM user_preferences WHERE user_id = ? AND pref_key = ?');
+        $stmt->execute([$user_id, $pref_key]);
+        $row = $stmt->fetch();
+        if ($row) {
+            mc1_api_respond(['ok' => true, 'key' => $pref_key, 'value' => $row['pref_value']]);
+        } else {
+            mc1_api_respond(['ok' => true, 'key' => $pref_key, 'value' => null]);
+        }
+    } catch (Exception $e) {
+        mc1_api_respond(['ok' => true, 'key' => $pref_key, 'value' => null, 'note' => 'table_missing']);
+    }
+    return;
+}
+
 /* We return 400 for unknown actions */
 mc1_api_respond(['error' => 'Unknown action: ' . $action], 400);

@@ -9,7 +9,7 @@
 #   ./configure
 #   make -j$(nproc)
 
-bin_PROGRAMS = mcaster1-dsp-encoder-admin mcaster1-dsp-encoder mcaster1-voictune
+bin_PROGRAMS = mcaster1-dsp-encoder-admin mcaster1-dsp-encoder mcaster1-voictune mcaster1-producer
 
 # ── Include paths ──────────────────────────────────────────────────────────────
 AM_CPPFLAGS = \
@@ -276,6 +276,23 @@ endif
 if HAVE_JACK
 mcaster1_voictune_LDADD += $(JACK_LIBS)
 endif
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PRODUCER BINARY — Video encoding, audio mixdown, forensic FFT (Phase PR)
+# ══════════════════════════════════════════════════════════════════════════════
+
+mcaster1_producer_CPPFLAGS = $(AM_CPPFLAGS) -DMC1_PRODUCER_BUILD
+mcaster1_producer_SOURCES = \
+    producer/main_producer.cpp \
+    producer/pr_http_api.cpp \
+    producer/pr_config.cpp \
+    producer/pr_worker_pool.cpp
+
+mcaster1_producer_LDADD = \
+    $(OPENSSL_LIBS) \
+    $(LIBYAML_LIBS) \
+    -lpthread \
+    -lm
 
 # ── Extra dist ─────────────────────────────────────────────────────────────────
 EXTRA_DIST = \

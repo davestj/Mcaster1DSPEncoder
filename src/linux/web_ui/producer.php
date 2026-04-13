@@ -1150,6 +1150,14 @@ input[type="color"].sm-color {
                   padding:2px 6px;border-radius:8px;letter-spacing:.06em;position:absolute;top:-6px;right:-8px;
                   animation:rec-pulse 1.2s ease-in-out infinite">LIVE</span>
         </div>
+        <div style="position:relative;display:inline-block">
+            <button class="btn btn-secondary btn-xs" id="captions-btn" onclick="toggleCaptionsPanel()"
+                    style="font-size:11px;padding:5px 10px;border-radius:6px">
+                <i class="fa-solid fa-closed-captioning"></i> CC <i class="fa-solid fa-caret-down" style="font-size:10px;margin-left:2px"></i>
+            </button>
+            <span id="cc-live-badge" style="display:none;background:var(--teal);color:#fff;font-size:8px;font-weight:800;
+                  padding:1px 5px;border-radius:6px;letter-spacing:.06em;position:absolute;top:-5px;right:-6px">ON</span>
+        </div>
     </div>
     <div style="flex:1"></div>
     <div class="ctrl-group">
@@ -1241,6 +1249,111 @@ input[type="color"].sm-color {
                     <div style="background:rgba(30,41,59,.8);border-radius:3px;height:8px;overflow:hidden;border:1px solid var(--border)">
                         <div id="stream-buffer-bar" style="height:100%;background:var(--teal);width:0%;transition:width .3s"></div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Captions Panel (dropdown) -->
+<div id="captions-panel" style="display:none;margin-top:12px">
+    <div class="sw-panel" style="border-color:rgba(20,184,166,.3)">
+        <div class="sec-title"><i class="fa-solid fa-closed-captioning"></i> Closed Captions</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <!-- Left: controls -->
+            <div>
+                <div class="sw-row">
+                    <label>Mode</label>
+                    <div style="display:flex;gap:6px;flex:1">
+                        <button class="btn btn-xs" id="cc-auto-btn" onclick="ccStartAutoTranscribe()"
+                                style="font-size:11px;padding:4px 10px">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-Transcribe
+                        </button>
+                        <button class="btn btn-xs btn-secondary" id="cc-stop-btn" onclick="ccStopAutoTranscribe()"
+                                style="font-size:11px;padding:4px 10px;display:none">
+                            <i class="fa-solid fa-stop"></i> Stop
+                        </button>
+                    </div>
+                </div>
+                <div class="sw-row">
+                    <label>Import</label>
+                    <div style="display:flex;gap:6px;flex:1">
+                        <button class="btn btn-xs btn-secondary" onclick="ccImportFile()"
+                                style="font-size:11px;padding:4px 10px">
+                            <i class="fa-solid fa-file-import"></i> SRT / VTT
+                        </button>
+                        <input type="file" id="cc-import-input" accept=".srt,.vtt" style="display:none" onchange="ccHandleImport(this)">
+                    </div>
+                </div>
+                <div class="sw-row">
+                    <label>Export</label>
+                    <div style="display:flex;gap:6px;flex:1">
+                        <button class="btn btn-xs btn-secondary" onclick="ccExport('srt')" style="font-size:11px;padding:4px 10px">
+                            <i class="fa-solid fa-download"></i> SRT
+                        </button>
+                        <button class="btn btn-xs btn-secondary" onclick="ccExport('vtt')" style="font-size:11px;padding:4px 10px">
+                            <i class="fa-solid fa-download"></i> VTT
+                        </button>
+                    </div>
+                </div>
+                <div class="sw-row">
+                    <label>Language</label>
+                    <select class="form-select" id="cc-language" style="flex:1;font-size:11px;padding:4px 8px">
+                        <option value="en" selected>English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="ja">Japanese</option>
+                        <option value="ko">Korean</option>
+                        <option value="zh">Chinese</option>
+                    </select>
+                </div>
+                <div class="sw-row">
+                    <label style="white-space:nowrap">Show on Video</label>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--text-dim)">
+                        <input type="checkbox" id="cc-show-overlay" onchange="ccToggleOverlay()"> Enable overlay
+                    </label>
+                </div>
+                <div class="sw-row">
+                    <label>Position</label>
+                    <select class="form-select" id="cc-position" style="flex:1;font-size:11px;padding:4px 8px" onchange="ccUpdateStyle()">
+                        <option value="bottom" selected>Bottom</option>
+                        <option value="top">Top</option>
+                    </select>
+                </div>
+                <div class="sw-row">
+                    <label>Font Size</label>
+                    <input type="range" id="cc-fontsize" min="14" max="48" value="28" style="flex:1" onchange="ccUpdateStyle()">
+                    <span id="cc-fontsize-val" style="font-size:11px;color:var(--muted);min-width:28px;text-align:right">28</span>
+                </div>
+                <div class="sw-row">
+                    <label>BG Opacity</label>
+                    <input type="range" id="cc-bg-opacity" min="0" max="100" value="70" style="flex:1" onchange="ccUpdateStyle()">
+                    <span id="cc-bg-opacity-val" style="font-size:11px;color:var(--muted);min-width:28px;text-align:right">70%</span>
+                </div>
+                <div class="sw-row">
+                    <label style="white-space:nowrap">Burn into Video</label>
+                    <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:11px;color:var(--text-dim)">
+                        <input type="checkbox" id="cc-burn"> Include in recording/export
+                    </label>
+                </div>
+            </div>
+            <!-- Right: caption display / editor -->
+            <div>
+                <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:6px">
+                    <i class="fa-solid fa-list"></i> Captions
+                    <span id="cc-cue-count" style="font-size:10px;color:var(--muted)">(0 cues)</span>
+                    <button class="btn btn-xs btn-secondary" onclick="ccClearAll()" style="margin-left:auto;font-size:10px;padding:2px 8px">
+                        <i class="fa-solid fa-trash"></i> Clear
+                    </button>
+                </div>
+                <div id="cc-cue-list" style="max-height:220px;overflow-y:auto;background:rgba(0,0,0,.2);border:1px solid var(--border);
+                     border-radius:var(--radius-sm);padding:4px;font-size:11px;font-family:'SF Mono','Fira Code',monospace">
+                    <div style="color:var(--muted);text-align:center;padding:20px">No captions yet</div>
+                </div>
+                <div id="cc-live-preview" style="margin-top:8px;padding:8px;background:rgba(0,0,0,.5);border-radius:var(--radius-sm);
+                     min-height:40px;text-align:center;color:#fff;font-size:14px;font-weight:600;display:none">
                 </div>
             </div>
         </div>
@@ -1642,6 +1755,7 @@ input[type="color"].sm-color {
 
 <script src="/js/webgl-video.js"></script>
 <script src="/js/video-producer.js"></script>
+<script src="/js/captions-engine.js"></script>
 
 <script>
 /* -- Producer page controller ---------------------------------------- */
@@ -2866,10 +2980,224 @@ function updateScenePresetButtons() {
     }
 }
 
+/* -- Captions -------------------------------------------------------- */
+
+var captionsEngine = null;
+var ccOverlayCanvas = null;
+var ccOverlayEnabled = false;
+
+function initCaptions() {
+    captionsEngine = new Mc1CaptionsEngine.CaptionsEngine({
+        language: document.getElementById('cc-language').value || 'en',
+        onCueAdded: function(cue, idx) {
+            ccRefreshCueList();
+        }
+    });
+    ccOverlayCanvas = document.createElement('canvas');
+    ccOverlayCanvas.width = 1280;
+    ccOverlayCanvas.height = 720;
+}
+
+function toggleCaptionsPanel() {
+    var panel = document.getElementById('captions-panel');
+    panel.style.display = panel.style.display === 'none' ? '' : 'none';
+}
+
+function ccStartAutoTranscribe() {
+    if (!captionsEngine) initCaptions();
+    captionsEngine.language = document.getElementById('cc-language').value || 'en';
+
+    /* Grab audio from PGM source or use mic */
+    var pgmSrc = producer && producer.pgmSourceIdx >= 0 ? producer.sources[producer.pgmSourceIdx] : null;
+    var stream = (pgmSrc && pgmSrc.stream) ? pgmSrc.stream : null;
+
+    if (!stream) {
+        /* Fall back to default mic */
+        navigator.mediaDevices.getUserMedia({ audio: true, video: false }).then(function(s) {
+            captionsEngine.startLiveTranscription(s);
+            ccShowLive(true);
+        }).catch(function(e) {
+            mc1Toast('Cannot access microphone: ' + e.message, 'err');
+        });
+        return;
+    }
+
+    captionsEngine.startLiveTranscription(stream);
+    ccShowLive(true);
+}
+
+function ccStopAutoTranscribe() {
+    if (captionsEngine) {
+        captionsEngine.stopLiveTranscription();
+    }
+    ccShowLive(false);
+}
+
+function ccShowLive(on) {
+    document.getElementById('cc-auto-btn').style.display = on ? 'none' : '';
+    document.getElementById('cc-stop-btn').style.display = on ? '' : 'none';
+    document.getElementById('cc-live-badge').style.display = on ? '' : 'none';
+}
+
+function ccImportFile() {
+    document.getElementById('cc-import-input').click();
+}
+
+function ccHandleImport(input) {
+    if (!input.files || !input.files[0]) return;
+    if (!captionsEngine) initCaptions();
+
+    var file = input.files[0];
+    var reader = new FileReader();
+    reader.onload = function() {
+        var text = reader.result;
+        if (file.name.toLowerCase().endsWith('.vtt')) {
+            captionsEngine.loadVTT(text);
+        } else {
+            captionsEngine.loadSRT(text);
+        }
+        ccRefreshCueList();
+        mc1Toast('Imported ' + captionsEngine.cues.length + ' caption cues');
+    };
+    reader.readAsText(file);
+    input.value = '';
+}
+
+function ccExport(format) {
+    if (!captionsEngine || captionsEngine.cues.length === 0) {
+        mc1Toast('No captions to export', 'warn');
+        return;
+    }
+    var text = format === 'vtt' ? captionsEngine.exportVTT() : captionsEngine.exportSRT();
+    var blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'captions.' + format;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+function ccToggleOverlay() {
+    ccOverlayEnabled = document.getElementById('cc-show-overlay').checked;
+    if (!ccOverlayEnabled) {
+        document.getElementById('cc-live-preview').style.display = 'none';
+    }
+}
+
+function ccUpdateStyle() {
+    var fs = document.getElementById('cc-fontsize').value;
+    document.getElementById('cc-fontsize-val').textContent = fs;
+    var op = document.getElementById('cc-bg-opacity').value;
+    document.getElementById('cc-bg-opacity-val').textContent = op + '%';
+
+    if (captionsEngine) {
+        captionsEngine.style.fontSize = parseInt(fs);
+        captionsEngine.style.position = document.getElementById('cc-position').value;
+        captionsEngine.style.bgColor = 'rgba(0,0,0,' + (parseInt(op) / 100).toFixed(2) + ')';
+    }
+}
+
+function ccClearAll() {
+    if (captionsEngine) captionsEngine.clearCues();
+    ccRefreshCueList();
+}
+
+function ccRefreshCueList() {
+    var list = document.getElementById('cc-cue-list');
+    var count = document.getElementById('cc-cue-count');
+    if (!captionsEngine || captionsEngine.cues.length === 0) {
+        list.innerHTML = '<div style="color:var(--muted);text-align:center;padding:20px">No captions yet</div>';
+        count.textContent = '(0 cues)';
+        return;
+    }
+    count.textContent = '(' + captionsEngine.cues.length + ' cues)';
+    var html = '';
+    for (var i = 0; i < captionsEngine.cues.length; i++) {
+        var c = captionsEngine.cues[i];
+        var ts = ccFmtTime(c.start) + ' - ' + ccFmtTime(c.end);
+        html += '<div style="display:flex;gap:6px;padding:3px 4px;border-bottom:1px solid rgba(51,65,85,.3);cursor:pointer" '
+              + 'onclick="ccEditCue(' + i + ')" title="Click to edit">'
+              + '<span style="color:var(--teal);min-width:110px;flex-shrink:0">' + esc(ts) + '</span>'
+              + '<span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+              + esc(c.text) + '</span>'
+              + '<button onclick="event.stopPropagation();ccDeleteCue(' + i + ')" style="margin-left:auto;background:none;border:none;'
+              + 'color:var(--muted);cursor:pointer;padding:0 2px;font-size:10px" title="Delete"><i class="fa-solid fa-xmark"></i></button>'
+              + '</div>';
+    }
+    list.innerHTML = html;
+}
+
+function ccEditCue(idx) {
+    if (!captionsEngine || idx < 0 || idx >= captionsEngine.cues.length) return;
+    var c = captionsEngine.cues[idx];
+    var newText = prompt('Edit caption text:', c.text);
+    if (newText !== null) {
+        captionsEngine.editCue(idx, newText);
+        ccRefreshCueList();
+    }
+}
+
+function ccDeleteCue(idx) {
+    if (!captionsEngine) return;
+    captionsEngine.deleteCue(idx);
+    ccRefreshCueList();
+}
+
+function ccFmtTime(sec) {
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    var ms = Math.round((sec - Math.floor(sec)) * 1000);
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + '.' + (ms < 10 ? '00' : ms < 100 ? '0' : '') + ms;
+}
+
+function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+
+/**
+ * Called from the producer render loop to composite captions
+ * onto the program output when overlay is enabled.
+ */
+function ccRenderOverlay(programTime) {
+    if (!ccOverlayEnabled || !captionsEngine || !ccOverlayCanvas) return null;
+    var cue = captionsEngine.getCueAtTime(programTime);
+    var preview = document.getElementById('cc-live-preview');
+
+    if (!cue) {
+        if (preview) preview.style.display = 'none';
+        /* Clear canvas */
+        var ctx = ccOverlayCanvas.getContext('2d');
+        ctx.clearRect(0, 0, ccOverlayCanvas.width, ccOverlayCanvas.height);
+        return null;
+    }
+
+    /* Show in the preview box */
+    if (preview) {
+        preview.style.display = '';
+        preview.textContent = cue.text;
+    }
+
+    /* Render onto the overlay canvas for WebGL compositing */
+    captionsEngine.renderCaptionFrame(ccOverlayCanvas, cue.text);
+
+    return {
+        canvas: ccOverlayCanvas,
+        rect: captionsEngine.style.position === 'top'
+            ? { x: 0.05, y: 0.02, w: 0.9, h: 0.12 }
+            : { x: 0.05, y: 0.82, w: 0.9, h: 0.12 },
+        alpha: 1.0
+    };
+}
+
 /* -- DOMContentLoaded ------------------------------------------------ */
 
 document.addEventListener('DOMContentLoaded', function() {
     initProducer();
+    initCaptions();
     document.getElementById('scene-select').addEventListener('change', loadScene);
 
     document.getElementById('file-modal').addEventListener('click', function(e) {

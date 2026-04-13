@@ -623,6 +623,29 @@ img, canvas, video, iframe, svg {
         display: none;
     }
 
+    /* Mode selector: compact on mobile */
+    .mode-badge #mode-badge-label {
+        display: none;
+    }
+    .mode-badge .fa-chevron-down {
+        display: none;
+    }
+    .mode-badge {
+        padding: 6px 8px !important;
+        min-width: 36px;
+        min-height: 36px;
+        justify-content: center;
+    }
+    .mode-dropdown {
+        right: -40px;
+        width: min(220px, 90vw);
+    }
+
+    /* Daemon monitor: 2-column on mobile */
+    #daemon-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+
     /* Pedalboard: horizontal scroll */
     .pedalboard-surface,
     .pedalboard-container,

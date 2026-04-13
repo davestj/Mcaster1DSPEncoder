@@ -155,6 +155,8 @@ require_once __DIR__ . '/app/inc/header.php';
 
 <!-- Hidden audio element — JS drives this entirely -->
 <audio id="mp-audio" preload="auto" style="display:none"></audio>
+<!-- Video element for video tracks -->
+<video id="mp-video" preload="auto" style="display:none;max-width:380px;max-height:260px;border-radius:12px;background:#000;box-shadow:0 12px 40px rgba(0,0,0,.5)"></video>
 
 <!-- Queue item context menu -->
 <div class="mp-q-ctx-menu" id="mp-q-ctx-menu">
@@ -261,36 +263,36 @@ var repeatMode = 0;       /* 0=off, 1=one, 2=all */
 var seeking    = false;
 
 var audio   = document.getElementById('mp-audio');
+var video   = document.getElementById('mp-video');
 var seekbar = document.getElementById('mp-seekbar');
 var volbar  = document.getElementById('mp-volbar');
+/* We track which element is currently active (audio or video) */
+var mediaEl = audio;
+var _VIDEO_EXT = /\.(mp4|webm|mkv|avi|mov|ogv)$/i;
+function _isVideo(fp) { return fp && _VIDEO_EXT.test(fp); }
 
-/* ── Audio element event handlers ─────────────────────────────────────── */
-audio.addEventListener('timeupdate', function() {
-    if (seeking || !audio.duration) { return; }
-    var pct = (audio.currentTime / audio.duration) * 1000;
-    seekbar.value = Math.floor(pct);
-    document.getElementById('mp-pos').textContent = fmtTime(audio.currentTime);
-});
-
-audio.addEventListener('loadedmetadata', function() {
-    document.getElementById('mp-dur').textContent = fmtTime(audio.duration);
-});
-
-audio.addEventListener('ended', function() {
-    playerNext();
-});
-
-audio.addEventListener('play', function() {
-    document.getElementById('mp-play-icon').className = 'fa-solid fa-pause';
-});
-
-audio.addEventListener('pause', function() {
-    document.getElementById('mp-play-icon').className = 'fa-solid fa-play';
-});
-
-audio.addEventListener('error', function() {
-    mc1Toast('Playback error — track may be missing or corrupt', 'err');
-});
+/* ── We attach identical event handlers to both audio and video elements ── */
+function _attachMediaEvents(el) {
+    el.addEventListener('timeupdate', function() {
+        if (el !== mediaEl || seeking || !el.duration) return;
+        var pct = (el.currentTime / el.duration) * 1000;
+        seekbar.value = Math.floor(pct);
+        document.getElementById('mp-pos').textContent = fmtTime(el.currentTime);
+    });
+    el.addEventListener('loadedmetadata', function() {
+        if (el !== mediaEl) return;
+        document.getElementById('mp-dur').textContent = fmtTime(el.duration);
+    });
+    el.addEventListener('ended', function() { if (el === mediaEl) playerNext(); });
+    el.addEventListener('play', function() { if (el === mediaEl) document.getElementById('mp-play-icon').className = 'fa-solid fa-pause'; });
+    el.addEventListener('pause', function() { if (el === mediaEl) document.getElementById('mp-play-icon').className = 'fa-solid fa-play'; });
+    el.addEventListener('error', function() {
+        if (el !== mediaEl) return;
+        mc1Toast('Playback error — track may be missing or corrupt', 'err');
+    });
+}
+_attachMediaEvents(audio);
+_attachMediaEvents(video);
 
 /* ── Seek bar interaction ──────────────────────────────────────────────── */
 seekbar.addEventListener('mousedown', function() { seeking = true; });
@@ -298,21 +300,21 @@ seekbar.addEventListener('touchstart', function() { seeking = true; });
 
 seekbar.addEventListener('mouseup', function() {
     seeking = false;
-    if (audio.duration) {
-        audio.currentTime = (seekbar.value / 1000) * audio.duration;
+    if (mediaEl.duration) {
+        mediaEl.currentTime = (seekbar.value / 1000) * mediaEl.duration;
     }
 });
 seekbar.addEventListener('touchend', function() {
     seeking = false;
-    if (audio.duration) {
-        audio.currentTime = (seekbar.value / 1000) * audio.duration;
+    if (mediaEl.duration) {
+        mediaEl.currentTime = (seekbar.value / 1000) * mediaEl.duration;
     }
 });
 
 seekbar.addEventListener('input', function() {
     /* We show the time during drag without actually seeking yet */
-    if (audio.duration) {
-        var t = (seekbar.value / 1000) * audio.duration;
+    if (mediaEl.duration) {
+        var t = (seekbar.value / 1000) * mediaEl.duration;
         document.getElementById('mp-pos').textContent = fmtTime(t);
     }
 });
@@ -320,6 +322,7 @@ seekbar.addEventListener('input', function() {
 /* ── Volume bar ────────────────────────────────────────────────────────── */
 volbar.addEventListener('input', function() {
     audio.volume = volbar.value / 100;
+    video.volume = volbar.value / 100;
     document.getElementById('mp-vol-pct').textContent = volbar.value + '%';
     mc1State.set('player', 'volume', parseInt(volbar.value));
 });
@@ -328,10 +331,10 @@ volbar.addEventListener('input', function() {
 window.playerPlayPause = function() {
     if (!queue.length) { mc1Toast('Queue is empty', 'warn'); return; }
     if (currentIdx < 0) { playerJumpTo(0); return; }
-    if (audio.paused) {
-        audio.play().catch(function(e) { mc1Toast('Playback blocked: ' + e.message, 'err'); });
+    if (mediaEl.paused) {
+        mediaEl.play().catch(function(e) { mc1Toast('Playback blocked: ' + e.message, 'err'); });
     } else {
-        audio.pause();
+        mediaEl.pause();
     }
 };
 
@@ -346,14 +349,14 @@ window.playerNext = function() {
         var pool = [];
         for (var i = 0; i < queue.length; i++) { if (i !== currentIdx) { pool.push(i); } }
         if (!pool.length) {
-            if (repeatMode === 2) { pool = [0]; } else { audio.pause(); return; }
+            if (repeatMode === 2) { pool = [0]; } else { mediaEl.pause(); return; }
         }
         next = pool[Math.floor(Math.random() * pool.length)];
     } else {
         next = currentIdx + 1;
         if (next >= queue.length) {
             if (repeatMode === 2) { next = 0; }
-            else { audio.pause(); currentIdx = -1; updateNowPlaying(null); renderQueue(); return; }
+            else { mediaEl.pause(); currentIdx = -1; updateNowPlaying(null); renderQueue(); return; }
         }
     }
     playerJumpTo(next);
@@ -362,7 +365,7 @@ window.playerNext = function() {
 window.playerPrev = function() {
     if (!queue.length) { return; }
     /* We restart current track if more than 3 seconds in */
-    if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+    if (mediaEl.currentTime > 3) { mediaEl.currentTime = 0; return; }
     var prev = currentIdx - 1;
     if (prev < 0) { prev = (repeatMode === 2) ? queue.length - 1 : 0; }
     playerJumpTo(prev);
@@ -372,11 +375,17 @@ window.playerJumpTo = function(idx) {
     if (idx < 0 || idx >= queue.length) { return; }
     currentIdx  = idx;
     var item    = queue[idx];
+    /* We detect video files and switch between audio/video elements */
+    var isVid = _isVideo(item.file_path || '');
+    var prevEl = mediaEl;
+    mediaEl = isVid ? video : audio;
+    if (prevEl !== mediaEl) { prevEl.pause(); prevEl.src = ''; prevEl.style.display = 'none'; }
+    if (isVid) { video.style.display = 'block'; } else { video.style.display = 'none'; }
     /* We save the current queue_id so we can restore position after navigation */
     mc1State.set('player', 'queueId', item.queue_id || null);
-    audio.src   = '/app/api/audio.php?id=' + item.track_id;
-    audio.load();
-    audio.play().catch(function(e) {
+    mediaEl.src   = '/app/api/audio.php?id=' + item.track_id;
+    mediaEl.load();
+    mediaEl.play().catch(function(e) {
         mc1Toast('Cannot play track — ' + (e.message || 'unknown error'), 'err');
     });
     updateNowPlaying(item);
@@ -455,8 +464,10 @@ window.playerClearQueue = function() {
             queue = [];
             currentIdx = -1;
             mc1State.del('player', 'queueId');
-            audio.pause();
-            audio.src = '';
+            mediaEl.pause();
+            mediaEl.src = '';
+            video.style.display = 'none';
+            mediaEl = audio;
             seekbar.value = 0;
             document.getElementById('mp-pos').textContent = '0:00';
             document.getElementById('mp-dur').textContent = '0:00';
@@ -538,6 +549,7 @@ function updateNowPlaying(item) {
         artistEl.textContent = '';
         albumEl.textContent  = '';
         coverWrap.innerHTML  = '<div class="mp-cover-ph"><i class="fa-solid fa-music"></i></div>';
+        video.style.display  = 'none';
         document.title       = 'Media Player — Mcaster1';
         return;
     }
@@ -547,10 +559,21 @@ function updateNowPlaying(item) {
     albumEl.textContent  = item.album  || '';
     document.title       = (item.artist ? item.artist + ' — ' : '') + (item.title || '?') + ' — Mcaster1';
 
-    if (item.art_url) {
+    var isVid = _isVideo(item.file_path || '');
+    if (isVid) {
+        /* We show the video element in the cover art area */
+        coverWrap.innerHTML = '';
+        coverWrap.appendChild(video);
+        video.style.display = 'block';
+        video.style.width = '220px';
+        video.style.maxHeight = '220px';
+        video.style.borderRadius = '12px';
+    } else if (item.art_url) {
+        video.style.display = 'none';
         coverWrap.innerHTML = '<img class="mp-cover" src="' + _e(item.art_url) + '"'
             + ' onerror="this.outerHTML=\'<div class=mp-cover-ph><i class=\\\'fa-solid fa-music\\\'></i></div>\'">';
     } else {
+        video.style.display = 'none';
         coverWrap.innerHTML = '<div class="mp-cover-ph"><i class="fa-solid fa-music"></i></div>';
     }
 }
@@ -560,10 +583,10 @@ document.addEventListener('keydown', function(e) {
     /* We skip if user is typing in an input */
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') { return; }
     if (e.code === 'Space') { e.preventDefault(); playerPlayPause(); }
-    if (e.code === 'ArrowRight') { if (audio.duration) audio.currentTime = Math.min(audio.duration, audio.currentTime + 5); }
-    if (e.code === 'ArrowLeft')  { audio.currentTime = Math.max(0, audio.currentTime - 5); }
-    if (e.code === 'ArrowUp')    { e.preventDefault(); audio.volume = Math.min(1, audio.volume + 0.05); volbar.value = Math.round(audio.volume * 100); document.getElementById('mp-vol-pct').textContent = volbar.value + '%'; }
-    if (e.code === 'ArrowDown')  { e.preventDefault(); audio.volume = Math.max(0, audio.volume - 0.05); volbar.value = Math.round(audio.volume * 100); document.getElementById('mp-vol-pct').textContent = volbar.value + '%'; }
+    if (e.code === 'ArrowRight') { if (mediaEl.duration) mediaEl.currentTime = Math.min(mediaEl.duration, mediaEl.currentTime + 5); }
+    if (e.code === 'ArrowLeft')  { mediaEl.currentTime = Math.max(0, mediaEl.currentTime - 5); }
+    if (e.code === 'ArrowUp')    { e.preventDefault(); var nv = Math.min(1, mediaEl.volume + 0.05); audio.volume = nv; video.volume = nv; volbar.value = Math.round(nv * 100); document.getElementById('mp-vol-pct').textContent = volbar.value + '%'; }
+    if (e.code === 'ArrowDown')  { e.preventDefault(); var nv2 = Math.max(0, mediaEl.volume - 0.05); audio.volume = nv2; video.volume = nv2; volbar.value = Math.round(nv2 * 100); document.getElementById('mp-vol-pct').textContent = volbar.value + '%'; }
     if (e.code === 'KeyN') { playerNext(); }
     if (e.code === 'KeyP') { playerPrev(); }
 });
@@ -662,6 +685,7 @@ document.addEventListener('DOMContentLoaded', function() {
     /* We restore persisted player settings from localStorage */
     var savedVol = mc1State.get('player', 'volume', 80);
     audio.volume = savedVol / 100;
+    video.volume = savedVol / 100;
     volbar.value = savedVol;
     document.getElementById('mp-vol-pct').textContent = savedVol + '%';
 

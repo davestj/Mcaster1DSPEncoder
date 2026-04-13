@@ -59,9 +59,18 @@ class PodcastFeed {
         header('Content-Type: application/rss+xml; charset=UTF-8');
         header('Cache-Control: public, max-age=300');
 
+        /* We check if this show has any dynamic ad placements to use DAI URLs */
+        $has_dai = (bool)self::scalar(self::DB,
+            "SELECT COUNT(*) FROM ad_placements p
+             JOIN podcast_episodes e ON e.id = p.episode_id
+             WHERE e.show_id = ? AND p.is_dynamic = 1",
+            [$show_id]
+        );
+
         $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
         $xml .= '<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" '
-              . 'xmlns:content="http://purl.org/rss/1.0/modules/content/">' . "\n";
+              . 'xmlns:content="http://purl.org/rss/1.0/modules/content/" '
+              . 'xmlns:podcast="https://podcastindex.org/namespace/1.0">' . "\n";
         $xml .= "  <channel>\n";
         $xml .= '    <title>' . self::xe($show['title']) . "</title>\n";
         $xml .= '    <description>' . self::xe($show['description'] ?? '') . "</description>\n";
@@ -101,10 +110,29 @@ class PodcastFeed {
         }
 
         foreach ($episodes as $ep) {
-            $media_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . (int)$ep['id'];
+            $ep_id = (int)$ep['id'];
             $fmt  = $ep['format'] ?? 'mp3';
             $mime = self::mimeFor($fmt);
             $is_video = self::isVideoFormat($fmt);
+
+            /* We check if this episode has dynamic ad placements.
+             * If so, we point the enclosure URL to the DAI serving endpoint
+             * instead of the direct download. This enables on-the-fly ad insertion. */
+            $ep_has_ads = false;
+            if ($has_dai) {
+                $ep_ad_count = (int)self::scalar(self::DB,
+                    "SELECT COUNT(*) FROM ad_placements WHERE episode_id = ? AND is_dynamic = 1",
+                    [$ep_id]
+                );
+                $ep_has_ads = ($ep_ad_count > 0);
+            }
+
+            if ($ep_has_ads) {
+                $media_url = $base_url . '/app/api/ads.php?action=serve_episode&episode_id=' . $ep_id
+                           . '&_t=' . time();
+            } else {
+                $media_url = $base_url . '/app/api/podcast.php?action=download&episode_id=' . $ep_id;
+            }
 
             $xml .= "    <item>\n";
             $xml .= '      <title>' . self::xe($ep['title']) . "</title>\n";
@@ -133,7 +161,39 @@ class PodcastFeed {
                 }
             }
 
-            $xml .= '      <guid isPermaLink="false">mc1-podcast-ep-' . (int)$ep['id'] . "</guid>\n";
+            $xml .= '      <guid isPermaLink="false">mc1-podcast-ep-' . $ep_id . "</guid>\n";
+
+            /* We add tracking pixels for each ad placement on this episode (IAB compliance) */
+            if ($ep_has_ads) {
+                $ep_placements = self::rows(self::DB,
+                    "SELECT p.id AS placement_id, p.campaign_id
+                     FROM ad_placements p
+                     WHERE p.episode_id = ? AND p.is_dynamic = 1",
+                    [$ep_id]
+                );
+                foreach ($ep_placements as $pl) {
+                    $track_url = $base_url . '/app/api/ads.php?action=track_impression'
+                               . '&placement_id=' . (int)$pl['placement_id']
+                               . '&campaign_id=' . (int)$pl['campaign_id']
+                               . '&episode_id=' . $ep_id
+                               . '&event=impression';
+                    $xml .= '      <podcast:tracker url="' . self::xa($track_url) . '" type="impression"/>' . "\n";
+                }
+            }
+
+            /* We check if this episode has captions and add podcast:transcript elements */
+            $captions = self::rows(self::DB,
+                "SELECT language, format FROM episode_captions WHERE episode_id = ? ORDER BY language",
+                [$ep_id]);
+            foreach ($captions as $cap) {
+                $cap_fmt  = $cap['format'] === 'vtt' ? 'vtt' : 'srt';
+                $cap_mime = $cap_fmt === 'vtt' ? 'text/vtt' : 'application/x-subrip';
+                $cap_url  = $base_url . '/app/api/captions.php?action=download&episode_id=' . $ep_id
+                          . '&format=' . $cap_fmt . '&language=' . urlencode($cap['language']);
+                $xml .= '      <podcast:transcript url="' . self::xa($cap_url) . '" '
+                      . 'type="' . $cap_mime . '" language="' . self::xa($cap['language']) . '"/>' . "\n";
+            }
+
             $xml .= "    </item>\n";
         }
 

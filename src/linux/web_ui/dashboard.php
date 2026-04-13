@@ -23,6 +23,20 @@ try {
 require_once __DIR__ . '/app/inc/header.php';
 ?>
 
+<!-- Mode-specific welcome banner -->
+<div id="mode-welcome" class="card" style="display:none;margin-bottom:4px;padding:12px 18px">
+  <div style="display:flex;align-items:center;gap:10px">
+    <i id="mode-welcome-icon" class="fa-solid fa-border-all" style="font-size:20px;color:var(--teal)"></i>
+    <div>
+      <div id="mode-welcome-title" style="font-weight:700;font-size:14px;color:var(--text)">Dashboard</div>
+      <div id="mode-welcome-sub" style="font-size:12px;color:var(--text-dim)">All features visible</div>
+    </div>
+  </div>
+</div>
+
+<!-- Daemon Health Monitor -->
+<?php require_once __DIR__ . '/app/inc/daemon_monitor.php'; ?>
+
 <div class="sec-hdr">
   <div class="sec-title"><i class="fa-solid fa-gauge" style="color:var(--teal);margin-right:8px"></i>Live Overview</div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -422,6 +436,50 @@ document.addEventListener('DOMContentLoaded', function() {
   setInterval(pollStatus, 30000);
   setInterval(pollLoudness, 5000);
   requestAnimationFrame(tickProgress); // start smooth progress bar animation
+
+  /* ── Mode-specific welcome banner ── */
+  var modeWelcome = {
+    broadcast: { icon: 'fa-tower-broadcast', color: '#0ea5e9', title: 'Broadcasting Dashboard', sub: '' },
+    dj:        { icon: 'fa-compact-disc',    color: '#a855f7', title: 'DJ Dashboard',          sub: 'Crossfader active' },
+    podcast:   { icon: 'fa-podcast',         color: '#22c55e', title: 'Podcast Dashboard',     sub: '' },
+    producer:  { icon: 'fa-tv',              color: '#f59e0b', title: 'Producer Dashboard',    sub: '' },
+    all:       { icon: 'fa-border-all',      color: '#14b8a6', title: 'Dashboard',             sub: 'All features visible' }
+  };
+
+  function updateWelcomeBanner() {
+    var mode = localStorage.getItem('mc1_app_mode') || 'all';
+    var el = document.getElementById('mode-welcome');
+    var cfg = modeWelcome[mode] || modeWelcome.all;
+    if (!el) return;
+    el.style.display = '';
+    var icon = document.getElementById('mode-welcome-icon');
+    var title = document.getElementById('mode-welcome-title');
+    var sub = document.getElementById('mode-welcome-sub');
+    if (icon) { icon.className = 'fa-solid ' + cfg.icon; icon.style.color = cfg.color; }
+    if (title) title.textContent = cfg.title;
+    if (sub) sub.textContent = cfg.sub;
+  }
+
+  /* Populate dynamic subtitle from live data */
+  function updateWelcomeSub() {
+    var mode = localStorage.getItem('mc1_app_mode') || 'all';
+    var sub = document.getElementById('mode-welcome-sub');
+    if (!sub) return;
+    if (mode === 'broadcast') {
+      mc1Api('GET', '/api/v1/encoders').then(function(encs) {
+        if (!Array.isArray(encs)) return;
+        var live = encs.filter(function(e){ return (e.state||'').toLowerCase() === 'live'; }).length;
+        sub.textContent = live + ' encoder' + (live === 1 ? '' : 's') + ' live';
+      }).catch(function(){});
+    }
+  }
+
+  updateWelcomeBanner();
+  updateWelcomeSub();
+  window.addEventListener('mc1-mode-changed', function() {
+    updateWelcomeBanner();
+    updateWelcomeSub();
+  });
 });
 
 // ── Slot Stats Modal ──────────────────────────────────────────────────

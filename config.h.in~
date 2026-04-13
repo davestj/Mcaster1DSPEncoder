@@ -72,6 +72,9 @@
 /* libvorbis available */
 #undef HAVE_VORBIS
 
+/* Default Ollama API endpoint URL */
+#undef OLLAMA_DEFAULT_ENDPOINT
+
 /* Name of package */
 #undef PACKAGE
 

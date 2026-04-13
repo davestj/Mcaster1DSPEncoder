@@ -198,6 +198,9 @@ require_once __DIR__ . '/app/inc/header.php';
     <button class="btn btn-primary btn-sm" onclick="document.getElementById('file-input').click()">
         <i class="fa-solid fa-folder-open"></i> Load File
     </button>
+    <button class="btn btn-secondary btn-sm" onclick="mc1MediaPicker.open({type:'audio', onSelect:function(t){ forensic.loadFromLibrary(t.id, t.title); }})">
+        <i class="fa-solid fa-database"></i> From Library
+    </button>
     <button class="btn btn-secondary btn-sm" id="btn-record" onclick="forensic.toggleRecordLive()">
         <i class="fa-solid fa-circle" style="color:#ef4444"></i> Record Live
     </button>
@@ -603,6 +606,30 @@ document.addEventListener('DOMContentLoaded', function() {
         if (e.code === 'KeyD') { forensic.detectEvents(); }
         if (e.code === 'KeyG') { forensic.exportReport(); }
     });
+});
+</script>
+
+<?php require_once __DIR__ . '/app/inc/media_picker.php'; ?>
+
+<script>
+/* We add a loadFromLibrary method to the forensic analyzer so the media
+ * picker can feed it a track from the DB without a local file upload. */
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof forensic !== 'undefined' && forensic) {
+        forensic.loadFromLibrary = function(trackId, title) {
+            mc1Toast('Loading "' + (title || 'track') + '" from library...', 'info');
+            fetch('/app/api/audio.php?id=' + trackId).then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.arrayBuffer();
+            }).then(function(buf) {
+                var blob = new Blob([buf]);
+                var file = new File([blob], (title || 'track') + '.wav', {type: 'audio/wav'});
+                forensic.loadFile(file);
+            }).catch(function(e) {
+                mc1Toast('Failed to load from library: ' + e.message, 'err');
+            });
+        };
+    }
 });
 </script>
 
