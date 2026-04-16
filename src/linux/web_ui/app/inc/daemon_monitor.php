@@ -125,8 +125,9 @@ $daemon_defs = [
         'name'   => 'Encoder',
         'port'   => 8331,
         'host'   => '127.0.0.1',
-        'path'   => '/api/v1/status',
-        'proc'   => 'mcaster1-dsp-encoder',
+        'path'   => '',
+        'proc'   => 'mcaster1-dsp-encoder --config',
+        'proc_only' => true,
         'icon'   => 'fa-tower-broadcast',
         'modes'  => ['broadcast','dj','podcast','producer','all'],
     ],
@@ -170,11 +171,12 @@ foreach ($daemon_defs as $key => $def) {
         ];
     } else {
         $health = null;
-        if ($proc['pid'] !== null) {
+        $is_proc_only = !empty($def['proc_only']);
+        if ($proc['pid'] !== null && !$is_proc_only && !empty($def['path'])) {
             $health = mc1_check_daemon($def['name'], $def['host'], $def['port'], $def['path']);
         }
         $status = 'not_configured';
-        if ($proc['pid'] !== null && $health && $health['status'] === 'running') {
+        if ($proc['pid'] !== null && ($is_proc_only || ($health && $health['status'] === 'running'))) {
             $status = 'running';
         } elseif ($proc['pid'] !== null) {
             $status = 'down'; /* process exists but not responding */

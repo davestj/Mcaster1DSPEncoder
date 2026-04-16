@@ -44,12 +44,22 @@
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <input type="text" class="form-input" id="mc1-mp-search" placeholder="Search tracks by title, artist, album..."
                style="flex:1;font-size:12px;padding:6px 10px" onkeydown="if(event.key==='Enter')mc1MediaPicker._search()">
-        <button class="btn btn-primary btn-sm" onclick="mc1MediaPicker._search()"><i class="fa-solid fa-magnifying-glass"></i> Search</button>
+        <button class="btn btn-primary btn-sm" onclick="mc1MediaPicker._search()"><i class="fa-solid fa-magnifying-glass"></i></button>
       </div>
-      <div id="mc1-mp-results" style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+      <!-- Category + folder tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap" id="mc1-mp-tabs">
+        <button class="btn btn-xs mc1-mp-tab active" onclick="mc1MediaPicker._tab('all')" data-tab="all">All Tracks</button>
+        <button class="btn btn-xs mc1-mp-tab" onclick="mc1MediaPicker._tab('categories')" data-tab="categories">Categories</button>
+        <button class="btn btn-xs mc1-mp-tab" onclick="mc1MediaPicker._tab('folders')" data-tab="folders">Folders</button>
+        <button class="btn btn-xs mc1-mp-tab" onclick="mc1MediaPicker._tab('recent')" data-tab="recent">Recent</button>
+      </div>
+      <!-- Category / folder browser (hidden by default, shown by tab) -->
+      <div id="mc1-mp-browser" style="display:none;margin-bottom:8px;max-height:120px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px">
+      </div>
+      <div id="mc1-mp-results" style="max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
         <div style="padding:40px 20px;text-align:center;color:var(--muted)">
           <i class="fa-solid fa-magnifying-glass" style="font-size:28px;display:block;margin-bottom:10px"></i>
-          Search for tracks or browse the library
+          Search for tracks or browse by category / folder
         </div>
       </div>
       <div style="margin-top:8px;font-size:10px;color:var(--muted)" id="mc1-mp-status"></div>
@@ -78,6 +88,9 @@
   transition:background .12s, color .12s;
 }
 .mc1-mp-select-btn:hover { background:var(--teal); color:#0f172a; }
+.mc1-mp-tab { border:1px solid var(--border) !important; color:var(--muted) !important; background:transparent !important; }
+.mc1-mp-tab.active { border-color:var(--teal) !important; color:var(--teal) !important; background:rgba(20,184,166,.1) !important; }
+.mc1-mp-tab:hover { color:var(--text) !important; }
 </style>
 
 <script>
@@ -199,12 +212,82 @@ var mc1MediaPicker = (function() {
         _close();
     }
 
+    var _activeTab = 'all';
+
+    function _tab(tab) {
+        _activeTab = tab;
+        document.querySelectorAll('.mc1-mp-tab').forEach(function(b){ b.classList.remove('active'); });
+        var btn = document.querySelector('.mc1-mp-tab[data-tab="'+tab+'"]');
+        if (btn) btn.classList.add('active');
+        var browser = document.getElementById('mc1-mp-browser');
+
+        if (tab === 'categories') {
+            browser.style.display = '';
+            browser.innerHTML = '<div style="padding:10px;text-align:center;color:var(--muted)"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+            mc1Api('POST', '/app/api/tracks.php', {action:'get_categories'}).then(function(d){
+                var cats = d.data || d.categories || [];
+                if (!cats.length) { browser.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:11px">No categories</div>'; return; }
+                var h = '';
+                cats.forEach(function(c){
+                    h += '<button class="btn btn-xs btn-secondary" style="margin:2px" onclick="mc1MediaPicker._loadCategory('+c.id+',\''+_esc(c.name)+'\')">'
+                       + '<i class="fa-solid fa-tag fa-fw" style="color:var(--teal)"></i> ' + _esc(c.name)
+                       + (c.track_count ? ' <span style="opacity:.5">('+c.track_count+')</span>' : '')
+                       + '</button>';
+                });
+                browser.innerHTML = h;
+            }).catch(function(){ browser.innerHTML = '<div style="padding:8px;color:var(--red,#ef4444);font-size:11px">Failed to load categories</div>'; });
+        } else if (tab === 'folders') {
+            browser.style.display = '';
+            browser.innerHTML = '<div style="padding:10px;text-align:center;color:var(--muted)"><i class="fa-solid fa-spinner fa-spin"></i></div>';
+            mc1Api('POST', '/app/api/tracks.php', {action:'browse_folders'}).then(function(d){
+                var folders = d.folders || d.data || [];
+                if (!folders.length) { browser.innerHTML = '<div style="padding:8px;color:var(--muted);font-size:11px">No folders</div>'; return; }
+                var h = '';
+                folders.forEach(function(f){
+                    var name = f.path ? f.path.split('/').pop() || f.path : 'Unknown';
+                    h += '<button class="btn btn-xs btn-secondary" style="margin:2px" onclick="mc1MediaPicker._loadFolder(\''+_esc(f.path)+'\')">'
+                       + '<i class="fa-solid fa-folder fa-fw" style="color:#f59e0b"></i> ' + _esc(name)
+                       + (f.count ? ' <span style="opacity:.5">('+f.count+')</span>' : '')
+                       + '</button>';
+                });
+                browser.innerHTML = h;
+            }).catch(function(){ browser.innerHTML = '<div style="padding:8px;color:var(--red,#ef4444);font-size:11px">Failed to load folders</div>'; });
+        } else if (tab === 'recent') {
+            browser.style.display = 'none';
+            _doSearch('', {sort:'last_played_at', order:'desc', limit:50});
+        } else {
+            browser.style.display = 'none';
+            _doSearch('');
+        }
+    }
+
+    function _loadCategory(catId, catName) {
+        document.getElementById('mc1-mp-status').textContent = 'Category: ' + catName;
+        mc1Api('POST', '/app/api/tracks.php', {action:'list_category_tracks', category_id:catId, limit:200}).then(function(d){
+            var tracks = d.data || d.tracks || [];
+            _tracks = tracks;
+            _render(tracks);
+        }).catch(function(){});
+    }
+
+    function _loadFolder(folderPath) {
+        document.getElementById('mc1-mp-status').textContent = 'Folder: ' + folderPath;
+        mc1Api('POST', '/app/api/tracks.php', {action:'browse', path:folderPath, limit:200}).then(function(d){
+            var tracks = d.data || d.tracks || d.files || [];
+            _tracks = tracks;
+            _render(tracks);
+        }).catch(function(){});
+    }
+
     return {
         open: _open,
         close: _close,
         _search: _search,
         _filter: _filter,
-        _select: _select
+        _select: _select,
+        _tab: _tab,
+        _loadCategory: _loadCategory,
+        _loadFolder: _loadFolder
     };
 })();
 </script>

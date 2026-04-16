@@ -416,19 +416,8 @@ require_once __DIR__ . '/app/inc/header.php';
   </div>
 </div>
 
-<!-- Library browser modal -->
-<div class="daw-modal-bg" id="modal-library">
-  <div class="daw-modal" style="width:600px">
-    <h3><i class="fa-solid fa-music fa-fw" style="color:var(--teal)"></i> Load from Library <span class="close-btn" id="close-library"><i class="fa-solid fa-xmark"></i></span></h3>
-    <div class="search-row" style="margin-bottom:10px">
-      <input class="form-input" id="lib-search" placeholder="Search tracks...">
-      <button class="btn btn-primary btn-sm" id="btn-lib-search"><i class="fa-solid fa-search"></i></button>
-    </div>
-    <div id="lib-results" style="max-height:400px;overflow-y:auto">
-      <div style="text-align:center;padding:20px;color:var(--muted)">Search for tracks to add to your project</div>
-    </div>
-  </div>
-</div>
+<!-- Library browser — uses the full media picker component -->
+<?php include 'app/inc/media_picker.php'; ?>
 
 <!-- Track Effects Panel (slide-out) -->
 <div class="fx-panel" id="fx-panel">
@@ -630,16 +619,18 @@ require_once __DIR__ . '/app/inc/header.php';
         document.getElementById('btn-add-track').addEventListener('click', function(){ daw.addTrack(); });
         document.getElementById('btn-add-track2').addEventListener('click', function(){ daw.addTrack(); });
 
-        // Load from library
+        // Load from library — uses the full media picker component
         document.getElementById('btn-load-library').addEventListener('click', function(){
-            document.getElementById('modal-library').classList.add('open');
-        });
-        document.getElementById('close-library').addEventListener('click', function(){
-            document.getElementById('modal-library').classList.remove('open');
-        });
-        document.getElementById('btn-lib-search').addEventListener('click', doLibSearch);
-        document.getElementById('lib-search').addEventListener('keydown', function(e){
-            if (e.key === 'Enter') doLibSearch();
+            if (window.mc1MediaPicker) {
+                mc1MediaPicker.open({
+                    type: 'audio',
+                    onSelect: function(track) {
+                        if (track && track.id) {
+                            daw.addClipFromLibrary(track.id, track.title || track.file_path || 'Track');
+                        }
+                    }
+                });
+            }
         });
 
         // Save
