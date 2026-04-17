@@ -1,4 +1,4 @@
-dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v1.8.0-beta.1
+dnl configure.ac — Mcaster1 DSP Encoder (Linux CLI + HTTP admin) v2.0.0
 dnl
 dnl ./autogen.sh  then  ./configure  then  make -j$(nproc)
 dnl
@@ -9,7 +9,7 @@ dnl   --disable-encoder          Skip codec libs (HTTP-only test build)
 dnl   --disable-medialib         Skip TagLib/avformat metadata libs
 
 AC_PREREQ([2.69])
-AC_INIT([mcaster1-dsp-encoder], [1.8.0-beta.1], [support@mcaster1.com])
+AC_INIT([mcaster1-dsp-encoder], [2.0.0], [support@mcaster1.com])
 AM_INIT_AUTOMAKE([foreign subdir-objects -Wall])
 AC_CONFIG_SRCDIR([src/linux/main_cli.cpp])
 AC_CONFIG_HEADERS([config.h])
@@ -232,7 +232,7 @@ AC_CONFIG_FILES([
 AC_OUTPUT
 
 echo ""
-echo "── Mcaster1 DSP Encoder v1.8.0-beta.1 configuration ───────────────────────"
+echo "── Mcaster1 DSP Encoder v2.0.0 configuration ───────────────────────"
 echo "   Prefix      : $(eval echo ${prefix})"
 echo "   Web UI dir  : $(eval echo ${WEBROOT})"
 echo "   OpenSSL     : yes"

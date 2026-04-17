@@ -1,5 +1,5 @@
 // fastcgi_client.cpp — FastCGI/1.0 binary protocol implementation
-// Mcaster1DSPEncoder Linux v1.2.0
+// Mcaster1DSPEncoder Linux v2.0.0
 //
 // Protocol: https://fast-cgi.github.io/spec
 // One Unix domain socket connection per request (FCGI_KEEP_CONN = 0).
@@ -233,7 +233,7 @@ FcgiResponse FastCgiClient::forward(
     {
         std::map<std::string, std::string> params;
         params["GATEWAY_INTERFACE"] = "CGI/1.1";
-        params["SERVER_SOFTWARE"]   = "mcaster1-encoder/1.8.0-beta.1";
+        params["SERVER_SOFTWARE"]   = "mcaster1-encoder/2.0.0";
         params["SERVER_NAME"]       = server_name;
         params["SERVER_PORT"]       = std::to_string(server_port);
         params["SERVER_PROTOCOL"]   = "HTTP/1.1";

@@ -20,7 +20,7 @@
 # =============================================================================
 
 [Unit]
-Description=Mcaster1 VoicTune — Voice Analysis & Coaching Daemon v1.8.0-beta.1
+Description=Mcaster1 VoicTune — Voice Analysis & Coaching Daemon v2.0.0
 Documentation=https://mcaster1.com
 After=network-online.target mysql.service mariadb.service
 Wants=network-online.target mysql.service

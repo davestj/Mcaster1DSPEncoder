@@ -13,17 +13,18 @@ mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE %yp%";
 
 **See `PLANNING.md`** at the project root for the full future phase roadmap.
 
-### v1.8.0-beta.1 — COMPLETE (2026-03-27)
-All 23+ phases complete: VT-1..VT-4, PB-1..PB-3, AI-1..AI-4, MX-1..MX-3, L10, L11, PC-1..PC-7.
-Full podcaster/broadcaster production studio with podcast recording, episode editor, multi-platform publishing, remote recording, song requests, webhooks, AI tools, virtual mixer, visual pedalboard, and VoicTune voice analysis.
+### v2.0.0 — CURRENT RELEASE (2026-03-27)
+All 40+ phases complete. Full podcaster/broadcaster production studio with quad-binary architecture:
+DSP Producer (video capture, switcher, RTMP streaming), multi-track DAW, forensic audio analysis,
+closed captions (Whisper), monetization (DAI), mode-based navigation, daemon health monitor,
+plus all v1.8.0 features (VoicTune, pedalboard, mixer, podcast studio, remote recording, etc.).
 
-### Next: v1.9.0 (Planned)
+### Next: v2.1.0 (Planned)
 - macOS native build (CoreAudio backend)
-- Mobile-responsive web UI overhaul
-- WebRTC direct browser-to-encoder streaming
 - Plugin SDK for third-party DSP effects
 - Multi-user collaborative editing
-- Automated loudness compliance (EBU R128 / ATSC A/85)
+- Advanced VoicTune: de-breath, auto-tune, voice changer
+- Multi-language UI localization (i18n)
 
 Always consult PLANNING.md before starting a new development phase to check scope,
 DB growth plan, and architectural decisions recorded there.
@@ -129,19 +130,20 @@ Flags in make_phase4.sh:
 
 The Linux source files (`encoder_slot.cpp`, `file_source.cpp`, etc.) use `#ifdef HAVE_LAME` etc. but do **NOT** include `config.h`. This means autotools `AC_DEFINE([HAVE_LAME])` alone is not enough. The Makefile.am must explicitly pass `-DHAVE_LAME` (and all other codec defines) via `AM_CPPFLAGS` inside each `if HAVE_LAME` conditional block. This is done in `src/linux/Makefile.am` already. Do not remove these.
 
-### Triple-Binary Architecture (v1.8.0+)
+### Quad-Binary Architecture (v2.0.0)
 
-Three binaries with fault isolation:
+Four binaries with fault isolation:
 
 ```
-mcaster1-dsp-encoder-admin  (36MB) — Web UI, FastCGI, auth, supervisor
-mcaster1-dsp-encoder        (28MB) — Audio pipeline, DSP, codecs, streaming
-mcaster1-voictune           (18MB) — Voice analysis, FFT, pitch, coaching, Ollama AI
+mcaster1-dsp-encoder-admin  (46MB) — Web UI, FastCGI, auth, supervisor
+mcaster1-dsp-encoder        (29MB) — Audio pipeline, DSP, codecs, streaming
+mcaster1-voictune           (21MB) — Voice analysis, FFT, pitch, coaching, Ollama AI
+mcaster1-producer            (9.1MB) — Video encoding, multi-track mixdown, forensic FFT
 ```
 
 Admin supervises encoder child via fork/exec + watchdog. If encoder crashes (SIGSEGV from bad codec config), admin auto-restarts it within 5 seconds. Web UI stays accessible during restart.
 
-VoicTune runs independently on ports 8350/8354/8355 (HTTP/HTTPS/WebSocket). It has its own systemd unit, YAML config, and database (`mcaster1_voictune`).
+VoicTune runs independently on ports 8350/8354/8355 (HTTP/HTTPS/WebSocket). Producer runs on ports 8360/8364 (HTTP/HTTPS). Each has its own systemd unit, YAML config, and worker pool.
 
 ### Run (systemd — recommended)
 
@@ -204,7 +206,7 @@ Mcaster1DSPEncoder/
 │   │   │   ├── agc.h/cpp               ← AGC / compressor / hard limiter
 │   │   │   ├── crossfader.h/cpp        ← Equal-power crossfader
 │   │   │   └── dsp_chain.h/cpp         ← EQ → AGC orchestrator
-│   │   ├── voictune/                    ← VoicTune daemon (Phase VT, v1.8.0)
+│   │   ├── voictune/                    ← VoicTune daemon (Phase VT)
 │   │   │   ├── main_voictune.cpp        ← Entry point, CLI, signal handling, subsystem init
 │   │   │   ├── vt_http_api.h/cpp        ← HTTP/HTTPS server, routes, session auth
 │   │   │   ├── vt_config.h/cpp          ← YAML config loader
@@ -221,9 +223,16 @@ Mcaster1DSPEncoder/
 │   │   │   ├── vt_versions.h            ← VoicTune component version registry
 │   │   │   ├── ollama_client.h/cpp      ← Ollama REST API client (cpp-httplib)
 │   │   │   └── ai_prompt_templates.h    ← System prompts for AI coaching/EQ/NLP
+│   │   ├── producer/                    ← Producer daemon (Phase VP/DAW/FA)
+│   │   │   ├── main_producer.cpp        ← Entry point, CLI, signal handling
+│   │   │   ├── pr_http_api.h/cpp        ← HTTP/HTTPS server, routes, session auth
+│   │   │   ├── pr_config.h/cpp          ← YAML config loader
+│   │   │   ├── pr_logger.h              ← Logging singleton (→ producer.log)
+│   │   │   └── pr_worker_pool.h/cpp     ← Thread pool for video/audio/FFT jobs
 │   │   ├── config/
-│   │   │   ├── mcaster1_rock_yolo.yaml  ← Test station: 3 slots to dnas.mcaster1.com
-│   │   │   └── mcaster1_voictune.yaml   ← VoicTune daemon config (ports, audio, Ollama)
+│   │   │   ├── mcaster1_rock_yolo.yaml  ← Test station: 12 slots to dnas.mcaster1.com
+│   │   │   ├── mcaster1_voictune.yaml   ← VoicTune daemon config (ports, audio, Ollama)
+│   │   │   └── mcaster1_producer.yaml   ← Producer daemon config (ports, workers)
 │   │   ├── web_ui/                     ← PHP frontend (served by FastCGI)
 │   │   │   ├── login.html              ← Pre-auth login page (plain HTML, no PHP)
 │   │   │   ├── style.css               ← Dark navy/teal theme
@@ -233,28 +242,55 @@ Mcaster1DSPEncoder/
 │   │   │   ├── playlists.php           ← DB-backed playlist CRUD + load-to-slot
 │   │   │   ├── metrics.php             ← Chart.js analytics dashboard
 │   │   │   ├── settings.php            ← Server info + config overview
-│   │   │   ├── voictune.php            ← VoicTune voice analysis UI (Phase VT-3)
-│   │   │   ├── mixer.php               ← Virtual mixer console (Phase MX-1)
-│   │   │   ├── podcast.php             ← Podcast show/episode management (Phase L10)
-│   │   │   ├── recording.php           ← Live recording studio (Phase PC-1)
-│   │   │   ├── episode-editor.php      ← Waveform editor with EDL (Phase PC-2)
-│   │   │   ├── podcast-site.php        ← Podcast website generator (Phase PC-5)
-│   │   │   ├── podcast-analytics.php   ← Podcast download analytics (Phase PC-4)
-│   │   │   ├── requests.php            ← Song request DJ queue (Phase L11)
-│   │   │   ├── request-widget.php      ← Public listener request form (Phase L11)
-│   │   │   ├── widget.php              ← Embeddable now-playing widget (Phase L11)
-│   │   │   ├── remote-host.php         ← Remote recording host view (Phase PC-7)
-│   │   │   ├── remote-guest.php        ← Remote recording guest view (Phase PC-7)
+│   │   │   ├── voictune.php            ← VoicTune voice analysis UI
+│   │   │   ├── mixer.php               ← Virtual mixer console (6 skins)
+│   │   │   ├── podcast.php             ← Podcast show/episode management
+│   │   │   ├── recording.php           ← Live recording studio
+│   │   │   ├── episode-editor.php      ← Waveform editor with EDL
+│   │   │   ├── podcast-site.php        ← Podcast website generator
+│   │   │   ├── podcast-analytics.php   ← Podcast download analytics
+│   │   │   ├── podcast-episode-page.php ← Public episode detail page
+│   │   │   ├── requests.php            ← Song request DJ queue
+│   │   │   ├── request-widget.php      ← Public listener request form
+│   │   │   ├── widget.php              ← Embeddable now-playing widget
+│   │   │   ├── remote-host.php         ← Remote recording host view
+│   │   │   ├── remote-guest.php        ← Remote recording guest view
+│   │   │   ├── daw.php                 ← Multi-track DAW (timeline, mixing, export)
+│   │   │   ├── forensic.php            ← Forensic audio analysis (HQ spectrogram)
+│   │   │   ├── producer.php            ← DSP Producer (video, switcher, RTMP)
+│   │   │   ├── monetization.php        ← Ad campaigns, DAI, sponsors
+│   │   │   ├── compliance.php          ← EBU R128 loudness compliance
+│   │   │   ├── schedule.php            ← Clockwheel scheduler UI
+│   │   │   ├── crossfader.php          ← 9-curve crossfader controls
+│   │   │   ├── encoder-effects-rack.php ← Per-encoder effects rack
+│   │   │   ├── effects-rack.php        ← Global effects rack
+│   │   │   ├── dualdeck-player.php     ← Dual-deck popup DJ player
+│   │   │   ├── jack.php                ← JACK audio routing matrix
 │   │   │   ├── js/
 │   │   │   │   ├── episode-editor.js   ← Waveform engine + EDL operations
-│   │   │   │   ├── mixer.js            ← WebGL mixer faders + meters
+│   │   │   │   ├── mixer-console.js    ← WebGL mixer faders + meters
 │   │   │   │   ├── pedalboard.js       ← SVG pedalboard + cable routing
-│   │   │   │   ├── voictune.js         ← Oscilloscope + spectrum + pitch display
+│   │   │   │   ├── pedal-svgs.js       ← SVG pedal faceplate definitions
+│   │   │   │   ├── pedal-configs.js    ← Pedal parameter configurations
+│   │   │   │   ├── voictune-viz.js     ← Oscilloscope + spectrum + pitch display
+│   │   │   │   ├── voictune-audio.js   ← VoicTune audio capture + analysis
 │   │   │   │   ├── remote.js           ← WebRTC remote recording client
-│   │   │   │   └── requests.js         ← Song request queue management
+│   │   │   │   ├── mobile-nav.js       ← Mobile responsive navigation
+│   │   │   │   ├── daw-engine.js       ← DAW timeline + clip engine
+│   │   │   │   ├── daw-waveform.js     ← DAW waveform rendering
+│   │   │   │   ├── forensic-analyzer.js ← Forensic HQ spectrogram + analysis
+│   │   │   │   ├── video-producer.js   ← Video capture + switcher + RTMP
+│   │   │   │   ├── captions-engine.js  ← Whisper captions + SRT/VTT
+│   │   │   │   ├── webgl-viz.js        ← WebGL visualization framework
+│   │   │   │   ├── webgl-spectrogram-hq.js ← WebGL HQ spectrogram (65536 FFT)
+│   │   │   │   ├── webgl-mixer.js      ← WebGL mixer rendering
+│   │   │   │   ├── webgl-pedals.js     ← WebGL pedal knobs + meters
+│   │   │   │   ├── webgl-dashboard.js  ← WebGL dashboard visualizations
+│   │   │   │   └── webgl-video.js      ← WebGL video preview
 │   │   │   ├── css/
-│   │   │   │   ├── mixer.css           ← Mixer skin styles
-│   │   │   │   └── pedalboard.css      ← Pedalboard surface styles
+│   │   │   │   ├── mixer.css           ← Mixer layout styles
+│   │   │   │   ├── mixer-skins.css     ← 6 Mcaster1-branded mixer skins
+│   │   │   │   └── responsive.css      ← Mobile responsive breakpoints
 │   │   │   └── app/
 │   │   │       ├── inc/
 │   │   │       │   ├── auth.php        ← mc1_is_authed() (C++ auth gate)
@@ -264,7 +300,9 @@ Mcaster1DSPEncoder/
 │   │   │       │   ├── header.php      ← Sidebar nav, Chart.js flag, HTML head
 │   │   │       │   ├── footer.php      ← Toasts, mc1Api(), auto PHP session bootstrap
 │   │   │       │   ├── logger.php      ← PHP logging (mc1_log, mc1_log_request, etc.)
-│   │   │       │   └── voictune_coaching.php ← VoicTune AI coaching PHP helpers
+│   │   │       │   ├── voictune_coaching.php ← VoicTune AI coaching PHP helpers
+│   │   │       │   ├── daemon_monitor.php   ← Multi-daemon health check helpers
+│   │   │       │   └── media_picker.php     ← Reusable media picker component
 │   │   │       └── api/
 │   │   │           ├── tracks.php      ← Track CRUD + scan + playlist_files
 │   │   │           ├── metrics.php     ← Listener analytics queries
@@ -274,7 +312,16 @@ Mcaster1DSPEncoder/
 │   │   │           ├── podcast.php     ← Podcast CRUD + RSS + publishing API
 │   │   │           ├── requests.php    ← Song request + dedication API
 │   │   │           ├── webhooks.php    ← Webhook config + dispatch API
-│   │   │           └── remote.php      ← Remote recording session API
+│   │   │           ├── remote.php      ← Remote recording session API
+│   │   │           ├── daw.php         ← DAW project/clip/automation API
+│   │   │           ├── forensic.php    ← Forensic analysis job API
+│   │   │           ├── producer.php    ← Video producer job API
+│   │   │           ├── ads.php         ← Ad campaign + DAI API
+│   │   │           ├── captions.php    ← Closed caption generation API
+│   │   │           ├── health.php      ← Multi-daemon health status API
+│   │   │           ├── rtmp.php        ← RTMP stream management API
+│   │   │           ├── schedule.php    ← Clockwheel schedule API
+│   │   │           └── upload.php      ← File upload handler
 │   │   ├── external/
 │   │   │   └── include/                ← Linux-only vendor headers (header-only libs)
 │   │   │       ├── httplib.h           ← cpp-httplib v0.18 (copied from root external/)
@@ -533,7 +580,7 @@ const m = d.body.match(/<listeners>(\d+)<\/listeners>/i);
 const count = m ? parseInt(m[1]) : 0;
 ```
 
-### C++ Recording API (v1.8.0+)
+### C++ Recording API
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -557,6 +604,15 @@ POST /app/api/podcast.php     actions: list_shows, create_show, list_episodes, c
 POST /app/api/requests.php    actions: list, submit, approve, reject, dedicate, get_widget_config
 POST /app/api/webhooks.php    actions: list, create, update, delete, test, get_logs
 POST /app/api/remote.php      actions: create_session, join, leave, start_recording, stop_recording, get_chat
+POST /app/api/daw.php         actions: list_projects, create_project, get_project, add_clip, move_clip, delete_clip, add_automation, mix, export, freeze_track, noise_reduce
+POST /app/api/forensic.php    actions: analyze, get_result, compare, generate_report, get_spectrogram, peak_detect
+POST /app/api/producer.php    actions: list_sources, add_source, switch_source, start_stream, stop_stream, get_status, set_overlay
+POST /app/api/ads.php         actions: list_campaigns, create_campaign, schedule_ad, get_impressions, get_cpm_report
+POST /app/api/captions.php    actions: generate, get_status, download_srt, download_vtt, get_live, burn_in
+POST /app/api/health.php      actions: check_all, check_daemon (returns status of all 4 daemons)
+POST /app/api/rtmp.php        actions: list_streams, start, stop, get_stats
+POST /app/api/schedule.php    actions: list, create, update, delete, get_active
+POST /app/api/upload.php      actions: upload (multipart file upload handler)
 ```
 
 **CRITICAL:** Do NOT proxy encoder start/stop/restart from PHP via curl back to C++ on port 8330/8344.
@@ -578,6 +634,16 @@ All endpoints require `mc1vt_session` cookie or `X-API-Token` header (except `/h
 | GET | `/api/v1/voictune/spectrum` | FFT magnitude bins (stub until VT-2) |
 | GET | `/api/v1/ai/status` | Ollama availability, model list |
 
+### Producer API (ports 8360/8364)
+
+All endpoints require `mc1pr_session` cookie or `X-API-Token` header (except `/health`).
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/producer/health` | Health check (no auth) — version, uptime |
+| POST | `/api/v1/producer/auth/login` | Login |
+| GET | `/api/v1/producer/status` | Worker queue depths, active jobs |
+
 ---
 
 ## Database Reference
@@ -586,10 +652,11 @@ MySQL connection via `~/.my.cnf` (never inline credentials).
 
 | Database | Purpose |
 |----------|---------|
-| `mcaster1_encoder` | Users, roles, user_sessions, encoder config, pedalboard, mixer, webhooks |
-| `mcaster1_media` | tracks, playlists, playlist_tracks, podcasts, episodes, requests, remote sessions |
-| `mcaster1_metrics` | listener_sessions, daily_stats |
-| `mcaster1_voictune` | VoicTune sessions, voice_profiles, analysis_snapshots, ai_interactions |
+| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers, pedalboard_layouts, mixer_configs, mixer_custom_units, webhook_configs, ad_campaigns, ad_schedule, ad_impressions, sponsor_configs |
+| `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths, podcast_shows, podcast_episodes, episode_markers, publish_targets, publish_queue, podcast_downloads, song_requests, dedications, remote_sessions, remote_participants, remote_chat, daw_projects, daw_tracks, daw_clips, daw_automation, captions, caption_segments |
+| `mcaster1_metrics` | listener_sessions, daily_stats, ad_impressions_log |
+| `mcaster1_voictune` | sessions, voice_profiles, analysis_snapshots, ai_interactions |
+| `mcaster1_producer` | jobs, job_results, forensic_reports |
 
 ### Key Tables
 
@@ -597,16 +664,16 @@ MySQL connection via `~/.my.cnf` (never inline credentials).
 -- mcaster1_encoder.users
 id, username, email, display_name, password_hash (bcrypt), role_id, is_active, last_login
 
--- mcaster1_encoder.pedalboard_layouts (v1.8.0)
+-- mcaster1_encoder.pedalboard_layouts (v2.0.0)
 id, user_id, layout_name, layout_json, is_default
 
--- mcaster1_encoder.mixer_configs (v1.8.0)
+-- mcaster1_encoder.mixer_configs (v2.0.0)
 id, user_id, config_name, skin, channel_json, master_json
 
--- mcaster1_encoder.mixer_custom_units (v1.8.0)
+-- mcaster1_encoder.mixer_custom_units (v2.0.0)
 id, mixer_config_id, unit_type, params_json, position
 
--- mcaster1_encoder.webhook_configs (v1.8.0)
+-- mcaster1_encoder.webhook_configs (v2.0.0)
 id, event_type, url, secret, is_active, last_triggered_at
 
 -- mcaster1_media.tracks
@@ -619,37 +686,37 @@ id, name, description, created_at, updated_at
 -- mcaster1_media.playlist_tracks
 id, playlist_id, track_id, position, added_at
 
--- mcaster1_media.podcast_shows (v1.8.0)
+-- mcaster1_media.podcast_shows (v2.0.0)
 id, title, description, author, category, language, cover_art_path, website_url, feed_url, is_active
 
--- mcaster1_media.podcast_episodes (v1.8.0)
+-- mcaster1_media.podcast_episodes (v2.0.0)
 id, show_id, title, description, file_path, duration_sec, format, bitrate_kbps, season, episode_number, published_at, is_published, tags
 
--- mcaster1_media.episode_markers (v1.8.0)
+-- mcaster1_media.episode_markers (v2.0.0)
 id, episode_id, marker_type (chapter/note/highlight/ad_break), timestamp_ms, title, url
 
--- mcaster1_media.publish_targets (v1.8.0)
+-- mcaster1_media.publish_targets (v2.0.0)
 id, show_id, platform (rss/apple/spotify/youtube/etc.), api_key, config_json, is_active
 
--- mcaster1_media.publish_queue (v1.8.0)
+-- mcaster1_media.publish_queue (v2.0.0)
 id, episode_id, target_id, status (pending/scheduled/publishing/published/failed), scheduled_at
 
--- mcaster1_media.podcast_downloads (v1.8.0)
+-- mcaster1_media.podcast_downloads (v2.0.0)
 id, episode_id, client_ip, user_agent, downloaded_at, bytes_sent
 
--- mcaster1_media.song_requests (v1.8.0)
+-- mcaster1_media.song_requests (v2.0.0)
 id, track_id, requester_name, requester_email, message, status (pending/approved/rejected/played), slot_id
 
--- mcaster1_media.dedications (v1.8.0)
+-- mcaster1_media.dedications (v2.0.0)
 id, request_id, dedication_to, dedication_from, message
 
--- mcaster1_media.remote_sessions (v1.8.0)
+-- mcaster1_media.remote_sessions (v2.0.0)
 id, host_user_id, session_name, invite_token, status (waiting/active/recording/ended), started_at
 
--- mcaster1_media.remote_participants (v1.8.0)
+-- mcaster1_media.remote_participants (v2.0.0)
 id, session_id, display_name, role (host/guest), joined_at, track_file_path
 
--- mcaster1_media.remote_chat (v1.8.0)
+-- mcaster1_media.remote_chat (v2.0.0)
 id, session_id, participant_id, message, sent_at
 
 -- mcaster1_metrics.listener_sessions
@@ -836,29 +903,27 @@ Or generate self-signed:
 | L9 | v1.7.0 | Clockwheel scheduler + dead air detection | **COMPLETE** |
 | L-METRICS | v1.7.0 | System Health Dashboard (disk, codecs, FPM, SSL) | **COMPLETE** |
 | L-MEDIA | v1.7.0 | Folder browser, scan progress, category types/weights | **COMPLETE** |
-| VT-1 | v1.8.0 | VoicTune daemon skeleton (HTTP, auth, FFT, pitch, meters, DB, WS, USB, Ollama) | **COMPLETE** |
-| VT-2 | v1.8.0 | VoicTune audio capture pipeline + live analysis | **COMPLETE** |
-| VT-3 | v1.8.0 | VoicTune web UI (oscilloscope, SA, pitch, meters) | **COMPLETE** |
-| VT-4 | v1.8.0 | Voice coaching (rule-based + AI tips in browser) | **COMPLETE** |
-| PB-1 | v1.8.0 | Pedalboard infrastructure + SVG broadcast pedals | **COMPLETE** |
-| PB-2 | v1.8.0 | Cable routing + signal flow visualization | **COMPLETE** |
-| PB-3 | v1.8.0 | Real-time meters + visual feedback on pedals | **COMPLETE** |
-| AI-1 | v1.8.0 | Ollama AI integration — coaching, EQ/chain suggestions | **COMPLETE** |
-| AI-2 | v1.8.0 | NLP command parsing (natural language → API actions) | **COMPLETE** |
-| AI-3 | v1.8.0 | Content analysis + show notes generation | **COMPLETE** |
-| AI-4 | v1.8.0 | Smart playlist generation + troubleshooting | **COMPLETE** |
-| MX-1 | v1.8.0 | Virtual mixer console — channel strips, faders | **COMPLETE** |
-| MX-2 | v1.8.0 | Mixer skins (6 Mcaster1-branded styles) | **COMPLETE** |
-| MX-3 | v1.8.0 | Custom user effect profiles + mixer presets | **COMPLETE** |
+| VT-1..4 | v1.8.0 | VoicTune daemon (FFT, pitch, meters, coaching, web UI) | **COMPLETE** |
+| PB-1..3 | v1.8.0 | Visual pedalboard (SVG pedals, cable routing, live meters) | **COMPLETE** |
+| AI-1..4 | v1.8.0 | Ollama AI (coaching, EQ/chain, NLP, content analysis, playlists) | **COMPLETE** |
+| MX-1..3 | v1.8.0 | Virtual mixer console (channel strips, 6 skins, presets) | **COMPLETE** |
 | L10 | v1.8.0 | Podcast archive management + RSS feed generation | **COMPLETE** |
 | L11 | v1.8.0 | Song requests, dedications, webhooks, embeddable widget | **COMPLETE** |
-| PC-1 | v1.8.0 | Recording studio (one-click record, chapter markers, auto-split) | **COMPLETE** |
-| PC-2 | v1.8.0 | Episode editor (waveform, EDL, cut/trim/fade/normalize) | **COMPLETE** |
-| PC-3 | v1.8.0 | Multi-platform publishing (RSS, Apple, Spotify, YouTube, etc.) | **COMPLETE** |
-| PC-4 | v1.8.0 | Podcast analytics dashboard (downloads, retention, geo) | **COMPLETE** |
-| PC-5 | v1.8.0 | Podcast website generator (landing pages, SEO, themes) | **COMPLETE** |
-| PC-6 | v1.8.0 | AI podcast tools (transcription, show notes, chapter suggestions) | **COMPLETE** |
-| PC-7 | v1.8.0 | Remote recording (WebRTC guests, per-track, chat, invite URL) | **COMPLETE** |
+| PC-1..7 | v1.8.0 | Podcast studio (recording, editor, publishing, analytics, website, AI, remote) | **COMPLETE** |
+| VP-1 | v1.9.0 | DSP Producer daemon (video capture, RTMP streaming) | **COMPLETE** |
+| VP-2 | v1.9.0 | Video switcher + multicam + overlays | **COMPLETE** |
+| VP-3 | v1.9.0 | Vodcast support (video + audio encoding) | **COMPLETE** |
+| DAW-1 | v1.9.0 | Multi-track DAW (timeline, clip editing, automation) | **COMPLETE** |
+| DAW-2 | v1.9.0 | DAW effects chain + mixing + export | **COMPLETE** |
+| DAW-3 | v1.9.0 | DAW noise reduction + freeze tracks | **COMPLETE** |
+| FA-1 | v1.9.0 | Forensic audio (HQ spectrogram, 65536 FFT, WSOLA) | **COMPLETE** |
+| FA-2 | v1.9.0 | Forensic compare, peak detection, reports, AI | **COMPLETE** |
+| FA-3 | v1.9.0 | Goniometer + noise subtraction + EBU R128 | **COMPLETE** |
+| CC-1 | v1.9.0 | Closed captions (Whisper, SRT/VTT, live, burn-in, RSS) | **COMPLETE** |
+| MON-1 | v1.9.0 | Monetization (DAI, campaigns, CPM, impressions, sponsors) | **COMPLETE** |
+| NAV-1 | v1.9.0 | Mode-based navigation (5 modes), daemon health monitor | **COMPLETE** |
+| MOBILE-1 | v1.9.0 | Mobile responsive UI, media picker component | **COMPLETE** |
+| VIZ-1 | v1.9.0 | WebGL visualizations (spectrogram, 3D spectrum, globe, knobs) | **COMPLETE** |
 
 ---
 
@@ -933,6 +998,12 @@ For Windows config, manually copy from `config/mcaster1.yaml.example`.
 22. **Conditional Secure flag on cookies**: Only set the `Secure` flag on session cookies when the connection is HTTPS. HTTP port 8330 cookies with `Secure` are silently dropped by the browser, causing login loops. Check `req.has_header("X-Forwarded-Proto")` or socket SSL state before setting the flag.
 
 23. **Kill competing old service instances before restart**: Due to `SO_REUSEPORT`, always `pkill -9 -f mcaster1-dsp-encoder && sleep 2` before restarting. Old and new instances binding to the same port causes session token mismatches and 302 redirect loops.
+
+24. **Encoder proc_only health**: The encoder child process has a `/api/v1/health` endpoint that returns `proc_only: true` to indicate it does not serve the web UI. The admin process proxies health checks. Do not send web UI requests directly to the encoder child.
+
+25. **CSS Grid children and sidebar nav**: Mode-based navigation uses CSS Grid with `grid-template-columns`. Adding new sidebar items requires updating the grid column count in `header.php` and `responsive.css` to avoid layout overflow on smaller screens.
+
+26. **Mode nav state persistence**: The active UI mode (Broadcast, Podcast, Producer, Forensic, DAW) is stored in `localStorage['mc1_mode']`. The sidebar filters visible pages based on this value. Changing modes does not reload the page — it toggles CSS visibility classes.
 
 ---
 

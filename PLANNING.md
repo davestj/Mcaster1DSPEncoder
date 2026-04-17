@@ -52,43 +52,58 @@ This document captures all completed and planned phases. Reference it in CLAUDE.
 | PC-5 | v1.8.0 | Podcast website generator (landing pages, SEO, themes) | COMPLETE |
 | PC-6 | v1.8.0 | AI podcast tools (transcription, show notes, chapter suggestions) | COMPLETE |
 | PC-7 | v1.8.0 | Remote recording (WebRTC guests, per-track, chat, invite URL) | COMPLETE |
+| VP-1 | v1.9.0 | DSP Producer daemon (video capture, RTMP streaming) | COMPLETE |
+| VP-2 | v1.9.0 | Video switcher + multicam + overlays | COMPLETE |
+| VP-3 | v1.9.0 | Vodcast support (video + audio encoding) | COMPLETE |
+| DAW-1 | v1.9.0 | Multi-track DAW (timeline, clip editing, automation) | COMPLETE |
+| DAW-2 | v1.9.0 | DAW effects chain + mixing + export | COMPLETE |
+| DAW-3 | v1.9.0 | DAW noise reduction + freeze tracks | COMPLETE |
+| FA-1 | v1.9.0 | Forensic audio (HQ spectrogram, 65536 FFT, WSOLA) | COMPLETE |
+| FA-2 | v1.9.0 | Forensic compare, peak detection, reports, AI analysis | COMPLETE |
+| FA-3 | v1.9.0 | Goniometer + noise subtraction + EBU R128 compliance | COMPLETE |
+| CC-1 | v1.9.0 | Closed captions (Whisper, SRT/VTT, live, burn-in, RSS) | COMPLETE |
+| MON-1 | v1.9.0 | Monetization (DAI, ad campaigns, CPM, impressions, sponsors) | COMPLETE |
+| NAV-1 | v1.9.0 | Mode-based navigation (5 modes), daemon health monitor | COMPLETE |
+| MOBILE-1 | v1.9.0 | Mobile responsive UI, media picker component | COMPLETE |
+| VIZ-1 | v1.9.0 | WebGL visualizations (spectrogram, 3D spectrum, globe, knobs, faders, cables) | COMPLETE |
 
 ---
 
-## v1.8.0-beta.1 — COMPLETE (2026-03-27)
+## v2.0.0 — CURRENT RELEASE (2026-03-27)
 
-All 23+ phases complete. Mcaster1 is now a full podcaster/broadcaster production studio.
+All 40+ phases complete. Mcaster1 is a full podcaster/broadcaster/video production studio.
 
-### Three Binaries
+### Four Binaries
 
 | Binary | Size | Ports | Purpose |
 |--------|------|-------|---------|
-| `mcaster1-dsp-encoder-admin` | 36MB | 8330/8344 | Web UI, FastCGI, auth, supervisor |
-| `mcaster1-dsp-encoder` | 28MB | --- | Audio pipeline, DSP, codecs, streaming |
-| `mcaster1-voictune` | 18MB | 8350/8354/8355 | Voice analysis, coaching, AI |
+| `mcaster1-dsp-encoder-admin` | 46MB | 8330/8344 | Web UI, FastCGI, auth, supervisor |
+| `mcaster1-dsp-encoder` | 29MB | --- | Audio pipeline, DSP, codecs, streaming |
+| `mcaster1-voictune` | 21MB | 8350/8354/8355 | Voice analysis, coaching, AI |
+| `mcaster1-producer` | 9.1MB | 8360/8364 | Video encoding, multi-track mixdown, forensic FFT |
 
 ### Key Decisions
 
-- Graphics: Canvas 2D primary + WebGL 2.0 for mixer + CSS 3D for knobs. No Three.js.
+- Graphics: Canvas 2D primary + WebGL 2.0 for mixer/spectrogram + CSS 3D for knobs. No Three.js.
 - FFT: kiss_fft vendored (BSD-3, header-only)
 - AI: Ollama client (cpp-httplib to localhost:11434), graceful degradation if offline
 - Mixer skins: 6 Mcaster1-branded styles, NO actual brand names
 - WebSocket: Raw RFC 6455 implementation (no external lib)
 - USB hotplug: inotify on /dev/snd/ + 500ms settle delay + PortAudio re-enumeration
+- Captions: Whisper via Ollama or external API, SRT/VTT output
+- Video: FFmpeg subprocess for encode/transcode, RTMP push via librtmp
+- DAW: Browser-based Canvas 2D timeline, server-side FFmpeg for export
+- Mode navigation: 5 UI modes (Broadcast, Podcast, Producer, Forensic, DAW) via localStorage
 
 ---
 
-## v1.9.0 — Planned
+## v2.1.0 — Planned
 
 ### Potential Features
 - macOS native build (CoreAudio backend via PortAudio)
-- Mobile-responsive web UI overhaul
-- WebRTC direct browser-to-encoder streaming
 - Plugin SDK for third-party DSP effects
 - Multi-user collaborative editing (concurrent web sessions)
-- Automated loudness compliance (EBU R128 / ATSC A/85)
 - Advanced VoicTune: real-time vocal effects (de-breath, auto-tune, voice changer)
-- Podcast monetization (dynamic ad insertion, sponsor management)
 - Multi-language UI localization (i18n)
 - Streaming to additional platforms (Twitch, YouTube Live, Facebook Live)
 
@@ -98,10 +113,11 @@ All 23+ phases complete. Mcaster1 is now a full podcaster/broadcaster production
 
 | Database | Tables |
 |----------|--------|
-| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers, pedalboard_layouts, mixer_configs, mixer_custom_units, webhook_configs |
-| `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths, podcast_shows, podcast_episodes, episode_markers, publish_targets, publish_queue, podcast_downloads, song_requests, dedications, remote_sessions, remote_participants, remote_chat |
-| `mcaster1_metrics` | listener_sessions, daily_stats |
+| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers, pedalboard_layouts, mixer_configs, mixer_custom_units, webhook_configs, ad_campaigns, ad_schedule, ad_impressions, sponsor_configs |
+| `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths, podcast_shows, podcast_episodes, episode_markers, publish_targets, publish_queue, podcast_downloads, song_requests, dedications, remote_sessions, remote_participants, remote_chat, daw_projects, daw_tracks, daw_clips, daw_automation, captions, caption_segments |
+| `mcaster1_metrics` | listener_sessions, daily_stats, ad_impressions_log |
 | `mcaster1_voictune` | sessions, voice_profiles, analysis_snapshots, ai_interactions |
+| `mcaster1_producer` | jobs, job_results, forensic_reports |
 
 ---
 
@@ -119,3 +135,8 @@ All 23+ phases complete. Mcaster1 is now a full podcaster/broadcaster production
 10. **Cookie SameSite=Lax:** Not Strict — Strict breaks cross-port navigation (8330 to 8344).
 11. **Conditional Secure flag:** Only set on HTTPS connections to avoid cookie drops on HTTP port.
 12. **cpp-httplib route limit:** Use individual route registrations, not catch-all dispatchers.
+13. **Producer is a separate daemon:** Independent binary on ports 8360/8364. Video/audio/FFT worker threads offloaded from admin.
+14. **Mode-based navigation:** 5 UI modes filter sidebar visibility. State persisted in localStorage.
+15. **Captions via Whisper:** Ollama or external Whisper API, SRT/VTT output, optional burn-in via FFmpeg.
+16. **DAW is browser-only timeline:** Canvas 2D timeline rendering, server-side FFmpeg for final export/mixdown.
+17. **Forensic spectrogram:** WebGL HQ spectrogram with up to 65536-point FFT, WSOLA time stretch.

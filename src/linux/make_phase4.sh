@@ -41,7 +41,7 @@ CXXFLAGS_EXTRA="${CXXFLAGS:-}"
 
 mkdir -p "${BUILD_DIR}"
 
-echo "── Mcaster1 DSP Encoder v1.8.0-beta.1 — Phase 4 Full Build ────────────────"
+echo "── Mcaster1 DSP Encoder v2.0.0 — Phase 4 Full Build ────────────────"
 echo "   Repo  : ${REPO_ROOT}"
 echo "   Output: ${OUT}"
 echo ""

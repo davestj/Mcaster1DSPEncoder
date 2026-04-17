@@ -1,6 +1,6 @@
 # Mcaster1 Podcast Studio — Comprehensive Documentation
 
-**Version:** 1.8.0-beta.1+
+**Version:** 2.0.0
 **Last Updated:** 2026-03-28
 **Maintainer:** Dave St. John <davestj@gmail.com>
 
@@ -27,6 +27,7 @@ Mcaster1 Podcast Studio is a complete end-to-end podcast production and publishi
 ├──────────────────────────────────────────────────────────────────┤
 │              mcaster1-dsp-encoder-admin (C++ HTTP API)           │
 │              mcaster1-voictune (AI voice analysis)               │
+│              mcaster1-producer (video, DAW mixdown, forensic)    │
 ├──────────────────────────────────────────────────────────────────┤
 │          PortAudio │ FFmpeg │ LAME │ Opus │ AAC │ FLAC          │
 └──────────────────────────────────────────────────────────────────┘
@@ -239,6 +240,31 @@ Mcaster1 Podcast Studio is a complete end-to-end podcast production and publishi
 - SEO title/description suggestions
 - Filler word detection and removal suggestions
 - Uses VoicTune coaching PHP helpers (`app/inc/voictune_coaching.php`)
+
+### CC-1: Closed Captions (COMPLETE)
+- Speech-to-text via Whisper (Ollama or external API)
+- SRT and VTT subtitle format export
+- Live caption generation during broadcast
+- Burn-in captions to video via FFmpeg
+- Caption tracks linked to podcast RSS feeds
+- **API:** `/app/api/captions.php`
+
+### MON-1: Monetization (COMPLETE)
+- Dynamic Ad Insertion (DAI) with automated placement
+- Campaign management with date ranges and targeting
+- CPM impression tracking and reporting
+- Sponsor configuration and rotation scheduling
+- **Page:** `/monetization.php`
+- **API:** `/app/api/ads.php`
+
+### VP-3: Vodcast / Video Support (COMPLETE)
+- Video + audio simultaneous encoding via Producer daemon
+- RTMP push to YouTube Live, Twitch, etc.
+- Video source capture and multi-camera switching
+- Overlay management (text, images, logos)
+- Thumbnail extraction for episode artwork
+- **Page:** `/producer.php`
+- **API:** `/app/api/producer.php`
 
 ### PC-7: Remote Recording (COMPLETE)
 - WebRTC-based remote guest recording

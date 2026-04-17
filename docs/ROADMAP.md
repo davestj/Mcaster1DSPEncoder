@@ -1,13 +1,13 @@
 # Mcaster1DSPEncoder — Development Roadmap
 
-**Version:** 1.8.0-beta.1
+**Version:** 2.0.0
 **Last Updated:** 2026-03-27
 
 ---
 
-## Current Release: v1.8.0-beta.1 — ALL PHASES COMPLETE
+## Current Release: v2.0.0 — ALL PHASES COMPLETE
 
-v1.8.0-beta.1 is a major release transforming Mcaster1 from a broadcast encoder into a full podcaster/broadcaster production studio. All 23+ development phases are complete.
+v2.0.0 is a major release transforming Mcaster1 from a broadcast encoder into a full podcaster/broadcaster/video production studio. All 40+ development phases are complete, with quad-binary architecture, DSP Producer, multi-track DAW, forensic audio analysis, closed captions, monetization, and mode-based navigation.
 
 ---
 
@@ -40,32 +40,36 @@ v1.8.0-beta.1 is a major release transforming Mcaster1 from a broadcast encoder 
 | MX-1..MX-3 | Virtual mixer console (channel strips, 6 skins, custom presets) | **COMPLETE** |
 | L10 | Podcast archive management + iTunes RSS feed generation | **COMPLETE** |
 | L11 | Song requests, dedications, webhooks, embeddable widget | **COMPLETE** |
-| PC-1 | Recording studio (one-click record, chapter markers, auto-split) | **COMPLETE** |
-| PC-2 | Episode editor (waveform, EDL, cut/trim/fade/normalize, export) | **COMPLETE** |
-| PC-3 | Multi-platform publishing (RSS, Apple, Spotify, YouTube, etc.) | **COMPLETE** |
-| PC-4 | Podcast analytics dashboard (downloads, retention, geo) | **COMPLETE** |
-| PC-5 | Podcast website generator (landing pages, SEO, themes) | **COMPLETE** |
-| PC-6 | AI podcast tools (transcription, show notes, chapter suggestions) | **COMPLETE** |
-| PC-7 | Remote recording (WebRTC guests, per-track, chat, invite URL) | **COMPLETE** |
+| PC-1..PC-7 | Podcast studio (recording, editor, publishing, analytics, website, AI, remote) | **COMPLETE** |
+
+### v1.9.0 — Video, DAW, Forensic, Captions, Monetization
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| VP-1..VP-3 | DSP Producer daemon (video capture, switcher, RTMP, vodcast, overlays) | **COMPLETE** |
+| DAW-1..DAW-3 | Multi-track DAW (timeline, clips, automation, effects, mixing, export, noise reduction, freeze) | **COMPLETE** |
+| FA-1..FA-3 | Forensic audio (HQ spectrogram, 65536 FFT, WSOLA, peak detection, compare, reports, AI, goniometer) | **COMPLETE** |
+| CC-1 | Closed captions (Whisper, SRT/VTT, live, burn-in, RSS) | **COMPLETE** |
+| MON-1 | Monetization (DAI, campaigns, CPM, impressions, sponsors) | **COMPLETE** |
+| NAV-1 | Mode-based navigation (5 modes), daemon health monitor | **COMPLETE** |
+| MOBILE-1 | Mobile responsive UI, media picker component | **COMPLETE** |
+| VIZ-1 | WebGL visualizations (spectrogram, 3D spectrum, globe, knobs, faders, cables) | **COMPLETE** |
 
 ---
 
 ## Future Releases
 
-### v1.9.0 — Platform Expansion (Planned)
+### v2.1.0 — Platform Expansion (Planned)
 
 | Feature | Description | Priority |
 |---------|-------------|----------|
 | macOS native build | CoreAudio backend via PortAudio | Medium |
-| Mobile-responsive UI | Web UI overhaul for tablet/phone | Medium |
-| WebRTC browser streaming | Direct browser-to-encoder audio | Low |
-| Plugin SDK | Third-party DSP effect plugins | Low |
+| Plugin SDK | Third-party DSP effect plugins | Medium |
 | Multi-user collaboration | Concurrent web session editing | Low |
-| Loudness compliance | EBU R128 / ATSC A/85 auto-correction | Medium |
 | Advanced VoicTune | De-breath, auto-tune, voice changer | Low |
-| Podcast monetization | Dynamic ad insertion, sponsor management | Low |
 | i18n localization | Multi-language web UI | Low |
-| Multi-platform streaming | Twitch, YouTube Live, Facebook Live | Medium |
+| HLS/DASH streaming | Adaptive bitrate streaming output | Medium |
+| SRT protocol | Secure Reliable Transport for low-latency | Medium |
 
 ---
 
@@ -85,3 +89,8 @@ v1.8.0-beta.1 is a major release transforming Mcaster1 from a broadcast encoder 
 | WebSocket | Raw RFC 6455 | No external lib dependency |
 | Episode editor | Canvas 2D + Web Audio API | Waveform rendering, EDL operations |
 | Remote recording | WebRTC | Per-participant tracks, low latency |
+| DAW timeline | Canvas 2D | Clip rendering, automation curves, zoom/scroll |
+| Video encoding | FFmpeg subprocess | Transcode, RTMP push, thumbnail extraction |
+| Forensic spectrogram | WebGL 2.0 | 65536-point FFT, real-time waterfall |
+| Captions | Whisper (Ollama) | Speech-to-text, SRT/VTT output |
+| Mode navigation | localStorage | 5 modes, sidebar filter, no reload |

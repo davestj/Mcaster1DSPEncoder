@@ -1,6 +1,6 @@
 # Mcaster1DSPEncoder — Feature Overview
 
-**Version:** 1.8.0-beta.1
+**Version:** 2.0.0
 **Last Updated:** 2026-03-27
 
 ---
@@ -98,6 +98,16 @@
 | Now-Playing Widget | Embeddable player + now-playing for external sites |
 | Remote Host | Remote recording host dashboard (manage guests, recording, chat) |
 | Remote Guest | Remote recording guest view (audio, chat, hand-raise) |
+| DAW | Multi-track DAW (timeline, clip editing, automation, mixing, export) |
+| Forensic Audio | HQ spectrogram, 65536 FFT, noise subtraction, WSOLA, peak detection |
+| Producer | DSP Producer (video capture, switcher, RTMP streaming, vodcast) |
+| Monetization | Ad campaigns, dynamic ad insertion, CPM reports, sponsor management |
+| Compliance | EBU R128 loudness compliance monitoring |
+| Schedule | Clockwheel scheduler with category rotation |
+| Crossfader | 9-curve crossfader controls |
+| Effects Rack | Per-encoder and global effects rack management |
+| Dual-Deck Player | Standalone A/B DJ mixer popup |
+| JACK Routing | JACK audio port matrix for virtual cables |
 
 ### Media Library
 - Folder browser with recursive scanning
@@ -288,19 +298,135 @@
 
 ---
 
+## DSP Producer (Video)
+
+### Standalone Daemon
+- Independent binary: `mcaster1-producer` (9.1MB)
+- HTTP/HTTPS API on ports 8360/8364
+- Video/audio/FFT worker thread pools
+
+### Video Features
+- Video source capture and management
+- Multi-camera switcher with transitions
+- RTMP push streaming (YouTube Live, Twitch, etc.)
+- Vodcast support (video + audio simultaneous encoding)
+- Overlay management (text, images, logos)
+- Thumbnail extraction via FFmpeg
+
+---
+
+## Multi-Track DAW
+
+- Browser-based Canvas 2D timeline editor
+- Multi-track clip placement with drag-and-drop
+- Automation lanes (volume, pan, effects parameters)
+- Per-track effects chain with bypass
+- Real-time mixing with level metering
+- Server-side export via FFmpeg (MP3, WAV, FLAC, AAC)
+- Noise reduction processing
+- Freeze tracks (render-in-place for CPU savings)
+- Waveform rendering with zoom and scroll
+
+---
+
+## Forensic Audio Analysis
+
+- **HQ Spectrogram** — WebGL rendering with up to 65536-point FFT
+- **Noise Subtraction** — Spectral noise profile and removal
+- **WSOLA Time Stretch** — Time-domain pitch-preserving stretch
+- **Peak Detection** — Automatic transient and peak finding
+- **Compare Mode** — Side-by-side analysis of two audio files
+- **Report Generation** — PDF/HTML forensic analysis reports
+- **AI Analysis** — Ollama-powered audio content analysis
+- **Goniometer** — Stereo field visualization (Lissajous)
+- **EBU R128 Compliance** — Integrated, momentary, and short-term loudness
+
+---
+
+## Closed Captions
+
+- **Whisper Integration** — Speech-to-text via Ollama or external Whisper API
+- **SRT/VTT Export** — Standard subtitle format output
+- **Live Captions** — Real-time caption generation during broadcast
+- **Burn-In** — Hardcode captions into video via FFmpeg
+- **RSS Integration** — Caption tracks linked to podcast RSS feeds
+
+---
+
+## Monetization
+
+- **Dynamic Ad Insertion (DAI)** — Automated ad placement in streams
+- **Campaign Management** — Create/manage ad campaigns with date ranges
+- **CPM Reporting** — Cost-per-mille impression tracking
+- **Impression Logging** — Per-listener ad delivery tracking
+- **Sponsor Management** — Sponsor configurations and rotation
+
+---
+
+## Mode-Based Navigation
+
+Five UI modes that filter the sidebar to show relevant pages:
+- **Broadcast** — Encoders, DSP, streaming, analytics
+- **Podcast** — Recording, editing, publishing, RSS
+- **Producer** — Video capture, switcher, RTMP, overlays
+- **Forensic** — Spectrogram, analysis, compare, reports
+- **DAW** — Multi-track timeline, mixing, export
+
+---
+
+## Daemon Health Monitor
+
+- Real-time status of all 4 daemons (admin, encoder, voictune, producer)
+- PHP helper (`daemon_monitor.php`) polls each daemon's `/health` endpoint
+- Dashboard widget shows online/offline status with uptime
+- Auto-refresh on 30-second interval
+
+---
+
+## Media Picker Component
+
+- Reusable PHP component (`media_picker.php`) for selecting audio/video files
+- Folder browser with breadcrumb navigation
+- Search and filter by format, genre, category
+- Used across recording, DAW, and producer pages
+
+---
+
+## Mobile Responsive UI
+
+- `responsive.css` with breakpoints for tablet and phone
+- `mobile-nav.js` for hamburger menu and swipe navigation
+- Touch-friendly controls for faders and knobs
+- Collapsed sidebar on small screens
+
+---
+
+## WebGL Visualizations
+
+- **HQ Spectrogram** — 65536-point FFT, time-frequency waterfall
+- **3D Spectrum** — Real-time 3D frequency visualization
+- **Globe** — Geographic listener distribution
+- **Knobs & Faders** — Realistic metallic texture with lighting
+- **Cable Routing** — SVG bezier cables with glow effects
+- **Dashboard** — Animated bandwidth and listener graphs
+
+---
+
 ## Architecture
 
-### Triple-Binary Design (v1.8.0)
+### Quad-Binary Design (v2.0.0)
 
 ```
-mcaster1-dsp-encoder-admin  (36MB) — Web UI, FastCGI, auth, supervisor
-    +-- fork/exec --> mcaster1-dsp-encoder  (28MB) — Audio, DSP, codecs, streaming
-mcaster1-voictune           (18MB) — Voice analysis, coaching, AI (independent)
+mcaster1-dsp-encoder-admin  (46MB) — Web UI, FastCGI, auth, supervisor
+    +-- fork/exec --> mcaster1-dsp-encoder  (29MB) — Audio, DSP, codecs, streaming
+mcaster1-voictune           (21MB) — Voice analysis, coaching, AI (independent)
+mcaster1-producer            (9.1MB) — Video, DAW mixdown, forensic FFT (independent)
 ```
 
 - Fault isolation: codec crash doesn't kill web UI
 - Admin auto-restarts encoder within 5 seconds
 - VoicTune runs independently with own lifecycle
+- Producer handles CPU-intensive video/audio/FFT jobs
 
 ### Authentication
 - **Layer 1:** C++ in-memory sessions (`mc1session` cookie)
@@ -335,6 +461,6 @@ PHP: php8.2-fpm
 bash install-deps.sh     # Auto-detect OS, install everything
 bash autogen.sh          # Bootstrap autotools
 ./configure              # Detect codecs
-make -j$(nproc)          # Build all 3 binaries
+make -j$(nproc)          # Build all 4 binaries
 bash scripts/sign-binaries.sh  # GPG sign binaries
 ```

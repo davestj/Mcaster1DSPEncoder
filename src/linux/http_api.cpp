@@ -488,7 +488,7 @@ static void setup_routes(httplib::Server& svr)
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
                 json j;
-                j["version"]  = "1.8.0-beta.1";
+                j["version"]  = "2.0.0";
                 j["platform"] = "linux";
                 j["uptime"]   = uptime_str(g_start_time);
                 j["admin_server"] = "mcaster1-encoder";

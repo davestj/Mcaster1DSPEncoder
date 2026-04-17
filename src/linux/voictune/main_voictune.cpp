@@ -42,7 +42,7 @@
 #include <cmath>
 #include <algorithm>
 
-#define VT_VERSION "1.8.0-beta.1"
+#define VT_VERSION "2.0.0"
 #define VT_BANNER  "Mcaster1 VoicTune v" VT_VERSION " — Voice Analysis & Coaching Daemon"
 
 static std::atomic<bool> g_shutdown{false};
