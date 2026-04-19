@@ -614,6 +614,7 @@ typedef struct {
 	struct {
 	    char voictune_key[128];  /* API key for VoicTune daemon (port 8350)         */
 	    char encoder_key[128];   /* API key for encoder daemon (this process)       */
+	    char producer_key[128];  /* API key for Producer daemon (port 8360)        */
 	} daemon_keys;
 } mc1AdminConfig;
 

@@ -199,6 +199,60 @@ static void setup_routes(httplib::Server& svr)
         res.set_content(R"({"ok":true})", "application/json");
     });
 
+    /* ── Auth: replicate (internal, API-key only) ───────────────────────── */
+    svr.Post("/api/v1/producer/auth/replicate", [](const httplib::Request& req, httplib::Response& res) {
+        /* Only accept daemon API key — not user sessions */
+        if (g_prcfg.auth.api_token.empty() ||
+            req.get_header_value("X-API-Token") != g_prcfg.auth.api_token) {
+            res.status = 403;
+            res.set_content(R"({"error":"Forbidden — API key required"})", "application/json");
+            return;
+        }
+        json body;
+        try { body = json::parse(req.body); } catch (...) {
+            res.status = 400;
+            res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+            return;
+        }
+        std::string token    = body.value("token", "");
+        std::string username = body.value("username", "");
+        time_t      expires  = body.value("expires", (int64_t)0);
+        if (token.empty() || username.empty() || expires == 0) {
+            res.status = 400;
+            res.set_content(R"({"error":"Missing token, username, or expires"})", "application/json");
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lk(g_session_mtx);
+            g_sessions[token] = {expires, username};
+        }
+        PR_INFO("auth: replicated session for user=" + username);
+        res.set_content(R"({"ok":true})", "application/json");
+    });
+
+    /* ── Auth: revoke (internal, API-key only) ──────────────────────────── */
+    svr.Post("/api/v1/producer/auth/revoke", [](const httplib::Request& req, httplib::Response& res) {
+        if (g_prcfg.auth.api_token.empty() ||
+            req.get_header_value("X-API-Token") != g_prcfg.auth.api_token) {
+            res.status = 403;
+            res.set_content(R"({"error":"Forbidden — API key required"})", "application/json");
+            return;
+        }
+        json body;
+        try { body = json::parse(req.body); } catch (...) {
+            res.status = 400;
+            res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+            return;
+        }
+        std::string token = body.value("token", "");
+        if (!token.empty()) {
+            std::lock_guard<std::mutex> lk(g_session_mtx);
+            g_sessions.erase(token);
+            PR_INFO("auth: revoked replicated session");
+        }
+        res.set_content(R"({"ok":true})", "application/json");
+    });
+
     /* ── Status (authed) ─────────────────────────────────────────────────── */
     svr.Get("/api/v1/producer/status", [](const httplib::Request& req, httplib::Response& res) {
         with_auth(req, res, [&]() {

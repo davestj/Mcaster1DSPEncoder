@@ -237,6 +237,9 @@ static void parse_daemon_keys(yaml_document_t* doc, yaml_node_t* node)
     if ((v = map_get(doc, node, "encoder")))
         strncpy(gAdminConfig.daemon_keys.encoder_key, node_scalar(doc, v),
                 sizeof(gAdminConfig.daemon_keys.encoder_key) - 1);
+    if ((v = map_get(doc, node, "producer")))
+        strncpy(gAdminConfig.daemon_keys.producer_key, node_scalar(doc, v),
+                sizeof(gAdminConfig.daemon_keys.producer_key) - 1);
 }
 
 // ---------------------------------------------------------------------------

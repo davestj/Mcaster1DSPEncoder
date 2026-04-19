@@ -1,1 +1,3 @@
+claude --resume d6d5ba13-3543-4404-bd75-fcf2e39491b8
+
 claude --resume c8ca8d8f-87d6-43c0-8ebc-5a5d7edc9fda

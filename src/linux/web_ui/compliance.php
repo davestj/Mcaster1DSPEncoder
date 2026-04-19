@@ -12,26 +12,47 @@ require_once __DIR__ . '/app/inc/auth.php';
 require_once __DIR__ . '/app/inc/user_auth.php';
 if (!mc1_is_authed()) { header('Location: /login.html'); return; }
 
+/* Check both possible report locations */
+$docs_dir = realpath(__DIR__ . '/../../docs');
 $sec_dir  = realpath(__DIR__ . '/../../security');
 
+/* Map report names to actual file paths (docs/ has the current reports) */
+$report_files = [
+    'sast-report.html'           => $docs_dir . '/sast-report.html',
+    'dast-report.html'           => $docs_dir . '/dast-report.html',
+    'security-patch-status.html' => $docs_dir . '/security-patch-status.html',
+];
+/* Legacy names still supported */
+if ($sec_dir) {
+    foreach (['patchlist.html', 'fixed.html'] as $legacy) {
+        $lp = $sec_dir . '/' . $legacy;
+        if (file_exists($lp)) $report_files[$legacy] = $lp;
+    }
+}
+
 $view = basename($_GET['view'] ?? '');
-if ($view !== '' && in_array($view, ['sast-report.html', 'dast-report.html', 'patchlist.html', 'fixed.html'])) {
-    $rpath = $sec_dir . '/' . $view;
-    if (file_exists($rpath)) { header('Content-Type: text/html; charset=utf-8'); readfile($rpath); return; }
+if ($view !== '' && isset($report_files[$view]) && file_exists($report_files[$view])) {
+    /* Serve report in frameless popup — no header/footer, no print */
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>' . htmlspecialchars($view) . '</title>';
+    echo '<style>@media print { body { display:none !important; } body::after { content:"Report printing disabled"; display:block; font-size:24px; padding:40px; } }</style>';
+    echo '</head><body>';
+    readfile($report_files[$view]);
+    echo '</body></html>';
+    return;
 }
 
 require_once __DIR__ . '/app/inc/header.php';
 $reports  = [];
-foreach (['sast-report.html', 'dast-report.html', 'patchlist.html', 'fixed.html'] as $f) {
-    $path = $sec_dir . '/' . $f;
+foreach ($report_files as $f => $path) {
     $reports[$f] = [
         'exists' => file_exists($path),
         'size'   => file_exists($path) ? filesize($path) : 0,
         'mtime'  => file_exists($path) ? filemtime($path) : 0,
     ];
 }
-$tests = glob($sec_dir . '/testharness/sast-*.sh');
-$dast_tests = glob($sec_dir . '/testharness/dast-*.sh');
+$tests = $sec_dir ? glob($sec_dir . '/testharness/sast-*.sh') : [];
+$dast_tests = $sec_dir ? glob($sec_dir . '/testharness/dast-*.sh') : [];
 ?>
 
 <style>
@@ -189,7 +210,7 @@ function exportHTML() {
         echo '<h3><i class="fas ' . $icon . '" style="color:#00d4aa"></i> ' . h($title) . ' ' . $badge . '</h3>';
         echo '<p>' . h($desc) . '</p>';
         if ($r['exists']) {
-            echo '<a href="/compliance.php?view=' . h($file) . '" class="comp-btn" target="_blank"><i class="fas fa-external-link-alt"></i> View Report</a> ';
+            echo '<a href="#" onclick="window.open(\'/compliance.php?view=' . h($file) . '\',\'mc1report\',\'width=1100,height=800,menubar=no,toolbar=no,location=yes,status=no,resizable=yes\');return false;" class="comp-btn"><i class="fas fa-external-link-alt"></i> View Report</a> ';
         }
         echo '<div class="meta" style="margin-top:.5rem">Updated: ' . h($date) . ' &bull; ' . h($size) . '</div>';
         echo '</div>';

@@ -464,6 +464,51 @@ static void setup_routes(httplib::Server& svr)
                 if (is_https) cookie += "; Secure";
                 res.set_header("Set-Cookie", cookie);
                 MC1_INFO("auth: login ok user=" + authed_user);
+
+                /* ── Replicate session to VoicTune daemon ──────────────── */
+                if (gAdminConfig.daemon_keys.voictune_key[0] != '\0') {
+                    try {
+                        httplib::Client vt_cli("127.0.0.1", 8350);
+                        vt_cli.set_connection_timeout(2, 0);
+                        vt_cli.set_read_timeout(2, 0);
+                        json rep;
+                        rep["token"]    = tok;
+                        rep["username"] = authed_user;
+                        rep["expires"]  = time(nullptr) + ttl;
+                        httplib::Headers rh = {{"X-API-Token",
+                            std::string(gAdminConfig.daemon_keys.voictune_key)}};
+                        auto vr = vt_cli.Post("/api/v1/voictune/auth/replicate",
+                                              rh, rep.dump(), "application/json");
+                        if (!vr || vr->status != 200)
+                            MC1_WARN("auth: session replicate to VoicTune failed (status="
+                                + std::to_string(vr ? vr->status : 0) + ")");
+                    } catch (...) {
+                        MC1_WARN("auth: session replicate to VoicTune exception");
+                    }
+                }
+
+                /* ── Replicate session to Producer daemon ──────────────── */
+                if (gAdminConfig.daemon_keys.producer_key[0] != '\0') {
+                    try {
+                        httplib::Client pr_cli("127.0.0.1", 8360);
+                        pr_cli.set_connection_timeout(2, 0);
+                        pr_cli.set_read_timeout(2, 0);
+                        json rep;
+                        rep["token"]    = tok;
+                        rep["username"] = authed_user;
+                        rep["expires"]  = time(nullptr) + ttl;
+                        httplib::Headers rh = {{"X-API-Token",
+                            std::string(gAdminConfig.daemon_keys.producer_key)}};
+                        auto pr = pr_cli.Post("/api/v1/producer/auth/replicate",
+                                              rh, rep.dump(), "application/json");
+                        if (!pr || pr->status != 200)
+                            MC1_WARN("auth: session replicate to Producer failed (status="
+                                + std::to_string(pr ? pr->status : 0) + ")");
+                    } catch (...) {
+                        MC1_WARN("auth: session replicate to Producer exception");
+                    }
+                }
+
                 json r; r["ok"] = true; r["redirect"] = "/dashboard";
                 res.set_content(r.dump(), "application/json");
             } else {
@@ -477,7 +522,41 @@ static void setup_routes(httplib::Server& svr)
     // ── POST /api/v1/auth/logout ───────────────────────────────────────────
     svr.Post("/api/v1/auth/logout",
         [](const httplib::Request& req, httplib::Response& res) {
-            session_delete(cookie_get(req, "mc1session"));
+            std::string tok = cookie_get(req, "mc1session");
+            session_delete(tok);
+
+            /* ── Revoke session from VoicTune daemon ───────────────── */
+            if (!tok.empty() && gAdminConfig.daemon_keys.voictune_key[0] != '\0') {
+                try {
+                    httplib::Client vt_cli("127.0.0.1", 8350);
+                    vt_cli.set_connection_timeout(2, 0);
+                    vt_cli.set_read_timeout(2, 0);
+                    json rev; rev["token"] = tok;
+                    httplib::Headers rh = {{"X-API-Token",
+                        std::string(gAdminConfig.daemon_keys.voictune_key)}};
+                    vt_cli.Post("/api/v1/voictune/auth/revoke",
+                                rh, rev.dump(), "application/json");
+                } catch (...) {
+                    MC1_WARN("auth: session revoke from VoicTune exception");
+                }
+            }
+
+            /* ── Revoke session from Producer daemon ───────────────── */
+            if (!tok.empty() && gAdminConfig.daemon_keys.producer_key[0] != '\0') {
+                try {
+                    httplib::Client pr_cli("127.0.0.1", 8360);
+                    pr_cli.set_connection_timeout(2, 0);
+                    pr_cli.set_read_timeout(2, 0);
+                    json rev; rev["token"] = tok;
+                    httplib::Headers rh = {{"X-API-Token",
+                        std::string(gAdminConfig.daemon_keys.producer_key)}};
+                    pr_cli.Post("/api/v1/producer/auth/revoke",
+                                rh, rev.dump(), "application/json");
+                } catch (...) {
+                    MC1_WARN("auth: session revoke from Producer exception");
+                }
+            }
+
             res.set_header("Set-Cookie", "mc1session=; Path=/; Max-Age=0");
             res.status = 302;
             res.set_header("Location", "/login");
