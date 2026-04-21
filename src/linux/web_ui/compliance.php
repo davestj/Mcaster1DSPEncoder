@@ -13,8 +13,10 @@ require_once __DIR__ . '/app/inc/user_auth.php';
 if (!mc1_is_authed()) { header('Location: /login.html'); return; }
 
 /* Check both possible report locations */
-$docs_dir = realpath(__DIR__ . '/../../docs');
-$sec_dir  = realpath(__DIR__ . '/../../security');
+/* __DIR__ = src/linux/web_ui — project root is 3 levels up */
+$docs_dir = realpath(__DIR__ . '/../../../docs');
+$sec_dir  = realpath(__DIR__ . '/../../../security');
+if (!$docs_dir) $docs_dir = realpath(__DIR__ . '/../../docs'); /* fallback */
 
 /* Map report names to actual file paths (docs/ has the current reports) */
 $report_files = [
@@ -196,10 +198,9 @@ function exportHTML() {
 <div class="comp-grid">
     <?php
     $card_info = [
-        'sast-report.html' => ['SAST Report', 'Static analysis — SQL injection, XSS, auth bypass, CSRF, secrets, command injection, path traversal', 'fa-magnifying-glass-chart'],
-        'dast-report.html' => ['DAST Report', 'Dynamic analysis — HTTP headers, auth enforcement, injection probes, directory listing', 'fa-globe'],
-        'patchlist.html'   => ['Patch History', 'All security patches applied with severity, description, fix details, and status', 'fa-list-check'],
-        'fixed.html'       => ['Fixed Issues', 'Verified fixes with remediation details for compliance auditors', 'fa-circle-check'],
+        'sast-report.html'           => ['SAST Report', 'Static analysis — SQL injection, XSS, auth bypass, CSRF, secrets, command injection, path traversal', 'fa-magnifying-glass-chart'],
+        'dast-report.html'           => ['DAST Report', 'Dynamic analysis — HTTP headers, auth enforcement, injection probes, directory listing', 'fa-globe'],
+        'security-patch-status.html' => ['Patch Status &amp; Fixed Issues', 'All security patches with severity, remediation details, and compliance status', 'fa-list-check'],
     ];
     foreach ($card_info as $file => [$title, $desc, $icon]) {
         $r = $reports[$file];
