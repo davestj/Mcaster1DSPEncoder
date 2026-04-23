@@ -1412,24 +1412,37 @@ static void setup_routes(httplib::Server& svr)
     svr.Get("/api/v1/jack/status",
         [](const httplib::Request& req, httplib::Response& res) {
             with_auth(req, res, [&]() {
-#ifndef MC1_HTTP_TEST_BUILD
                 json r; r["ok"] = true;
-                if (g_pipeline) {
-                    auto& jm = g_pipeline->jack_manager();
-                    r["daemon_running"]    = jm.is_daemon_running();
-                    r["client_connected"]  = jm.is_client_connected();
-                    r["sample_rate"]       = jm.sample_rate();
-                    r["buffer_size"]       = jm.buffer_size();
-                    r["driver"]            = jm.driver();
-                    auto cables = jm.list_cables();
-                    r["cable_count"]       = (int)cables.size();
-                } else {
+                try {
+#ifndef MC1_HTTP_TEST_BUILD
+                    if (g_pipeline) {
+                        auto& jm = g_pipeline->jack_manager();
+                        r["daemon_running"]    = jm.is_daemon_running();
+                        r["client_connected"]  = jm.is_client_connected();
+                        r["sample_rate"]       = jm.sample_rate();
+                        r["buffer_size"]       = jm.buffer_size();
+                        r["driver"]            = jm.driver();
+                        auto cables = jm.list_cables();
+                        r["cable_count"]       = (int)cables.size();
+                    } else {
+                        r["daemon_running"] = false;
+                        r["client_connected"] = false;
+                        r["sample_rate"] = 0;
+                        r["buffer_size"] = 0;
+                        r["driver"] = "";
+                        r["cable_count"] = 0;
+                    }
+#else
                     r["daemon_running"] = false;
+#endif
+                } catch (const std::exception& e) {
+                    r["daemon_running"] = false;
+                    r["error"] = e.what();
+                } catch (...) {
+                    r["daemon_running"] = false;
+                    r["error"] = "Unknown error checking JACK status";
                 }
                 res.set_content(r.dump(2), "application/json");
-#else
-                res.set_content(R"({"ok":false})", "application/json");
-#endif
             });
         });
 

@@ -104,50 +104,51 @@ bin_PROGRAMS = mcaster1-dsp-encoder-admin$(EXEEXT) \
 # Admin links all codec/audio libs too (shares source files with encoder for symbols).
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
 # the ProcessSupervisor running the encoder as a separate child process.
-am__append_1 = jack_manager.cpp
-am__append_2 = $(JACK_LIBS)
-am__append_3 = $(PORTAUDIO_LIBS)
-am__append_4 = $(LAME_LIBS)
-am__append_5 = $(VORBIS_LIBS)
-am__append_6 = $(FLAC_LIBS)
-am__append_7 = $(OPUS_LIBS)
-am__append_8 = $(FDKAAC_LIBS)
-am__append_9 = $(MPG123_LIBS)
-am__append_10 = $(AVFORMAT_LIBS)
-am__append_11 = $(TAGLIB_LIBS)
+am__append_1 = -DHAVE_JACK
+am__append_2 = jack_manager.cpp
+am__append_3 = $(JACK_LIBS)
+am__append_4 = $(PORTAUDIO_LIBS)
+am__append_5 = $(LAME_LIBS)
+am__append_6 = $(VORBIS_LIBS)
+am__append_7 = $(FLAC_LIBS)
+am__append_8 = $(OPUS_LIBS)
+am__append_9 = $(FDKAAC_LIBS)
+am__append_10 = $(MPG123_LIBS)
+am__append_11 = $(AVFORMAT_LIBS)
+am__append_12 = $(TAGLIB_LIBS)
 
 # ── PortAudio (optional — encoder only) ──────────────────────────────────────
-am__append_12 = $(PORTAUDIO_LIBS)
+am__append_13 = $(PORTAUDIO_LIBS)
 
 # ── JACK (encoder also needs it — audio_pipeline.h includes jack_manager.h) ──
-am__append_13 = jack_manager.cpp
-am__append_14 = $(JACK_LIBS)
+am__append_14 = jack_manager.cpp
+am__append_15 = $(JACK_LIBS)
 
 # ── Per-codec (optional — encoder only) ──────────────────────────────────────
-am__append_15 = $(LAME_CFLAGS) -DHAVE_LAME
-am__append_16 = $(LAME_LIBS)
-am__append_17 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
-am__append_18 = $(VORBIS_LIBS)
-am__append_19 = $(FLAC_CFLAGS) -DHAVE_FLAC
-am__append_20 = $(FLAC_LIBS)
-am__append_21 = $(OPUS_CFLAGS) -DHAVE_OPUS
-am__append_22 = $(OPUS_LIBS)
-am__append_23 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
-am__append_24 = $(FDKAAC_LIBS)
+am__append_16 = $(LAME_CFLAGS) -DHAVE_LAME
+am__append_17 = $(LAME_LIBS)
+am__append_18 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
+am__append_19 = $(VORBIS_LIBS)
+am__append_20 = $(FLAC_CFLAGS) -DHAVE_FLAC
+am__append_21 = $(FLAC_LIBS)
+am__append_22 = $(OPUS_CFLAGS) -DHAVE_OPUS
+am__append_23 = $(OPUS_LIBS)
+am__append_24 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
+am__append_25 = $(FDKAAC_LIBS)
 
 # ── Media / metadata libs (optional — encoder only) ──────────────────────────
-am__append_25 = $(MPG123_CFLAGS) -DHAVE_MPG123
-am__append_26 = $(MPG123_LIBS)
-am__append_27 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
-am__append_28 = $(AVFORMAT_LIBS)
-am__append_29 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
-am__append_30 = $(TAGLIB_LIBS)
+am__append_26 = $(MPG123_CFLAGS) -DHAVE_MPG123
+am__append_27 = $(MPG123_LIBS)
+am__append_28 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
+am__append_29 = $(AVFORMAT_LIBS)
+am__append_30 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
+am__append_31 = $(TAGLIB_LIBS)
 
 # VoicTune uses PortAudio for mic capture (optional — can run browser-mic-only mode)
-am__append_31 = $(PORTAUDIO_LIBS)
+am__append_32 = $(PORTAUDIO_LIBS)
 
 # VoicTune uses JACK for advanced audio routing (optional)
-am__append_32 = $(JACK_LIBS)
+am__append_33 = $(JACK_LIBS)
 subdir = src/linux
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -528,10 +529,10 @@ AM_CPPFLAGS = -I$(srcdir)/external/include -I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/linux \
 	-I$(top_srcdir)/src/libmcaster1dspencoder \
 	-DCPPHTTPLIB_OPENSSL_SUPPORT $(OPENSSL_CFLAGS) \
-	$(LIBYAML_CFLAGS) $(MARIADB_CFLAGS) $(am__append_15) \
-	$(am__append_17) $(am__append_19) $(am__append_21) \
-	$(am__append_23) $(am__append_25) $(am__append_27) \
-	$(am__append_29)
+	$(LIBYAML_CFLAGS) $(MARIADB_CFLAGS) $(am__append_1) \
+	$(am__append_16) $(am__append_18) $(am__append_20) \
+	$(am__append_22) $(am__append_24) $(am__append_26) \
+	$(am__append_28) $(am__append_30)
 AM_CXXFLAGS = -std=c++17 -Wall -Wno-unused-parameter -O2
 AM_LDFLAGS = -rdynamic
 
@@ -548,15 +549,15 @@ mcaster1_dsp_encoder_admin_SOURCES = main_cli.cpp http_api.cpp \
 	dsp/eq.cpp dsp/agc.cpp dsp/crossfader.cpp \
 	dsp/dj_crossfader.cpp dsp/dsp_chain.cpp dsp/effects_rack.cpp \
 	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
-	voictune/ollama_client.cpp $(am__append_1)
+	voictune/ollama_client.cpp $(am__append_2)
 
 # Admin needs these shared DSP headers for static curve data / effects type listing
 # but does NOT need the audio processing source files.
 mcaster1_dsp_encoder_admin_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_2) \
-	$(am__append_3) $(am__append_4) $(am__append_5) \
-	$(am__append_6) $(am__append_7) $(am__append_8) \
-	$(am__append_9) $(am__append_10) $(am__append_11)
+	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_3) \
+	$(am__append_4) $(am__append_5) $(am__append_6) \
+	$(am__append_7) $(am__append_8) $(am__append_9) \
+	$(am__append_10) $(am__append_11) $(am__append_12)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ENCODER BINARY — Audio pipeline, DSP, codecs, streaming (restartable worker)
@@ -569,12 +570,12 @@ mcaster1_dsp_encoder_SOURCES = main_encoder.cpp encoder_ipc_api.cpp \
 	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
 	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
 	dsp/dead_air_detector.cpp clockwheel_scheduler.cpp \
-	$(am__append_13)
+	$(am__append_14)
 mcaster1_dsp_encoder_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_12) \
-	$(am__append_14) $(am__append_16) $(am__append_18) \
-	$(am__append_20) $(am__append_22) $(am__append_24) \
-	$(am__append_26) $(am__append_28) $(am__append_30)
+	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_13) \
+	$(am__append_15) $(am__append_17) $(am__append_19) \
+	$(am__append_21) $(am__append_23) $(am__append_25) \
+	$(am__append_27) $(am__append_29) $(am__append_31)
 
 # ── Web UI install ─────────────────────────────────────────────────────────────
 webuidir = $(WEBROOT)
@@ -634,8 +635,8 @@ mcaster1_voictune_SOURCES = \
     voictune/ollama_client.cpp
 
 mcaster1_voictune_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_31) \
-	$(am__append_32)
+	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_32) \
+	$(am__append_33)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PRODUCER BINARY — Video encoding, audio mixdown, forensic FFT (Phase PR)

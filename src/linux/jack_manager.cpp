@@ -13,6 +13,9 @@
 #include "jack_manager.h"
 #include <cstdlib>
 #include <cstdio>
+#include <fcntl.h>
+#include <spawn.h>
+#include <unistd.h>
 #include <cstring>
 #include <signal.h>
 #include <unistd.h>
@@ -32,40 +35,49 @@ bool JackManager::start_daemon(const std::string& driver, int sample_rate, int b
 #ifdef HAVE_JACK
     driver_ = driver;
 
-    /* We fork a child process to run jackd */
-    pid_t pid = fork();
-    if (pid < 0) return false;
+    /* Use posix_spawn instead of fork — safe from multi-threaded process */
+    {
+        /* Kill any existing jackd */
+        posix_spawn_file_actions_t fa;
+        posix_spawn_file_actions_init(&fa);
+        posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
+        posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
+        posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
 
-    if (pid == 0) {
-        /* We are the child — exec jackd */
         char sr_str[16], bs_str[16];
         snprintf(sr_str, sizeof(sr_str), "%d", sample_rate);
         snprintf(bs_str, sizeof(bs_str), "%d", buffer_size);
 
-        execlp("jackd", "jackd", "--no-realtime",
-               "-d", driver.c_str(),
-               "-r", sr_str,
-               "-p", bs_str,
-               (char*)nullptr);
-        /* If execlp fails, exit child */
-        _exit(127);
+        const char* argv[] = {
+            "jackd", "--no-realtime",
+            "-d", driver.c_str(),
+            "-r", sr_str,
+            "-p", bs_str,
+            nullptr
+        };
+
+        pid_t child_pid = 0;
+        int rc = posix_spawnp(&child_pid, "jackd",
+                              &fa, nullptr,
+                              const_cast<char* const*>(argv),
+                              environ);
+        posix_spawn_file_actions_destroy(&fa);
+
+        if (rc != 0) return false;
+        daemon_pid_ = child_pid;
     }
 
-    /* We are the parent — wait a bit for jackd to initialize */
-    daemon_pid_ = pid;
-    usleep(1500000);  // 1.5 seconds
+    /* Wait for jackd to initialize */
+    usleep(1500000); /* 1.5s */
 
-    /* We verify jackd is still running */
-    int status;
-    pid_t result = waitpid(pid, &status, WNOHANG);
-    if (result != 0) {
-        /* jackd exited already — startup failed */
-        daemon_pid_ = 0;
-        return false;
+    /* Verify it's still running */
+    if (daemon_pid_ > 0 && kill(daemon_pid_, 0) == 0) {
+        daemon_started_ = true;
+        return true;
     }
 
-    daemon_started_ = true;
-    return true;
+    daemon_pid_ = 0;
+    return false;
 #else
     return false;
 #endif
@@ -75,16 +87,11 @@ void JackManager::stop_daemon() {
     std::lock_guard<std::mutex> lk(mtx_);
     if (!daemon_started_) return;
 
-    if (daemon_pid_ > 0) {
-        kill(daemon_pid_, SIGTERM);
-        usleep(500000);
-        int status;
-        if (waitpid(daemon_pid_, &status, WNOHANG) == 0) {
-            kill(daemon_pid_, SIGKILL);
-            waitpid(daemon_pid_, &status, 0);
-        }
-        daemon_pid_ = 0;
-    }
+    /* Use pkill for reliable stop — jackd may have been started via system() */
+    system("pkill -x jackd 2>/dev/null");
+    usleep(500000);
+    system("pkill -9 -x jackd 2>/dev/null");
+    daemon_pid_ = 0;
     daemon_started_ = false;
 }
 

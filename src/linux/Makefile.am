@@ -73,6 +73,7 @@ mcaster1_dsp_encoder_admin_LDADD = \
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
 # the ProcessSupervisor running the encoder as a separate child process.
 if HAVE_JACK
+AM_CPPFLAGS += -DHAVE_JACK
 mcaster1_dsp_encoder_admin_SOURCES += jack_manager.cpp
 mcaster1_dsp_encoder_admin_LDADD += $(JACK_LIBS)
 endif
