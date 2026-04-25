@@ -1435,6 +1435,59 @@ static void setup_routes(httplib::Server& svr)
 #else
                     r["daemon_running"] = false;
 #endif
+                    /* Detect available ALSA hardware + supported rates */
+                    json hw; hw["has_alsa_cards"] = false;
+                    hw["driver_available"] = json::array();
+                    hw["driver_available"].push_back("dummy");
+
+                    /* Check /proc/asound/cards for ALSA hardware */
+                    FILE* cards = fopen("/proc/asound/cards", "r");
+                    if (cards) {
+                        char line[256];
+                        json alsa_cards = json::array();
+                        while (fgets(line, sizeof(line), cards)) {
+                            std::string s(line);
+                            if (!s.empty() && s[0] == ' ' && s.find('[') != std::string::npos) {
+                                /* Parse card line: " 0 [PCH            ]: HDA-Intel ..." */
+                                auto bracket = s.find('[');
+                                auto close = s.find(']');
+                                if (bracket != std::string::npos && close != std::string::npos) {
+                                    std::string name = s.substr(bracket+1, close-bracket-1);
+                                    while (!name.empty() && name.back()==' ') name.pop_back();
+                                    alsa_cards.push_back(name);
+                                }
+                            }
+                        }
+                        fclose(cards);
+                        if (!alsa_cards.empty()) {
+                            hw["has_alsa_cards"] = true;
+                            hw["alsa_cards"] = alsa_cards;
+                            hw["driver_available"].push_back("alsa");
+                        }
+                    }
+
+                    /* Supported sample rates — dummy supports all; ALSA depends on hardware */
+                    json rates = json::array();
+                    /* All standard rates (JACK + ALSA support these if hardware allows) */
+                    for (int sr : {8000, 11025, 16000, 22050, 32000, 44100, 48000,
+                                   88200, 96000, 176400, 192000, 352800, 384000, 768000}) {
+                        json rate_info;
+                        rate_info["rate"] = sr;
+                        if (sr <= 192000) {
+                            rate_info["supported"] = true;  /* dummy always supports up to 192k */
+                            rate_info["label"] = sr >= 176400 ? "ultra_high" :
+                                                 sr >= 88200  ? "high" :
+                                                 sr >= 32000  ? "standard" : "legacy";
+                        } else {
+                            /* 352.8k, 384k, 768k — only with specific hardware */
+                            rate_info["supported"] = hw["has_alsa_cards"].get<bool>();
+                            rate_info["label"] = "extreme";
+                        }
+                        rates.push_back(rate_info);
+                    }
+                    hw["sample_rates"] = rates;
+                    r["hardware"] = hw;
+
                 } catch (const std::exception& e) {
                     r["daemon_running"] = false;
                     r["error"] = e.what();

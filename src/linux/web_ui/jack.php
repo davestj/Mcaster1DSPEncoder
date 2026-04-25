@@ -105,9 +105,44 @@ require_once __DIR__ . '/app/inc/header.php';
       <option value="dummy">Dummy (Headless)</option>
       <option value="alsa">ALSA (Desktop)</option>
     </select>
-    <input type="number" id="jk-sr-in" value="44100" min="22050" max="192000" step="100" style="width:90px" title="Sample Rate">
-    <input type="number" id="jk-bs-in" value="1024" min="64" max="8192" step="64" style="width:80px" title="Buffer Size">
-    <input type="number" id="jk-cab-in" value="12" min="1" max="64" step="1" style="width:60px" title="Cables">
+    <select id="jk-sr-in" style="width:110px" title="Sample Rate (Hz)">
+      <optgroup label="Standard">
+        <option value="44100" selected>44,100 Hz</option>
+        <option value="48000">48,000 Hz</option>
+      </optgroup>
+      <optgroup label="High Resolution">
+        <option value="88200">88,200 Hz</option>
+        <option value="96000">96,000 Hz</option>
+      </optgroup>
+      <optgroup label="Ultra High Resolution">
+        <option value="176400">176,400 Hz</option>
+        <option value="192000">192,000 Hz</option>
+      </optgroup>
+      <optgroup label="Extreme (Hardware Dependent)">
+        <option value="352800">352,800 Hz</option>
+        <option value="384000">384,000 Hz</option>
+        <option value="768000">768,000 Hz</option>
+      </optgroup>
+      <optgroup label="Legacy / Broadcast">
+        <option value="8000">8,000 Hz</option>
+        <option value="11025">11,025 Hz</option>
+        <option value="16000">16,000 Hz</option>
+        <option value="22050">22,050 Hz</option>
+        <option value="32000">32,000 Hz</option>
+      </optgroup>
+    </select>
+    <select id="jk-bs-in" style="width:90px" title="Buffer Size (frames)">
+      <option value="32">32</option>
+      <option value="64">64</option>
+      <option value="128">128</option>
+      <option value="256">256</option>
+      <option value="512">512</option>
+      <option value="1024" selected>1024</option>
+      <option value="2048">2048</option>
+      <option value="4096">4096</option>
+      <option value="8192">8192</option>
+    </select>
+    <input type="number" id="jk-cab-in" value="12" min="1" max="64" step="1" style="width:60px" title="Virtual Cables">
     <button class="jack-btn jack-btn-start" onclick="startJack()"><i class="fa-solid fa-play"></i> Start JACK</button>
     <button class="jack-btn jack-btn-stop" onclick="stopJack()"><i class="fa-solid fa-stop"></i> Stop</button>
     <button class="jack-btn jack-btn-cable" onclick="addCable()"><i class="fa-solid fa-plus"></i> Add Cable</button>
@@ -149,6 +184,39 @@ function pollJackStatus() {
     document.getElementById('jk-bs').textContent = d.buffer_size || '—';
     document.getElementById('jk-cables').textContent = d.cable_count || 0;
     if (d.client_connected) { loadCables(); loadPorts(); }
+
+    /* Update sample rate dropdown based on detected hardware */
+    if (d.hardware) {
+      var hw = d.hardware;
+      var srSel = document.getElementById('jk-sr-in');
+      var drvSel = document.getElementById('jk-drv-sel');
+
+      /* Update driver options based on available drivers */
+      if (hw.driver_available) {
+        Array.from(drvSel.options).forEach(function(opt) {
+          opt.disabled = hw.driver_available.indexOf(opt.value) < 0;
+        });
+      }
+
+      /* Show ALSA card info */
+      if (hw.has_alsa_cards && hw.alsa_cards) {
+        drvSel.title = 'ALSA cards: ' + hw.alsa_cards.join(', ');
+      } else {
+        drvSel.title = 'No ALSA hardware — dummy driver only';
+      }
+
+      /* Enable/disable sample rates based on hardware support */
+      if (hw.sample_rates) {
+        Array.from(srSel.options).forEach(function(opt) {
+          var rate = parseInt(opt.value);
+          var info = hw.sample_rates.find(function(s) { return s.rate === rate; });
+          if (info) {
+            opt.disabled = !info.supported;
+            if (!info.supported) opt.textContent = opt.textContent.replace(/ Hz$/, ' Hz (N/A)');
+          }
+        });
+      }
+    }
   }).catch(function(){});
 }
 
