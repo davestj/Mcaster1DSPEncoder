@@ -296,6 +296,9 @@ function VideoProducer(config) {
     this._stingerSrcA = -1;
     this._stingerSrcB = -1;
 
+    // Chat overlay (set externally via producer.chatOverlay = chatOverlayInstance)
+    this.chatOverlay = null;
+
     // Audio follows video
     this.audioFollowsVideo = false;
     this._activeAudioStream = null;
@@ -711,6 +714,15 @@ VideoProducer.prototype._renderProgram = function() {
             this.lowerThird.getCanvas(),
             { x: 0.03, y: 0.72, w: 0.94, h: 0.14 },
             1.0);
+    }
+
+    // Chat overlay pass (rendered by external Mc1ChatOverlay instance)
+    if (this.chatOverlay && this.chatOverlay.isVisible() && programFrame) {
+        var chatCanvas = this.chatOverlay.render();
+        if (chatCanvas) {
+            WGL.drawOverlay(this.programRenderer, this.programCanvas,
+                chatCanvas, this.chatOverlay.getRect(), 1.0);
+        }
     }
 };
 

@@ -621,6 +621,79 @@ require_once __DIR__ . '/app/inc/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     HLS/DASH ADAPTIVE BITRATE STREAMING
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-signal fa-fw"></i> Adaptive Streaming (HLS/DASH)
+      <span class="badge badge-red" style="margin-left:6px">Admin Only</span>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="hlsRefresh()"><i class="fa-solid fa-arrows-rotate"></i> Refresh</button>
+  </div>
+  <div style="padding:14px 24px">
+    <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">
+      Generate HLS (HTTP Live Streaming) and DASH (Dynamic Adaptive Streaming) outputs from encoder slots.
+      These enable browser-native playback with automatic quality switching based on listener bandwidth.
+    </p>
+
+    <!-- Per-slot HLS/DASH controls -->
+    <div id="hls-slots">
+      <?php if (!empty($enc_configs)): ?>
+      <?php foreach ($enc_configs as $ec): ?>
+      <div class="card" style="background:var(--bg3);margin-bottom:10px;padding:14px 18px" id="hls-slot-<?= (int)$ec['slot_id'] ?>">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <div style="font-weight:700;font-size:14px;color:var(--text)">
+            <i class="fa-solid fa-broadcast-tower fa-fw" style="color:var(--teal)"></i>
+            Slot <?= (int)$ec['slot_id'] ?> &mdash; <?= h($ec['name']) ?>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge" id="hls-badge-<?= (int)$ec['slot_id'] ?>" style="background:var(--muted);color:#fff;font-size:10px">Inactive</span>
+          </div>
+        </div>
+        <div class="form-row form-row-2" style="margin-bottom:10px">
+          <div class="form-group">
+            <label class="form-label">HLS Bitrate Tiers</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="hls-br-cb" data-slot="<?= (int)$ec['slot_id'] ?>" value="64"> 64k</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="hls-br-cb" data-slot="<?= (int)$ec['slot_id'] ?>" value="128" checked> 128k</label>
+              <label style="font-size:12px;display:flex;align-items:center;gap:4px"><input type="checkbox" class="hls-br-cb" data-slot="<?= (int)$ec['slot_id'] ?>" value="256"> 256k</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Segment Duration (seconds)</label>
+            <select class="form-select" id="hls-seg-<?= (int)$ec['slot_id'] ?>">
+              <option value="4">4s</option>
+              <option value="6" selected>6s (recommended)</option>
+              <option value="10">10s</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="hlsStart(<?= (int)$ec['slot_id'] ?>)"><i class="fa-solid fa-play"></i> Start HLS</button>
+          <button class="btn btn-secondary btn-sm" onclick="hlsStartDash(<?= (int)$ec['slot_id'] ?>)"><i class="fa-solid fa-play"></i> Start DASH</button>
+          <button class="btn btn-secondary btn-sm" style="background:var(--red);border-color:var(--red);color:#fff" onclick="hlsStop(<?= (int)$ec['slot_id'] ?>)"><i class="fa-solid fa-stop"></i> Stop All</button>
+        </div>
+        <!-- Stream URLs (shown when active) -->
+        <div id="hls-urls-<?= (int)$ec['slot_id'] ?>" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(0,0,0,.2);border-radius:var(--radius-sm);font-size:12px">
+          <div style="font-weight:600;color:var(--teal);margin-bottom:6px"><i class="fa-solid fa-link"></i> Stream URLs</div>
+          <div id="hls-url-list-<?= (int)$ec['slot_id'] ?>"></div>
+        </div>
+        <!-- Live player preview -->
+        <div id="hls-preview-<?= (int)$ec['slot_id'] ?>" style="display:none;margin-top:10px">
+          <div style="font-weight:600;font-size:12px;color:var(--text-dim);margin-bottom:4px"><i class="fa-solid fa-headphones"></i> Preview</div>
+          <audio id="hls-audio-<?= (int)$ec['slot_id'] ?>" controls style="width:100%;height:32px"></audio>
+        </div>
+      </div>
+      <?php endforeach; ?>
+      <?php else: ?>
+      <div class="empty"><i class="fa-solid fa-info-circle"></i> No encoder slots configured. Add encoder configs to enable adaptive streaming.</div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      DATABASE ADMINISTRATION
      ══════════════════════════════════════════════════════════════════════════ -->
 <div class="card" style="margin-top:4px">
@@ -934,6 +1007,10 @@ document.addEventListener('DOMContentLoaded', function() {
   /* ── Load RTMP targets list ── */
   rtmpLoad();
   setInterval(rtmpPollStatus, 15000);
+
+  /* ── Load HLS/DASH adaptive streaming status ── */
+  hlsRefresh();
+  setInterval(hlsRefresh, 15000);
 <?php endif; ?>
 
 }); /* end DOMContentLoaded */
@@ -1332,6 +1409,138 @@ document.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('rtmp-modal').style.display === 'block') rtmpModalClose();
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * HLS/DASH ADAPTIVE BITRATE STREAMING JS
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/* We refresh HLS/DASH status for all slots */
+window.hlsRefresh = function() {
+  mc1Api('POST', '/app/api/hls.php', { action: 'status' }).then(function(d) {
+    if (!d.ok) return;
+    /* We reset all slot badges to inactive */
+    document.querySelectorAll('[id^="hls-badge-"]').forEach(function(el) {
+      el.textContent = 'Inactive';
+      el.style.background = 'var(--muted)';
+    });
+    document.querySelectorAll('[id^="hls-urls-"]').forEach(function(el) {
+      el.style.display = 'none';
+    });
+
+    (d.streams || []).forEach(function(s) {
+      var sid = s.slot_id;
+      var badge = document.getElementById('hls-badge-' + sid);
+      var urlsDiv = document.getElementById('hls-urls-' + sid);
+      var urlList = document.getElementById('hls-url-list-' + sid);
+      var previewDiv = document.getElementById('hls-preview-' + sid);
+      var hasHls  = s.hls && s.hls.active;
+      var hasDash = s.dash && s.dash.active;
+
+      if (hasHls || hasDash) {
+        if (badge) {
+          var parts = [];
+          if (hasHls)  parts.push('HLS');
+          if (hasDash) parts.push('DASH');
+          badge.textContent = parts.join(' + ') + ' Active';
+          badge.style.background = 'var(--green)';
+        }
+        if (urlsDiv && urlList) {
+          urlsDiv.style.display = 'block';
+          var html = '';
+          if (hasHls && s.hls.master_playlist) {
+            html += '<div style="margin-bottom:6px"><strong>HLS Master:</strong> '
+                  + '<code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px;font-size:11px;user-select:all">'
+                  + esc(location.origin + s.hls.master_playlist)
+                  + '</code></div>';
+            (s.hls.variants || []).forEach(function(v) {
+              html += '<div style="color:var(--text-dim);font-size:11px;margin-left:12px">'
+                    + v.bitrate + 'kbps &mdash; ' + v.segments + ' segments, '
+                    + Math.round((v.size_bytes||0)/1024) + ' KB'
+                    + '</div>';
+            });
+          }
+          if (hasDash && s.dash.manifest) {
+            html += '<div style="margin-bottom:6px;margin-top:6px"><strong>DASH:</strong> '
+                  + '<code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px;font-size:11px;user-select:all">'
+                  + esc(location.origin + s.dash.manifest)
+                  + '</code></div>';
+            html += '<div style="color:var(--text-dim);font-size:11px;margin-left:12px">'
+                  + (s.dash.segments||0) + ' segments, '
+                  + Math.round((s.dash.size_bytes||0)/1024) + ' KB'
+                  + '</div>';
+          }
+          /* We add embed code */
+          var embedUrl = location.origin + '/widget-hls.php?stream=slot' + sid + '&format=hls';
+          html += '<div style="margin-top:8px"><strong>Embed:</strong> '
+                + '<code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:3px;font-size:10px;user-select:all;word-break:break-all">'
+                + esc('<iframe src="' + embedUrl + '" width="400" height="80" frameborder="0"></iframe>')
+                + '</code></div>';
+          urlList.innerHTML = html;
+        }
+        /* We show preview player */
+        if (previewDiv && hasHls && s.hls.master_playlist) {
+          previewDiv.style.display = 'block';
+        }
+      }
+    });
+  }).catch(function() {});
+};
+
+/* We start HLS for a slot with selected bitrate tiers */
+window.hlsStart = function(slotId) {
+  var checkboxes = document.querySelectorAll('.hls-br-cb[data-slot="' + slotId + '"]:checked');
+  var bitrates = [];
+  checkboxes.forEach(function(cb) { bitrates.push(parseInt(cb.value)); });
+  if (bitrates.length === 0) bitrates = [128];
+  var segSel = document.getElementById('hls-seg-' + slotId);
+  var segDur = segSel ? parseInt(segSel.value) : 6;
+  mc1Api('POST', '/app/api/hls.php', {
+    action: 'start', slot_id: slotId, bitrates: bitrates, segment_duration: segDur
+  }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('HLS started for Slot ' + slotId + ' (' + bitrates.join(', ') + ' kbps)', 'ok');
+      setTimeout(hlsRefresh, 2000);
+    } else {
+      mc1Toast(d.error || 'HLS start failed', 'err');
+    }
+  }).catch(function() { mc1Toast('HLS start request failed', 'err'); });
+};
+
+/* We start DASH for a slot */
+window.hlsStartDash = function(slotId) {
+  var segSel = document.getElementById('hls-seg-' + slotId);
+  var segDur = segSel ? parseInt(segSel.value) : 6;
+  mc1Api('POST', '/app/api/hls.php', {
+    action: 'start_dash', slot_id: slotId, bitrate: 128, segment_duration: segDur
+  }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('DASH started for Slot ' + slotId, 'ok');
+      setTimeout(hlsRefresh, 2000);
+    } else {
+      mc1Toast(d.error || 'DASH start failed', 'err');
+    }
+  }).catch(function() { mc1Toast('DASH start request failed', 'err'); });
+};
+
+/* We stop all HLS/DASH for a slot */
+window.hlsStop = function(slotId) {
+  if (!confirm('Stop all HLS/DASH streams for Slot ' + slotId + '?')) return;
+  mc1Api('POST', '/app/api/hls.php', {
+    action: 'stop', slot_id: slotId, format: 'both', cleanup: true
+  }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('HLS/DASH stopped for Slot ' + slotId, 'ok');
+      /* We hide the preview player */
+      var previewDiv = document.getElementById('hls-preview-' + slotId);
+      if (previewDiv) previewDiv.style.display = 'none';
+      var audioEl = document.getElementById('hls-audio-' + slotId);
+      if (audioEl) { audioEl.pause(); audioEl.src = ''; }
+      hlsRefresh();
+    } else {
+      mc1Toast(d.error || 'Stop failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Stop request failed', 'err'); });
+};
 
 /* ══════════════════════════════════════════════════════════════════════════
  * STREAMING SERVERS JS

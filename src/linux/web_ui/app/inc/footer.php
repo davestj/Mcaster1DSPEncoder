@@ -72,6 +72,23 @@ if (!defined('MC1_BOOT')) {
     });
   };
 
+  /* ── i18n JS helper ── */
+  window.mc1i18n = {
+    strings: <?= json_encode(function_exists('mc1_i18n_strings') ? mc1_i18n_strings() : new stdClass()) ?>,
+    lang: '<?= function_exists('mc1_i18n_lang') ? mc1_i18n_lang() : 'en' ?>',
+    t: function(key, replacements) {
+      var str = this.strings[key] || key;
+      if (replacements) {
+        for (var k in replacements) {
+          if (replacements.hasOwnProperty(k)) {
+            str = str.replace('{' + k + '}', replacements[k]);
+          }
+        }
+      }
+      return str;
+    }
+  };
+
   /* ── Logout ── */
   window.mc1Logout = function() {
     mc1Api('POST', '/app/api/auth.php', {action:'logout'}).then(function(){

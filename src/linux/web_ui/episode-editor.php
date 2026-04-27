@@ -314,6 +314,32 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
         <button class="ee-tool-btn" id="ee-tool-ai-normalize" onclick="window.eeAiNormalize()" title="AI: Analyze loudness and suggest normalization target">
             <i class="fa-solid fa-robot fa-fw"></i> AI Normalize
         </button>
+        <div class="ee-tool-sep"></div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);padding:4px 12px">Voice FX</div>
+        <button class="ee-tool-btn" id="ee-tool-debreath" onclick="window.eeVoiceFx('de-breath')" title="Remove breath sounds from episode audio">
+            <i class="fa-solid fa-lungs fa-fw"></i> De-Breath
+        </button>
+        <button class="ee-tool-btn" id="ee-tool-deesser" onclick="window.eeVoiceFx('de-esser')" title="Reduce sibilance (harsh S sounds)">
+            <i class="fa-solid fa-s fa-fw"></i> De-Esser
+        </button>
+        <button class="ee-tool-btn" id="ee-tool-noisegate" onclick="window.eeVoiceFx('noise-gate')" title="Apply noise gate to reduce background noise">
+            <i class="fa-solid fa-shield-halved fa-fw"></i> Noise Gate
+        </button>
+        <div class="ee-tool-sep"></div>
+        <select id="ee-voicefx-select" class="form-select" style="font-size:11px;padding:4px 8px;margin:0 8px" title="Voice changer effect">
+            <option value="">-- Voice FX --</option>
+            <option value="deeper">Deeper</option>
+            <option value="higher">Higher</option>
+            <option value="robot">Robot</option>
+            <option value="whisper">Whisper</option>
+            <option value="radio">Radio</option>
+            <option value="telephone">Telephone</option>
+            <option value="chipmunk">Chipmunk</option>
+            <option value="darth_vader">Darth Vader</option>
+        </select>
+        <button class="ee-tool-btn" id="ee-tool-voicefx" onclick="window.eeVoiceChanger()" title="Apply selected voice changer effect">
+            <i class="fa-solid fa-masks-theater fa-fw"></i> Apply Voice FX
+        </button>
     </div>
 
     <!-- Right panels -->
@@ -973,6 +999,119 @@ function eeRemovePlacement(placementId) {
         });
     }
 }
+
+/* ══════════════════════════════════════════════════════════════
+ * Voice Effects integration (via VoicTune daemon proxy)
+ * All processing via ffmpeg on the server — not browser-side.
+ * After processing, the waveform reloads from the processed file.
+ * ══════════════════════════════════════════════════════════════ */
+window.eeVoiceFx = function(effectType) {
+    if (!EP_DATA || !EP_DATA.file_path) {
+        if (typeof mc1Toast === 'function') mc1Toast('No episode file loaded', 'warn');
+        return;
+    }
+
+    var btn = document.getElementById('ee-tool-' + effectType.replace(/-/g, ''));
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+    var payload = { file_path: EP_DATA.file_path, preview: false };
+    var endpoint = '/api/v1/voictune/process/' + effectType;
+
+    /* Default parameters per effect */
+    if (effectType === 'de-breath') {
+        payload.threshold_db = -30;
+        payload.max_reduction_db = -20;
+        payload.min_breath_ms = 100;
+    } else if (effectType === 'de-esser') {
+        payload.frequency_hz = 6500;
+        payload.threshold_db = -20;
+        payload.ratio = 4;
+    } else if (effectType === 'noise-gate') {
+        payload.threshold_db = -40;
+        payload.attack_ms = 5;
+        payload.release_ms = 100;
+        payload.hold_ms = 50;
+    }
+
+    /* Rewrite endpoint for VoicTune proxy */
+    var proxyPath = endpoint.replace('/api/v1/voictune/', '/api/v1/proxy/voictune/');
+
+    if (typeof mc1Toast === 'function') mc1Toast('Processing ' + effectType + '...', 'info');
+
+    fetch(proxyPath, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        if (d && d.ok && d.file_path_processed) {
+            if (typeof mc1Toast === 'function')
+                mc1Toast(effectType + ' complete. Output: ' + d.file_path_processed, 'ok');
+            /* Reload waveform from processed file */
+            if (window.eeEditor && typeof window.eeEditor.loadFromPath === 'function') {
+                window.eeEditor.loadFromPath(d.file_path_processed);
+            }
+        } else {
+            if (typeof mc1Toast === 'function')
+                mc1Toast(effectType + ' failed: ' + (d && d.error ? d.error : 'Unknown'), 'err');
+        }
+    }).catch(function(e) {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        if (typeof mc1Toast === 'function')
+            mc1Toast('VoicTune unreachable: ' + e.message, 'err');
+    });
+};
+
+window.eeVoiceChanger = function() {
+    var select = document.getElementById('ee-voicefx-select');
+    var effect = select ? select.value : '';
+    if (!effect) {
+        if (typeof mc1Toast === 'function') mc1Toast('Select a voice effect first', 'warn');
+        return;
+    }
+    if (!EP_DATA || !EP_DATA.file_path) {
+        if (typeof mc1Toast === 'function') mc1Toast('No episode file loaded', 'warn');
+        return;
+    }
+
+    var btn = document.getElementById('ee-tool-voicefx');
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+
+    var payload = {
+        file_path: EP_DATA.file_path,
+        effect: effect,
+        intensity: 0.5,
+        preview: false
+    };
+
+    var proxyPath = '/api/v1/proxy/voictune/process/voice-change';
+
+    if (typeof mc1Toast === 'function') mc1Toast('Applying ' + effect + ' voice effect...', 'info');
+
+    fetch(proxyPath, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        credentials: 'include',
+        body: JSON.stringify(payload)
+    }).then(function(r) { return r.json(); }).then(function(d) {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        if (d && d.ok && d.file_path_processed) {
+            if (typeof mc1Toast === 'function')
+                mc1Toast('Voice effect "' + effect + '" applied. Output: ' + d.file_path_processed, 'ok');
+            if (window.eeEditor && typeof window.eeEditor.loadFromPath === 'function') {
+                window.eeEditor.loadFromPath(d.file_path_processed);
+            }
+        } else {
+            if (typeof mc1Toast === 'function')
+                mc1Toast('Voice effect failed: ' + (d && d.error ? d.error : 'Unknown'), 'err');
+        }
+    }).catch(function(e) {
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+        if (typeof mc1Toast === 'function')
+            mc1Toast('VoicTune unreachable: ' + e.message, 'err');
+    });
+};
 
 document.addEventListener('DOMContentLoaded', function() {
     window.eeEditor = new EpisodeEditor({

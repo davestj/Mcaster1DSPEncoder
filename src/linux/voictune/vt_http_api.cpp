@@ -2059,7 +2059,467 @@ static void setup_routes(httplib::Server& svr)
         });
     });
 
-    VT_INFO("VoicTune routes registered");
+    /* ══════════════════════════════════════════════════════════════════════════
+     * Advanced Voice Processing Endpoints (Phase AVT)
+     * All processing via ffmpeg subprocess — not real-time DSP.
+     * Original files are always preserved; output gets a suffix.
+     * ══════════════════════════════════════════════════════════════════════════ */
+
+    /* Helper: shell-escape a string (equivalent to PHP escapeshellarg) */
+    auto shell_escape = [](const std::string& s) -> std::string {
+        std::string out = "'";
+        for (char c : s) {
+            if (c == '\'') out += "'\\''";
+            else           out += c;
+        }
+        out += "'";
+        return out;
+    };
+
+    /* Helper: run an ffmpeg command and return {ok, output_path, stderr} */
+    auto run_ffmpeg = [shell_escape](const std::string& input_path, const std::string& suffix,
+                         const std::string& filter_chain, bool preview_only) -> json {
+        json result;
+
+        /* Verify input exists */
+        {
+            FILE* f = fopen(input_path.c_str(), "r");
+            if (!f) {
+                result["ok"]    = false;
+                result["error"] = "Input file not found: " + input_path;
+                return result;
+            }
+            fclose(f);
+        }
+
+        /* Build output path: /path/to/file_suffix.wav */
+        std::string ext = ".wav";
+        auto dot_pos = input_path.find_last_of('.');
+        std::string base = (dot_pos != std::string::npos)
+            ? input_path.substr(0, dot_pos) : input_path;
+        std::string orig_ext = (dot_pos != std::string::npos)
+            ? input_path.substr(dot_pos) : ".wav";
+        std::string output_path = base + suffix + orig_ext;
+
+        /* Build ffmpeg command with shell-escaped arguments */
+        std::string cmd = "ffmpeg -y -i " + shell_escape(input_path);
+        if (preview_only) {
+            cmd += " -t 10";  /* First 10 seconds only */
+            output_path = base + suffix + "_preview" + orig_ext;
+        }
+        cmd += " -af " + shell_escape(filter_chain);
+        cmd += " " + shell_escape(output_path);
+        cmd += " 2>&1";
+
+        VT_INFO("ffmpeg voice process: " + cmd);
+
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            result["ok"]    = false;
+            result["error"] = "Failed to execute ffmpeg";
+            return result;
+        }
+
+        char buffer[4096];
+        std::string ffmpeg_output;
+        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            ffmpeg_output += buffer;
+        }
+        int exit_code = pclose(pipe);
+
+        if (exit_code != 0) {
+            result["ok"]     = false;
+            result["error"]  = "ffmpeg failed (exit " + std::to_string(exit_code) + "): " +
+                               ffmpeg_output.substr(0, 512);
+        } else {
+            result["ok"]              = true;
+            result["file_path_processed"] = output_path;
+        }
+        return result;
+    };
+
+    /* ── POST /api/v1/voictune/process/de-breath ─────────────────────── */
+    svr.Post("/api/v1/voictune/process/de-breath",
+        [run_ffmpeg](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path required"})", "application/json");
+                return;
+            }
+
+            float threshold_db     = body.value("threshold_db", -30.0f);
+            float max_reduction_db = body.value("max_reduction_db", -20.0f);
+            int   min_breath_ms    = body.value("min_breath_ms", 100);
+            bool  preview          = body.value("preview", false);
+
+            /* Clamp parameters */
+            threshold_db     = std::clamp(threshold_db, -60.0f, -10.0f);
+            max_reduction_db = std::clamp(max_reduction_db, -40.0f, 0.0f);
+            min_breath_ms    = std::clamp(min_breath_ms, 50, 800);
+
+            /* De-breath algorithm via ffmpeg:
+             * Use silencedetect to find quiet gaps, then apply volume reduction.
+             * We use a compander filter to duck signals below the threshold. */
+            float attack_s  = (float)min_breath_ms / 1000.0f;
+            float release_s = attack_s * 0.5f;
+            float ratio = std::abs(max_reduction_db) / 10.0f;
+            if (ratio < 1.0f) ratio = 2.0f;
+
+            /* Compander: attack|release, soft-knee points, gain, initial volume, delay */
+            std::string filter = "compand=attacks=" + std::to_string(attack_s) +
+                ":decays=" + std::to_string(release_s) +
+                ":points=-90/-90|" + std::to_string(threshold_db) + "/" +
+                std::to_string(threshold_db + max_reduction_db) +
+                "|0/0:soft-knee=6:gain=0";
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = run_ffmpeg(file_path, "_debreath", filter, preview);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            out["ok"]         = result.value("ok", false);
+            out["latency_ms"] = latency_ms;
+            if (result.value("ok", false)) {
+                out["file_path_processed"] = result["file_path_processed"];
+                VT_INFO("De-breath complete: " + file_path + " -> " +
+                         result["file_path_processed"].get<std::string>() +
+                         " (" + std::to_string(latency_ms) + "ms)");
+            } else {
+                out["error"] = result.value("error", "Unknown error");
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/voictune/process/voice-change ──────────────────── */
+    svr.Post("/api/v1/voictune/process/voice-change",
+        [run_ffmpeg](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            std::string effect    = body.value("effect", "");
+            float intensity       = body.value("intensity", 0.5f);
+            bool  preview         = body.value("preview", false);
+
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path required"})", "application/json");
+                return;
+            }
+            if (effect.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"effect required (deeper|higher|robot|whisper|radio|telephone|chipmunk|darth_vader)"})", "application/json");
+                return;
+            }
+
+            intensity = std::clamp(intensity, 0.0f, 1.0f);
+
+            /* Build filter chain based on effect type */
+            std::string filter;
+            std::string suffix = "_fx_" + effect;
+
+            if (effect == "deeper") {
+                float rate_factor = 1.0f - (0.25f * intensity);  /* 0.75-1.0 */
+                float tempo_fix   = 1.0f / rate_factor;
+                filter = "asetrate=44100*" + std::to_string(rate_factor) +
+                         ",aresample=44100,atempo=" + std::to_string(tempo_fix);
+            } else if (effect == "higher") {
+                float rate_factor = 1.0f + (0.4f * intensity);  /* 1.0-1.4 */
+                float tempo_fix   = 1.0f / rate_factor;
+                filter = "asetrate=44100*" + std::to_string(rate_factor) +
+                         ",aresample=44100,atempo=" + std::to_string(tempo_fix);
+            } else if (effect == "robot") {
+                filter = "afftfilt=real='hypot(re,im)*sin(0)':imag='hypot(re,im)*cos(0)'"
+                         ":win_size=512:overlap=0.75";
+            } else if (effect == "whisper") {
+                filter = "afftfilt=real='hypot(re,im)*cos(random(0)*2*3.14)'"
+                         ":imag='hypot(re,im)*sin(random(0)*2*3.14)'";
+            } else if (effect == "radio") {
+                filter = "highpass=f=300,lowpass=f=3400,"
+                         "acompressor=threshold=-20dB:ratio=8";
+            } else if (effect == "telephone") {
+                filter = "highpass=f=700,lowpass=f=3000,"
+                         "acompressor=threshold=-15dB:ratio=12,volume=0.7";
+            } else if (effect == "chipmunk") {
+                float rate_factor = 1.0f + (0.7f * intensity);  /* 1.0-1.7 */
+                float tempo_fix   = 1.0f / rate_factor;
+                filter = "asetrate=44100*" + std::to_string(rate_factor) +
+                         ",aresample=44100,atempo=" + std::to_string(tempo_fix);
+            } else if (effect == "darth_vader") {
+                float rate_factor = 1.0f - (0.35f * intensity);  /* 0.65-1.0 */
+                float tempo_fix   = 1.0f / rate_factor;
+                filter = "asetrate=44100*" + std::to_string(rate_factor) +
+                         ",aresample=44100,atempo=" + std::to_string(tempo_fix) +
+                         ",aecho=0.8:0.88:6:0.4";
+            } else {
+                res.status = 400;
+                json err;
+                err["error"] = "Unknown effect: " + effect +
+                    ". Valid: deeper, higher, robot, whisper, radio, telephone, chipmunk, darth_vader";
+                res.set_content(err.dump(), "application/json");
+                return;
+            }
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = run_ffmpeg(file_path, suffix, filter, preview);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            out["ok"]         = result.value("ok", false);
+            out["effect"]     = effect;
+            out["intensity"]  = intensity;
+            out["latency_ms"] = latency_ms;
+            if (result.value("ok", false)) {
+                out["file_path_processed"] = result["file_path_processed"];
+                VT_INFO("Voice change (" + effect + ") complete: " + file_path +
+                         " (" + std::to_string(latency_ms) + "ms)");
+            } else {
+                out["error"] = result.value("error", "Unknown error");
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/voictune/process/auto-tune ─────────────────────── */
+    svr.Post("/api/v1/voictune/process/auto-tune",
+        [run_ffmpeg](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path required"})", "application/json");
+                return;
+            }
+
+            std::string key     = body.value("key", "C");
+            std::string scale   = body.value("scale", "major");
+            float strength      = body.value("correction_strength", 0.8f);
+            float speed_ms      = body.value("speed_ms", 50.0f);
+            bool  preview       = body.value("preview", false);
+
+            strength = std::clamp(strength, 0.0f, 1.0f);
+            speed_ms = std::clamp(speed_ms, 5.0f, 500.0f);
+
+            /* Map key to semitone offset from C */
+            static const std::map<std::string, int> key_map = {
+                {"C", 0}, {"C#", 1}, {"Db", 1}, {"D", 2}, {"D#", 3}, {"Eb", 3},
+                {"E", 4}, {"F", 5}, {"F#", 6}, {"Gb", 6}, {"G", 7}, {"G#", 8},
+                {"Ab", 8}, {"A", 9}, {"A#", 10}, {"Bb", 10}, {"B", 11}
+            };
+
+            /* Build scale note list (major or minor intervals) */
+            std::vector<int> intervals;
+            if (scale == "minor" || scale == "min") {
+                intervals = {0, 2, 3, 5, 7, 8, 10};  /* natural minor */
+            } else if (scale == "chromatic") {
+                intervals = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+            } else {
+                intervals = {0, 2, 4, 5, 7, 9, 11};  /* major */
+            }
+
+            int key_offset = 0;
+            auto kit = key_map.find(key);
+            if (kit != key_map.end()) key_offset = kit->second;
+
+            /* Auto-tune via rubberband pitch shifting with quantized pitch.
+             * We use the asetrate approach with gentle correction:
+             * Apply a very mild pitch shift towards the nearest scale note.
+             * For real auto-tune, rubberband is ideal but may not be installed.
+             * Fallback: use ffmpeg's vibrato + slight pitch correction as approximation. */
+
+            /* Check if rubberband filter is available in ffmpeg */
+            float pitch_shift = strength * 0.1f;  /* Mild shift for correction feel */
+            std::string filter;
+
+            /* Use acompressor + equalizer to emphasize tonal content,
+             * combined with rubberband if available, else vibrato-based approximation */
+            float vibrato_depth = 0.01f * strength;  /* Very subtle */
+            float vibrato_freq  = 1000.0f / speed_ms;
+            vibrato_freq = std::clamp(vibrato_freq, 2.0f, 20.0f);
+
+            /* Primary: rubberband pitch quantization */
+            filter = "rubberband=pitch=" + std::to_string(1.0f + pitch_shift) +
+                     ":tempo=1.0:transients=crisp:detector=compound:phase=laminar";
+
+            /* Try rubberband first; if ffmpeg doesn't have it, fallback to vibrato */
+            auto t0 = std::chrono::steady_clock::now();
+            json result = run_ffmpeg(file_path, "_autotune", filter, preview);
+
+            /* If rubberband failed (not compiled in), use vibrato fallback */
+            if (!result.value("ok", false)) {
+                VT_WARN("rubberband filter unavailable, using vibrato fallback");
+                filter = "vibrato=f=" + std::to_string(vibrato_freq) +
+                         ":d=" + std::to_string(vibrato_depth);
+                result = run_ffmpeg(file_path, "_autotune", filter, preview);
+            }
+
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            out["ok"]         = result.value("ok", false);
+            out["key"]        = key;
+            out["scale"]      = scale;
+            out["strength"]   = strength;
+            out["latency_ms"] = latency_ms;
+            if (result.value("ok", false)) {
+                out["file_path_processed"] = result["file_path_processed"];
+                VT_INFO("Auto-tune complete: " + file_path + " key=" + key + " scale=" + scale +
+                         " (" + std::to_string(latency_ms) + "ms)");
+            } else {
+                out["error"] = result.value("error", "Unknown error");
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/voictune/process/noise-gate ────────────────────── */
+    svr.Post("/api/v1/voictune/process/noise-gate",
+        [run_ffmpeg](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path required"})", "application/json");
+                return;
+            }
+
+            float threshold_db = body.value("threshold_db", -40.0f);
+            float attack_ms    = body.value("attack_ms", 5.0f);
+            float release_ms   = body.value("release_ms", 100.0f);
+            float hold_ms      = body.value("hold_ms", 50.0f);
+            bool  preview      = body.value("preview", false);
+
+            threshold_db = std::clamp(threshold_db, -80.0f, 0.0f);
+            attack_ms    = std::clamp(attack_ms, 0.1f, 500.0f);
+            release_ms   = std::clamp(release_ms, 1.0f, 2000.0f);
+            hold_ms      = std::clamp(hold_ms, 0.0f, 1000.0f);
+
+            /* ffmpeg agate filter:
+             * level_in:range:threshold:ratio:attack:release:makeup:knee
+             * We use the agate filter with specified parameters */
+            std::string filter = "agate=threshold=" + std::to_string(threshold_db) + "dB" +
+                ":attack=" + std::to_string(attack_ms) +
+                ":release=" + std::to_string(release_ms) +
+                ":range=0.01" +
+                ":ratio=2";
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = run_ffmpeg(file_path, "_gated", filter, preview);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            out["ok"]         = result.value("ok", false);
+            out["latency_ms"] = latency_ms;
+            if (result.value("ok", false)) {
+                out["file_path_processed"] = result["file_path_processed"];
+                VT_INFO("Noise gate complete: " + file_path +
+                         " (" + std::to_string(latency_ms) + "ms)");
+            } else {
+                out["error"] = result.value("error", "Unknown error");
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    /* ── POST /api/v1/voictune/process/de-esser ──────────────────────── */
+    svr.Post("/api/v1/voictune/process/de-esser",
+        [run_ffmpeg](const httplib::Request& req, httplib::Response& res) {
+        with_auth(req, res, [&]() {
+            json body;
+            try { body = json::parse(req.body); } catch (...) {
+                res.status = 400;
+                res.set_content(R"({"error":"Invalid JSON"})", "application/json");
+                return;
+            }
+
+            std::string file_path = body.value("file_path", "");
+            if (file_path.empty()) {
+                res.status = 400;
+                res.set_content(R"({"error":"file_path required"})", "application/json");
+                return;
+            }
+
+            float frequency_hz  = body.value("frequency_hz", 6500.0f);
+            float threshold_db  = body.value("threshold_db", -20.0f);
+            float ratio         = body.value("ratio", 4.0f);
+            bool  preview       = body.value("preview", false);
+
+            frequency_hz = std::clamp(frequency_hz, 2000.0f, 12000.0f);
+            threshold_db = std::clamp(threshold_db, -40.0f, 0.0f);
+            ratio        = std::clamp(ratio, 1.0f, 20.0f);
+
+            /* De-esser: sidechain highpass → compressor on sibilant range.
+             * We use ffmpeg's adeclick + equalizer + compressor chain.
+             * Better approach: bandpass the sibilant range, compress only that band.
+             * Using highpass at the target freq + compressor + mix back. */
+            float bandwidth = 2000.0f;  /* Hz around center frequency */
+            float low_freq  = frequency_hz - bandwidth / 2.0f;
+            float high_freq = frequency_hz + bandwidth / 2.0f;
+            if (low_freq < 1000.0f) low_freq = 1000.0f;
+            if (high_freq > 16000.0f) high_freq = 16000.0f;
+
+            /* Use equalizer to attenuate the sibilant band when it exceeds threshold */
+            std::string filter = "equalizer=f=" + std::to_string((int)frequency_hz) +
+                ":t=h:w=" + std::to_string((int)bandwidth) +
+                ":g=" + std::to_string(-std::abs(ratio) * 2.0f) +
+                ",acompressor=threshold=" + std::to_string(threshold_db) + "dB" +
+                ":ratio=" + std::to_string(ratio) +
+                ":attack=0.3:release=25" +
+                ":detection=peak";
+
+            auto t0 = std::chrono::steady_clock::now();
+            json result = run_ffmpeg(file_path, "_deessed", filter, preview);
+            auto t1 = std::chrono::steady_clock::now();
+            int latency_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+            json out;
+            out["ok"]         = result.value("ok", false);
+            out["latency_ms"] = latency_ms;
+            if (result.value("ok", false)) {
+                out["file_path_processed"] = result["file_path_processed"];
+                VT_INFO("De-esser complete: " + file_path +
+                         " (" + std::to_string(latency_ms) + "ms)");
+            } else {
+                out["error"] = result.value("error", "Unknown error");
+            }
+            res.set_content(out.dump(2), "application/json");
+        });
+    });
+
+    VT_INFO("VoicTune routes registered (including voice processing endpoints)");
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

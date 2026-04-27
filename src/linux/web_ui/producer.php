@@ -1721,6 +1721,92 @@ input[type="color"].sm-color {
                 <span id="stinger-status" style="font-size:11px;color:var(--muted)">No stinger loaded</span>
             </div>
         </div>
+
+        <!-- Chat Overlay -->
+        <div class="overlay-section">
+            <div class="sub-title"><i class="fa-solid fa-comments" style="margin-right:4px"></i> Chat Overlay</div>
+            <div class="sw-row">
+                <label style="width:72px">Enable</label>
+                <label class="toggle">
+                    <input type="checkbox" id="chat-overlay-enable" onchange="chatOverlayToggle()">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Source</label>
+                <select class="form-select" id="chat-overlay-source" style="flex:1;font-size:11px;padding:3px 6px" onchange="chatOverlaySourceChanged()">
+                    <option value="builtin">Built-in (Requests)</option>
+                    <option value="twitch">Twitch</option>
+                    <option value="youtube">YouTube</option>
+                    <option value="custom">Custom WebSocket</option>
+                </select>
+            </div>
+            <!-- Twitch config -->
+            <div id="chat-twitch-config" style="display:none">
+                <div class="sw-row">
+                    <label style="width:72px">Channel</label>
+                    <input type="text" class="form-input" id="chat-twitch-channel" placeholder="channel_name" style="flex:1;font-size:11px;padding:3px 6px">
+                </div>
+                <div style="display:flex;gap:6px;margin-top:4px">
+                    <button class="auto-btn" onclick="chatConnectTwitch()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-plug"></i> Connect</button>
+                    <button class="btn btn-secondary btn-xs" onclick="chatDisconnect()"><i class="fa-solid fa-xmark"></i> Disconnect</button>
+                </div>
+            </div>
+            <!-- YouTube config -->
+            <div id="chat-youtube-config" style="display:none">
+                <div class="sw-row">
+                    <label style="width:72px">Video ID</label>
+                    <input type="text" class="form-input" id="chat-yt-video-id" placeholder="dQw4w9WgXcQ" style="flex:1;font-size:11px;padding:3px 6px">
+                </div>
+                <div class="sw-row">
+                    <label style="width:72px">API Key</label>
+                    <input type="text" class="form-input" id="chat-yt-api-key" placeholder="AIza..." style="flex:1;font-size:11px;padding:3px 6px">
+                </div>
+                <div style="display:flex;gap:6px;margin-top:4px">
+                    <button class="auto-btn" onclick="chatConnectYouTube()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-plug"></i> Connect</button>
+                    <button class="btn btn-secondary btn-xs" onclick="chatDisconnect()"><i class="fa-solid fa-xmark"></i> Disconnect</button>
+                </div>
+            </div>
+            <!-- Custom WebSocket config -->
+            <div id="chat-custom-config" style="display:none">
+                <div class="sw-row">
+                    <label style="width:72px">WS URL</label>
+                    <input type="text" class="form-input" id="chat-custom-url" placeholder="wss://chat.example.com/ws" style="flex:1;font-size:11px;padding:3px 6px">
+                </div>
+                <div style="display:flex;gap:6px;margin-top:4px">
+                    <button class="auto-btn" onclick="chatConnectCustom()" style="padding:4px 10px;font-size:11px"><i class="fa-solid fa-plug"></i> Connect</button>
+                    <button class="btn btn-secondary btn-xs" onclick="chatDisconnect()"><i class="fa-solid fa-xmark"></i> Disconnect</button>
+                </div>
+            </div>
+            <!-- Display settings -->
+            <div class="sw-row" style="margin-top:6px">
+                <label style="width:72px">Position</label>
+                <select class="form-select" id="chat-overlay-position" style="flex:1;font-size:11px;padding:3px 6px" onchange="chatOverlayUpdateConfig()">
+                    <option value="br" selected>Bottom Right</option>
+                    <option value="bl">Bottom Left</option>
+                    <option value="tr">Top Right</option>
+                    <option value="tl">Top Left</option>
+                </select>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Font Size</label>
+                <input type="range" id="chat-overlay-fontsize" min="10" max="28" value="16" oninput="chatOverlayUpdateConfig()">
+                <span class="val-label" id="chat-fontsize-val">16px</span>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Opacity</label>
+                <input type="range" id="chat-overlay-opacity" min="20" max="100" value="85" oninput="chatOverlayUpdateConfig()">
+                <span class="val-label" id="chat-opacity-val">0.85</span>
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Max Msgs</label>
+                <input type="number" class="form-input" id="chat-overlay-max" value="5" min="1" max="15" step="1" style="width:60px;font-size:11px;padding:3px 6px" onchange="chatOverlayUpdateConfig()">
+            </div>
+            <div class="sw-row">
+                <label style="width:72px">Status</label>
+                <span id="chat-overlay-status" style="font-size:11px;color:var(--muted)">Disconnected</span>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -1755,6 +1841,7 @@ input[type="color"].sm-color {
 
 <script src="/js/webgl-video.js"></script>
 <script src="/js/video-producer.js"></script>
+<script src="/js/chat-overlay.js"></script>
 <script src="/js/captions-engine.js"></script>
 
 <script>
@@ -1795,6 +1882,12 @@ function initProducer() {
 
     initTbar();
     startTallyUpdate();
+
+    // Initialize chat overlay and attach to producer render pipeline
+    chatOverlayInit();
+    if (chatOverlay) {
+        producer.chatOverlay = chatOverlay;
+    }
 }
 
 /* -- Camera enumeration ---------------------------------------------- */
@@ -2925,6 +3018,125 @@ function toggleOverlaysPanel() {
         body.style.display = 'none';
         chevron.style.transform = 'rotate(-90deg)';
     }
+}
+
+/* -- Chat Overlay Controls ------------------------------------------- */
+
+var chatOverlay = null;
+
+function chatOverlayInit() {
+    if (!window.Mc1ChatOverlay) return;
+    chatOverlay = new Mc1ChatOverlay({
+        maxVisible: 5,
+        fontSize: 16,
+        position: 'br',
+        opacity: 0.85,
+        width: 1280,
+        height: 720
+    });
+    chatOverlay.hide();
+}
+
+function chatOverlayToggle() {
+    if (!chatOverlay) chatOverlayInit();
+    var enabled = document.getElementById('chat-overlay-enable').checked;
+    if (enabled) {
+        chatOverlay.show();
+        var source = document.getElementById('chat-overlay-source').value;
+        if (source === 'builtin') {
+            chatOverlay.connectBuiltin();
+            document.getElementById('chat-overlay-status').textContent = 'Connected (Built-in)';
+            document.getElementById('chat-overlay-status').style.color = 'var(--green)';
+        }
+        mc1Toast('Chat overlay enabled');
+    } else {
+        chatOverlay.hide();
+        chatOverlay.disconnect();
+        document.getElementById('chat-overlay-status').textContent = 'Disconnected';
+        document.getElementById('chat-overlay-status').style.color = 'var(--muted)';
+        mc1Toast('Chat overlay disabled');
+    }
+}
+
+function chatOverlaySourceChanged() {
+    var source = document.getElementById('chat-overlay-source').value;
+    document.getElementById('chat-twitch-config').style.display = source === 'twitch' ? '' : 'none';
+    document.getElementById('chat-youtube-config').style.display = source === 'youtube' ? '' : 'none';
+    document.getElementById('chat-custom-config').style.display = source === 'custom' ? '' : 'none';
+
+    // If enabled and source is builtin, auto-connect
+    if (document.getElementById('chat-overlay-enable').checked && source === 'builtin') {
+        if (chatOverlay) {
+            chatOverlay.connectBuiltin();
+            document.getElementById('chat-overlay-status').textContent = 'Connected (Built-in)';
+            document.getElementById('chat-overlay-status').style.color = 'var(--green)';
+        }
+    }
+}
+
+function chatConnectTwitch() {
+    if (!chatOverlay) chatOverlayInit();
+    var channel = document.getElementById('chat-twitch-channel').value.trim();
+    if (!channel) { mc1Toast('Enter a Twitch channel name', 'warn'); return; }
+    chatOverlay.show();
+    document.getElementById('chat-overlay-enable').checked = true;
+    chatOverlay.connectTwitch(channel);
+    document.getElementById('chat-overlay-status').textContent = 'Connected (Twitch: #' + channel + ')';
+    document.getElementById('chat-overlay-status').style.color = 'var(--green)';
+    mc1Toast('Connected to Twitch #' + channel);
+}
+
+function chatConnectYouTube() {
+    if (!chatOverlay) chatOverlayInit();
+    var videoId = document.getElementById('chat-yt-video-id').value.trim();
+    var apiKey = document.getElementById('chat-yt-api-key').value.trim();
+    if (!videoId) { mc1Toast('Enter a YouTube video ID', 'warn'); return; }
+    if (!apiKey) { mc1Toast('Enter a YouTube API key', 'warn'); return; }
+    chatOverlay.show();
+    document.getElementById('chat-overlay-enable').checked = true;
+    chatOverlay.connectYouTube(videoId, apiKey);
+    document.getElementById('chat-overlay-status').textContent = 'Connected (YouTube)';
+    document.getElementById('chat-overlay-status').style.color = 'var(--green)';
+    mc1Toast('Connected to YouTube Live Chat');
+}
+
+function chatConnectCustom() {
+    if (!chatOverlay) chatOverlayInit();
+    var url = document.getElementById('chat-custom-url').value.trim();
+    if (!url) { mc1Toast('Enter a WebSocket URL', 'warn'); return; }
+    chatOverlay.show();
+    document.getElementById('chat-overlay-enable').checked = true;
+    chatOverlay.connectCustom(url);
+    document.getElementById('chat-overlay-status').textContent = 'Connected (Custom WS)';
+    document.getElementById('chat-overlay-status').style.color = 'var(--green)';
+    mc1Toast('Connected to custom WebSocket');
+}
+
+function chatDisconnect() {
+    if (chatOverlay) {
+        chatOverlay.disconnect();
+        chatOverlay.hide();
+    }
+    document.getElementById('chat-overlay-enable').checked = false;
+    document.getElementById('chat-overlay-status').textContent = 'Disconnected';
+    document.getElementById('chat-overlay-status').style.color = 'var(--muted)';
+    mc1Toast('Chat overlay disconnected');
+}
+
+function chatOverlayUpdateConfig() {
+    if (!chatOverlay) return;
+    var pos = document.getElementById('chat-overlay-position').value;
+    var fontSize = parseInt(document.getElementById('chat-overlay-fontsize').value) || 16;
+    var opacity = parseInt(document.getElementById('chat-overlay-opacity').value) / 100;
+    var maxMsgs = parseInt(document.getElementById('chat-overlay-max').value) || 5;
+
+    chatOverlay.position = pos;
+    chatOverlay.fontSize = fontSize;
+    chatOverlay.globalOpacity = opacity;
+    chatOverlay.maxVisible = maxMsgs;
+
+    document.getElementById('chat-fontsize-val').textContent = fontSize + 'px';
+    document.getElementById('chat-opacity-val').textContent = opacity.toFixed(2);
 }
 
 /* -- Scene Presets (1-8 bar) ----------------------------------------- */

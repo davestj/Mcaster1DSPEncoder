@@ -26,6 +26,7 @@ $stream  = $_GET['stream']  ?? '';
 $station = $_GET['station'] ?? 'Mcaster1 Radio';
 $color   = preg_replace('/[^a-fA-F0-9]/', '', $_GET['color'] ?? '14b8a6');
 $logo    = $_GET['logo']    ?? '';
+$format  = strtolower($_GET['format'] ?? ''); /* hls, dash, or empty for direct */
 
 /* We sanitize for HTML output */
 $stream_esc  = htmlspecialchars($stream,  ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
@@ -40,6 +41,12 @@ $color_esc   = htmlspecialchars($color,   ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><?= $station_esc ?> Player</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+<?php if ($format === 'hls'): ?>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
+<?php endif; ?>
+<?php if ($format === 'dash'): ?>
+<script src="https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js"></script>
+<?php endif; ?>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--accent:#<?= $color_esc ?>}
@@ -120,23 +127,69 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
   var volSlider = document.getElementById('vol-slider');
   var volIcon   = document.getElementById('vol-icon');
   var streamUrl = <?= json_encode($stream) ?>;
+  var streamFormat = <?= json_encode($format) ?>;
   var isPlaying = false;
   var savedVol  = 0.8;
+  var hlsPlayer = null;
+  var dashPlayer = null;
 
   audio.volume = 0.8;
+
+  /* We stop playback and clean up any HLS/DASH player instance */
+  function stopAll() {
+    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+    if (dashPlayer) { dashPlayer.reset(); dashPlayer = null; }
+    audio.pause();
+    audio.src = '';
+    isPlaying = false;
+    playIcon.className = 'fa-solid fa-play';
+    npTitle.textContent = 'Click play to listen';
+    npStatus.textContent = 'Stopped';
+    statusDot.className = 'status-dot off';
+  }
 
   window.togglePlay = function() {
     if (!streamUrl) return;
     if (isPlaying) {
-      audio.pause();
-      audio.src = '';
-      isPlaying = false;
-      playIcon.className = 'fa-solid fa-play';
-      npTitle.textContent = 'Click play to listen';
-      npStatus.textContent = 'Stopped';
-      statusDot.className = 'status-dot off';
+      stopAll();
+    } else if (streamFormat === 'hls' && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      /* We use hls.js for HLS adaptive bitrate playback */
+      npStatus.textContent = 'Connecting...';
+      statusDot.className = 'status-dot live';
+      hlsPlayer = new Hls({ maxBufferLength: 30, startLevel: -1 });
+      hlsPlayer.loadSource(streamUrl);
+      hlsPlayer.attachMedia(audio);
+      hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function() {
+        audio.play().then(function() {
+          isPlaying = true;
+          playIcon.className = 'fa-solid fa-pause';
+        }).catch(function(e) {
+          npStatus.textContent = 'Error: ' + (e.message || 'Cannot play');
+          statusDot.className = 'status-dot off';
+        });
+      });
+      hlsPlayer.on(Hls.Events.ERROR, function(ev, data) {
+        if (data.fatal) {
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { hlsPlayer.startLoad(); }
+          else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) { hlsPlayer.recoverMediaError(); }
+          else { stopAll(); npStatus.textContent = 'Fatal error'; }
+        }
+      });
+    } else if (streamFormat === 'dash' && typeof dashjs !== 'undefined') {
+      /* We use dash.js for DASH adaptive bitrate playback */
+      npStatus.textContent = 'Connecting...';
+      statusDot.className = 'status-dot live';
+      dashPlayer = dashjs.MediaPlayer().create();
+      dashPlayer.initialize(audio, streamUrl, true);
+      dashPlayer.on('streamInitialized', function() {
+        isPlaying = true;
+        playIcon.className = 'fa-solid fa-pause';
+      });
+      dashPlayer.on('error', function() {
+        stopAll(); npStatus.textContent = 'DASH error';
+      });
     } else {
-      /* We append a cache-buster to force a new connection */
+      /* We fall back to direct audio element playback (Icecast/DNAS) */
       audio.src = streamUrl + (streamUrl.indexOf('?') === -1 ? '?' : '&') + '_t=' + Date.now();
       audio.play().then(function() {
         isPlaying = true;

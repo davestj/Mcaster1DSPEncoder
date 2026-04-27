@@ -15,6 +15,9 @@ $page_title = $page_title ?? 'Dashboard';
 $active_nav = $active_nav ?? '';
 $use_charts = $use_charts ?? false;
 
+// Load i18n localization framework
+require_once __DIR__ . '/i18n.php';
+
 $user       = function_exists('mc1_current_user') ? mc1_current_user() : null;
 $display    = $user ? ($user['display_name'] ?: $user['username']) : 'Guest';
 $role_label = $user ? ($user['role_label'] ?? '') : '';
@@ -321,6 +324,22 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <span style="width:7px;height:7px;border-radius:50%;background:var(--teal);display:inline-block;animation:live-dot 1.4s ease-in-out infinite;box-shadow:0 0 6px var(--teal)"></span>
       <span id="enc-live-label">0 Live</span>
     </div>
+    <!-- Language selector -->
+    <div class="mode-selector" id="lang-selector">
+      <button class="mode-badge" id="lang-badge" onclick="toggleLangDropdown(event)" title="Change language" style="font-size:12px;padding:4px 8px">
+        <i class="fa-solid fa-globe" style="font-size:11px"></i>
+        <span id="lang-badge-label"><?= h(strtoupper(mc1_i18n_lang())) ?></span>
+        <i class="fa-solid fa-chevron-down" style="font-size:8px;opacity:.6;margin-left:1px"></i>
+      </button>
+      <div class="mode-dropdown" id="lang-dropdown">
+<?php foreach (mc1_i18n_languages() as $code => $label): ?>
+        <div class="mode-option<?= $code === mc1_i18n_lang() ? ' active' : '' ?>" onclick="setLang('<?= $code ?>')">
+          <span style="font-size:11px;font-weight:700;width:18px;text-align:center;flex-shrink:0"><?= strtoupper($code) ?></span>
+          <span><?= $label ?></span>
+        </div>
+<?php endforeach; ?>
+      </div>
+    </div>
     <!-- Mode selector dropdown -->
     <div class="mode-selector" id="mode-selector">
       <button class="mode-badge" id="mode-badge" onclick="toggleModeDropdown(event)" title="Switch app mode">
@@ -372,105 +391,105 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 
 <!-- Sidebar -->
 <nav class="sidebar">
-  <div class="nav-section" data-nav-section="monitor">Monitor</div>
+  <div class="nav-section" data-nav-section="monitor"><?= __('Monitor') ?></div>
   <a class="nav-item <?= $active_nav === 'dashboard' ? 'active' : '' ?>" href="/dashboard.php">
-    <i class="fa-solid fa-gauge fa-fw"></i> Dashboard
+    <i class="fa-solid fa-gauge fa-fw"></i> <?= __('Dashboard') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'encoders' ? 'active' : '' ?>" href="/encoders.php" data-modes="broadcast">
-    <i class="fa-solid fa-tower-broadcast fa-fw"></i> Encoders
+    <i class="fa-solid fa-tower-broadcast fa-fw"></i> <?= __('Encoders') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="library">Library</div>
+  <div class="nav-section" data-nav-section="library"><?= __('Library') ?></div>
   <a class="nav-item <?= $active_nav === 'media' ? 'active' : '' ?>" href="/media.php">
-    <i class="fa-solid fa-music fa-fw"></i> Media Library
+    <i class="fa-solid fa-music fa-fw"></i> <?= __('Media Library') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'playlists' ? 'active' : '' ?>" href="/playlists.php">
-    <i class="fa-solid fa-list-ul fa-fw"></i> Playlists
+    <i class="fa-solid fa-list-ul fa-fw"></i> <?= __('Playlists') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'mediaplayer' ? 'active' : '' ?>" href="/mediaplayer.php">
-    <i class="fa-solid fa-headphones fa-fw"></i> Media Player
+    <i class="fa-solid fa-headphones fa-fw"></i> <?= __('Media Player') ?>
   </a>
   <a class="nav-item" href="#" onclick="window.open('/mediaplayerpro.php','mc1pro','width=1200,height=750,menubar=no,toolbar=no');return false;">
-    <i class="fa-solid fa-up-right-from-square fa-fw"></i> Pro Player <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
+    <i class="fa-solid fa-up-right-from-square fa-fw"></i> <?= __('Pro Player') ?> <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
   </a>
 
-  <div class="nav-section" data-nav-section="dj">DJ</div>
+  <div class="nav-section" data-nav-section="dj"><?= __('DJ') ?></div>
   <a class="nav-item <?= $active_nav === 'crossfader' ? 'active' : '' ?>" href="/crossfader.php" data-modes="dj">
-    <i class="fa-solid fa-arrows-left-right fa-fw"></i> Crossfader
+    <i class="fa-solid fa-arrows-left-right fa-fw"></i> <?= __('Crossfader') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'dualdeck' ? 'active' : '' ?>" href="#" onclick="window.open('/dualdeck-player.php','mc1dualdeck','width=1200,height=700,menubar=no,toolbar=no');return false;" data-modes="dj">
-    <i class="fa-solid fa-compact-disc fa-fw"></i> Dual Deck <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
+    <i class="fa-solid fa-compact-disc fa-fw"></i> <?= __('Dual Deck') ?> <span style="font-size:9px;opacity:.5;margin-left:2px">popup</span>
   </a>
   <a class="nav-item <?= $active_nav === 'effects' ? 'active' : '' ?>" href="/effects-rack.php" data-modes="dj,producer">
-    <i class="fa-solid fa-sliders fa-fw"></i> Effects Rack
+    <i class="fa-solid fa-sliders fa-fw"></i> <?= __('Effects Rack') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'mixer' ? 'active' : '' ?>" href="/mixer.php" data-modes="dj,broadcast">
-    <i class="fa-solid fa-sliders fa-fw" style="transform:rotate(90deg)"></i> Mixer
+    <i class="fa-solid fa-sliders fa-fw" style="transform:rotate(90deg)"></i> <?= __('Mixer') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'jack' ? 'active' : '' ?>" href="/jack.php" data-modes="dj">
-    <i class="fa-solid fa-plug fa-fw"></i> JACK Audio
+    <i class="fa-solid fa-plug fa-fw"></i> <?= __('JACK Audio') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="voice">Voice Tools</div>
+  <div class="nav-section" data-nav-section="voice"><?= __('Voice Tools') ?></div>
   <a class="nav-item <?= $active_nav === 'voictune' ? 'active' : '' ?>" href="/voictune.php" data-modes="podcast,producer">
-    <i class="fa-solid fa-microphone-lines fa-fw"></i> VoicTune
+    <i class="fa-solid fa-microphone-lines fa-fw"></i> <?= __('VoicTune') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="producer">Producer</div>
+  <div class="nav-section" data-nav-section="producer"><?= __('Producer') ?></div>
   <a class="nav-item <?= $active_nav === 'producer' ? 'active' : '' ?>" href="/producer.php" data-modes="producer">
-    <i class="fa-solid fa-tv fa-fw"></i> Video Producer
+    <i class="fa-solid fa-tv fa-fw"></i> <?= __('Video Producer') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'daw' ? 'active' : '' ?>" href="/daw.php" data-modes="producer">
-    <i class="fa-solid fa-timeline fa-fw"></i> Multi-Track Editor
+    <i class="fa-solid fa-timeline fa-fw"></i> <?= __('DAW') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'forensic' ? 'active' : '' ?>" href="/forensic.php" data-modes="producer">
-    <i class="fa-solid fa-microscope fa-fw"></i> Forensic Analysis
+    <i class="fa-solid fa-microscope fa-fw"></i> <?= __('Forensic') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="publish">Publish</div>
+  <div class="nav-section" data-nav-section="publish"><?= __('Publish') ?></div>
   <a class="nav-item <?= $active_nav === 'podcast' ? 'active' : '' ?>" href="/podcast.php" data-modes="podcast">
-    <i class="fa-solid fa-podcast fa-fw"></i> Podcast Manager
+    <i class="fa-solid fa-podcast fa-fw"></i> <?= __('Podcast') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'recording' ? 'active' : '' ?>" href="/recording.php" data-modes="podcast">
-    <i class="fa-solid fa-circle fa-fw" style="color:#ef4444;"></i> Recording Studio
+    <i class="fa-solid fa-circle fa-fw" style="color:#ef4444;"></i> <?= __('Recording') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'episode-editor' ? 'active' : '' ?>" href="/episode-editor.php" data-modes="podcast">
-    <i class="fa-solid fa-wave-square fa-fw"></i> Episode Editor
+    <i class="fa-solid fa-wave-square fa-fw"></i> <?= __('Episode Editor') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'remote-recording' ? 'active' : '' ?>" href="/remote-host.php" data-modes="podcast">
-    <i class="fa-solid fa-satellite-dish fa-fw"></i> Remote Recording
+    <i class="fa-solid fa-satellite-dish fa-fw"></i> <?= __('Remote Recording') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'podcast-analytics' ? 'active' : '' ?>" href="/podcast-analytics.php" data-modes="podcast">
-    <i class="fa-solid fa-chart-line fa-fw"></i> Analytics
+    <i class="fa-solid fa-chart-line fa-fw"></i> <?= __('Analytics') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'monetization' ? 'active' : '' ?>" href="/monetization.php" data-modes="podcast">
-    <i class="fa-solid fa-dollar-sign fa-fw"></i> Monetization
+    <i class="fa-solid fa-dollar-sign fa-fw"></i> <?= __('Monetization') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="automation">Automation</div>
+  <div class="nav-section" data-nav-section="automation"><?= __('Automation') ?></div>
   <a class="nav-item <?= $active_nav === 'schedule' ? 'active' : '' ?>" href="/schedule.php" data-modes="broadcast">
-    <i class="fa-solid fa-clock fa-fw"></i> Schedule
+    <i class="fa-solid fa-clock fa-fw"></i> <?= __('Schedule') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="engagement">Engagement</div>
+  <div class="nav-section" data-nav-section="engagement"><?= __('Engagement') ?></div>
   <a class="nav-item <?= $active_nav === 'requests' ? 'active' : '' ?>" href="/requests.php" data-modes="broadcast,podcast">
-    <i class="fa-solid fa-hand fa-fw"></i> Requests
+    <i class="fa-solid fa-hand fa-fw"></i> <?= __('Song Requests') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="analytics">Analytics</div>
+  <div class="nav-section" data-nav-section="analytics"><?= __('Analytics') ?></div>
   <a class="nav-item <?= $active_nav === 'metrics' ? 'active' : '' ?>" href="/metrics.php" data-modes="broadcast">
-    <i class="fa-solid fa-chart-line fa-fw"></i> Listener Metrics
+    <i class="fa-solid fa-chart-line fa-fw"></i> <?= __('Metrics') ?>
   </a>
 
-  <div class="nav-section" data-nav-section="system">System</div>
+  <div class="nav-section" data-nav-section="system"><?= __('System') ?></div>
   <a class="nav-item <?= $active_nav === 'settings' ? 'active' : '' ?>" href="/settings.php">
-    <i class="fa-solid fa-gear fa-fw"></i> Settings
+    <i class="fa-solid fa-gear fa-fw"></i> <?= __('Settings') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'profile' ? 'active' : '' ?>" href="/profile.php">
-    <i class="fa-solid fa-circle-user fa-fw"></i> My Profile
+    <i class="fa-solid fa-circle-user fa-fw"></i> <?= __('My Profile') ?>
   </a>
   <a class="nav-item <?= $active_nav === 'compliance' ? 'active' : '' ?>" href="/compliance.php">
-    <i class="fa-solid fa-shield-halved fa-fw" style="color:#00d4aa"></i> Compliance
+    <i class="fa-solid fa-shield-halved fa-fw" style="color:#00d4aa"></i> <?= __('Compliance') ?>
   </a>
 
   <div class="sidebar-spacer"></div>
@@ -712,6 +731,38 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 })();
+
+/* ── Language Selector ───────────────────────────────────────────────── */
+window.toggleLangDropdown = function(e) {
+  e.stopPropagation();
+  var dd = document.getElementById('lang-dropdown');
+  if (!dd) return;
+  dd.classList.toggle('open');
+  /* Close mode dropdown if open */
+  var modeDd = document.getElementById('mode-dropdown');
+  if (modeDd) modeDd.classList.remove('open');
+  /* Close on next click anywhere */
+  if (dd.classList.contains('open')) {
+    setTimeout(function() {
+      document.addEventListener('click', function closeLang() {
+        dd.classList.remove('open');
+        document.removeEventListener('click', closeLang);
+      });
+    }, 0);
+  }
+};
+
+window.setLang = function(code) {
+  /* Set cookie with 365-day expiry */
+  document.cookie = 'mc1_lang=' + code + ';path=/;max-age=' + (365*86400) + ';SameSite=Lax';
+  /* Store in localStorage for JS access */
+  try { localStorage.setItem('mc1_lang', code); } catch(e) {}
+  /* Close dropdown */
+  var dd = document.getElementById('lang-dropdown');
+  if (dd) dd.classList.remove('open');
+  /* Reload page to apply new language */
+  window.location.reload();
+};
 </script>
 <script src="/js/mobile-nav.js"></script>
 

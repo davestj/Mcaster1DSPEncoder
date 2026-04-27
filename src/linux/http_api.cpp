@@ -69,6 +69,14 @@
 
 using json = nlohmann::json;
 
+/* ── HLS/DASH output directories ──────────────────────────────────────────── */
+#ifndef MC1_HLS_DIR
+#define MC1_HLS_DIR  "/var/www/mcaster1.com/Mcaster1DSPEncoder/hls"
+#endif
+#ifndef MC1_DASH_DIR
+#define MC1_DASH_DIR "/var/www/mcaster1.com/Mcaster1DSPEncoder/dash"
+#endif
+
 /* ── Internal state ───────────────────────────────────────────────────────── */
 
 static std::string      g_webroot;
@@ -4540,6 +4548,158 @@ static void setup_routes(httplib::Server& svr)
                 vt_proxy(req, res, "POST", "/api/v1/ai/" + sub);
             });
         });
+
+    // ── Public HLS/DASH player widget — NO auth required ───────────────────
+    // GET /widget-hls.php → public embeddable adaptive streaming player
+    svr.Get("/widget-hls.php", [](const httplib::Request& req, httplib::Response& res) {
+        if (!g_fcgi) {
+            res.status = 503;
+            res.set_content("FastCGI client not available", "text/plain");
+            return;
+        }
+        std::string script_name     = "/widget-hls.php";
+        std::string script_filename = g_webroot + script_name;
+
+        std::string query_string;
+        for (auto it = req.params.begin(); it != req.params.end(); ++it) {
+            if (!query_string.empty()) query_string += "&";
+            for (unsigned char c : it->first)  query_string += static_cast<char>(c);
+            query_string += "=";
+            for (unsigned char c : it->second) {
+                if (std::isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+                    query_string += static_cast<char>(c);
+                } else {
+                    char hex[4];
+                    snprintf(hex, sizeof(hex), "%%%02X", c);
+                    query_string += hex;
+                }
+            }
+        }
+        std::string request_uri = script_name;
+        if (!query_string.empty()) request_uri += "?" + query_string;
+
+        std::map<std::string, std::string> extra;
+        extra["HTTP_X_MC1_AUTHENTICATED"] = "1";
+
+        std::string remote_addr = req.remote_addr;
+        if (remote_addr.empty()) remote_addr = "127.0.0.1";
+        int server_port = (gAdminConfig.num_sockets > 0)
+                          ? gAdminConfig.sockets[0].port : 8330;
+
+        FcgiResponse fr = g_fcgi->forward(
+            "GET", script_filename, script_name,
+            query_string, request_uri,
+            "", "",
+            g_webroot,
+            remote_addr, "localhost", server_port,
+            extra
+        );
+
+        if (!fr.ok) {
+            res.status = 502;
+            res.set_content("502 Bad Gateway", "text/plain");
+            return;
+        }
+        res.status = fr.status;
+        for (auto& [k, v] : fr.headers)
+            res.set_header(k.c_str(), v.c_str());
+        res.set_content(fr.body, fr.content_type.empty()
+            ? "text/html; charset=UTF-8" : fr.content_type.c_str());
+    });
+
+    // ── HLS/DASH segment serving — public, no auth ─────────────────────────
+    // Serves .m3u8 playlists and .ts segments for HLS adaptive bitrate streaming
+    svr.Get(R"(/hls/([a-zA-Z0-9_\-]+\.(?:m3u8|ts)))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            std::string filename = req.matches[1];
+            // Security: reject path traversal
+            if (filename.find("..") != std::string::npos) {
+                res.status = 400;
+                res.set_content("400 Bad Request", "text/plain");
+                return;
+            }
+            std::string path = std::string(MC1_HLS_DIR) + "/" + filename;
+            struct stat st;
+            if (stat(path.c_str(), &st) != 0) {
+                res.status = 404;
+                res.set_content("404 Not Found", "text/plain");
+                return;
+            }
+            std::ifstream ifs(path, std::ios::binary);
+            if (!ifs.is_open()) {
+                res.status = 500;
+                res.set_content("500 Internal Server Error", "text/plain");
+                return;
+            }
+            std::string body((std::istreambuf_iterator<char>(ifs)),
+                              std::istreambuf_iterator<char>());
+            // CORS headers for cross-domain player embedding
+            res.set_header("Access-Control-Allow-Origin", "*");
+            res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Range");
+            res.set_header("Cache-Control", "no-cache, no-store");
+            // Content-Type based on extension
+            bool is_m3u8 = (filename.size() > 5 &&
+                filename.substr(filename.size() - 5) == ".m3u8");
+            if (is_m3u8) {
+                res.set_content(body, "application/vnd.apple.mpegurl");
+            } else {
+                res.set_content(body, "video/mp2t");
+            }
+        });
+
+    // Serves .mpd manifests and .m4s segments for DASH adaptive bitrate streaming
+    svr.Get(R"(/dash/([a-zA-Z0-9_\-\$]+\.(?:mpd|m4s)))",
+        [](const httplib::Request& req, httplib::Response& res) {
+            std::string filename = req.matches[1];
+            if (filename.find("..") != std::string::npos) {
+                res.status = 400;
+                res.set_content("400 Bad Request", "text/plain");
+                return;
+            }
+            std::string path = std::string(MC1_DASH_DIR) + "/" + filename;
+            struct stat st;
+            if (stat(path.c_str(), &st) != 0) {
+                res.status = 404;
+                res.set_content("404 Not Found", "text/plain");
+                return;
+            }
+            std::ifstream ifs(path, std::ios::binary);
+            if (!ifs.is_open()) {
+                res.status = 500;
+                res.set_content("500 Internal Server Error", "text/plain");
+                return;
+            }
+            std::string body((std::istreambuf_iterator<char>(ifs)),
+                              std::istreambuf_iterator<char>());
+            res.set_header("Access-Control-Allow-Origin", "*");
+            res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Range");
+            res.set_header("Cache-Control", "no-cache, no-store");
+            bool is_mpd = (filename.size() > 4 &&
+                filename.substr(filename.size() - 4) == ".mpd");
+            if (is_mpd) {
+                res.set_content(body, "application/dash+xml");
+            } else {
+                res.set_content(body, "audio/mp4");
+            }
+        });
+
+    // CORS preflight for HLS/DASH endpoints
+    svr.Options(R"(/hls/.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Range");
+        res.set_header("Access-Control-Max-Age", "86400");
+        res.status = 204;
+    });
+    svr.Options(R"(/dash/.*)", [](const httplib::Request&, httplib::Response& res) {
+        res.set_header("Access-Control-Allow-Origin", "*");
+        res.set_header("Access-Control-Allow-Methods", "GET, OPTIONS");
+        res.set_header("Access-Control-Allow-Headers", "Range");
+        res.set_header("Access-Control-Max-Age", "86400");
+        res.status = 204;
+    });
 
     // Block /app/inc/ — includes must never be served directly
     svr.Get(R"(/app/inc/.*)", [](const httplib::Request&, httplib::Response& res) {

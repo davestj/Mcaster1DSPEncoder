@@ -190,3 +190,9 @@ certs/
 # Keep locally; never commit. Copy from config/*.yaml.example
 # ---------------------------------------------------------------
 src/linux/config/*.yaml
+
+# ---------------------------------------------------------------
+# HLS/DASH segment output directories (generated at runtime)
+# ---------------------------------------------------------------
+/hls/
+/dash/
