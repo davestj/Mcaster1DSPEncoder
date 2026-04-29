@@ -2224,7 +2224,7 @@ static void setup_routes(httplib::Server& svr)
             }
             if (effect.empty()) {
                 res.status = 400;
-                res.set_content(R"({"error":"effect required (deeper|higher|robot|whisper|radio|telephone|chipmunk|darth_vader)"})", "application/json");
+                res.set_content("{\"error\":\"effect required: deeper|higher|robot|whisper|radio|telephone|chipmunk|darth_vader\"}", "application/json");
                 return;
             }
 
