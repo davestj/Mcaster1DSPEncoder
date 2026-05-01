@@ -356,6 +356,20 @@ var EP_MARKERS = <?= json_encode(array_map(function($m) {
             <div class="ee-ch-list" id="ee-ch-list">
                 <div class="ee-ch-empty">No chapters. Click "Add at Playhead" to create one.</div>
             </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+                <button class="btn btn-xs btn-secondary" id="ee-btn-embed-chapters" onclick="window.eeEmbedChapters()" title="Embed chapter atoms into MP4/M4A file via ffmpeg">
+                    <i class="fa-solid fa-file-import"></i> Embed into File
+                </button>
+                <button class="btn btn-xs btn-secondary" id="ee-btn-export-yt" onclick="window.eeExportYouTube()" title="Generate YouTube-compatible timestamp description">
+                    <i class="fa-brands fa-youtube"></i> Export for YouTube
+                </button>
+                <button class="btn btn-xs btn-secondary" id="ee-btn-export-json" onclick="window.eeExportChaptersJson()" title="Download Podcasting 2.0 JSON chapters file">
+                    <i class="fa-solid fa-download"></i> Export JSON
+                </button>
+                <span id="ee-chapters-status" style="display:none;font-size:11px;color:var(--teal);align-self:center;margin-left:4px">
+                    <i class="fa-solid fa-check-circle"></i> <span id="ee-chapters-status-text"></span>
+                </span>
+            </div>
         </div>
 
         <!-- Metadata Editor -->
@@ -1110,6 +1124,139 @@ window.eeVoiceChanger = function() {
         if (btn) { btn.disabled = false; btn.style.opacity = ''; }
         if (typeof mc1Toast === 'function')
             mc1Toast('VoicTune unreachable: ' + e.message, 'err');
+    });
+};
+
+/* ── Chapter Embedding & Export Functions ── */
+
+function eeChaptersStatus(msg, isError) {
+    var el = document.getElementById('ee-chapters-status');
+    var txt = document.getElementById('ee-chapters-status-text');
+    if (!el || !txt) return;
+    el.style.display = '';
+    el.style.color = isError ? 'var(--red)' : 'var(--teal)';
+    var icon = el.querySelector('i');
+    if (icon) icon.className = isError ? 'fa-solid fa-exclamation-circle' : 'fa-solid fa-check-circle';
+    txt.textContent = msg;
+    setTimeout(function() { el.style.display = 'none'; }, 6000);
+}
+
+/* We embed chapter atoms into an MP4/M4A file via ffmpeg on the server */
+window.eeEmbedChapters = function() {
+    if (!EP_DATA || !EP_DATA.id) return;
+
+    var btn = document.getElementById('ee-btn-embed-chapters');
+    if (btn) btn.disabled = true;
+
+    mc1Api('POST', '/app/api/podcast.php', {
+        action: 'embed_chapters',
+        episode_id: EP_DATA.id
+    }).then(function(d) {
+        if (btn) btn.disabled = false;
+        if (d.ok) {
+            eeChaptersStatus(d.chapters_embedded + ' chapters embedded', false);
+            if (typeof mc1Toast === 'function') mc1Toast(d.message, 'ok');
+            /* We update the local EP_DATA with the new file path if it changed */
+            if (d.file_path) EP_DATA.file_path = d.file_path;
+        } else {
+            eeChaptersStatus('Embed failed', true);
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'Chapter embedding failed', 'err');
+        }
+    }).catch(function(e) {
+        if (btn) btn.disabled = false;
+        eeChaptersStatus('Embed failed', true);
+        if (typeof mc1Toast === 'function') mc1Toast('Request failed: ' + e.message, 'err');
+    });
+};
+
+/* We generate YouTube-compatible chapter timestamps and show a copy dialog */
+window.eeExportYouTube = function() {
+    if (!EP_DATA || !EP_DATA.id) return;
+
+    var btn = document.getElementById('ee-btn-export-yt');
+    if (btn) btn.disabled = true;
+
+    mc1Api('POST', '/app/api/podcast.php', {
+        action: 'generate_youtube_description',
+        episode_id: EP_DATA.id
+    }).then(function(d) {
+        if (btn) btn.disabled = false;
+        if (d.ok && d.description) {
+            /* We show the YouTube timestamps in a copy-friendly modal */
+            var warnings = (d.warnings && d.warnings.length > 0)
+                ? '<div style="color:var(--orange);font-size:11px;margin-bottom:10px"><i class="fa-solid fa-triangle-exclamation"></i> ' + eeEsc(d.warnings.join(' ')) + '</div>'
+                : '';
+            var modal = document.getElementById('ee-fade-modal');
+            if (modal) {
+                modal.querySelector('.ee-modal-box').innerHTML = ''
+                    + '<div class="ee-modal-title"><i class="fa-brands fa-youtube" style="color:#f00;margin-right:6px"></i> YouTube Chapter Timestamps</div>'
+                    + warnings
+                    + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Paste this into your YouTube video description. YouTube auto-detects chapters when the first timestamp is 0:00 and there are 3+ chapters.</div>'
+                    + '<textarea id="ee-yt-text" class="form-textarea" rows="10" style="font-family:\'SF Mono\',\'Fira Code\',monospace;font-size:12px;width:100%;resize:vertical" readonly>' + eeEsc(d.description) + '</textarea>'
+                    + '<div class="ee-modal-acts">'
+                    + '<button class="btn btn-secondary" onclick="document.getElementById(\'ee-fade-modal\').classList.remove(\'open\')">Close</button>'
+                    + '<button class="btn btn-primary" onclick="eeYtCopy()"><i class="fa-solid fa-copy"></i> Copy to Clipboard</button>'
+                    + '</div>';
+                modal.classList.add('open');
+            }
+            eeChaptersStatus(d.chapter_count + ' chapters', false);
+        } else {
+            eeChaptersStatus('No chapters', true);
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'No chapters found', 'err');
+        }
+    }).catch(function(e) {
+        if (btn) btn.disabled = false;
+        if (typeof mc1Toast === 'function') mc1Toast('Request failed: ' + e.message, 'err');
+    });
+};
+
+/* We copy the YouTube timestamps text to the clipboard */
+function eeYtCopy() {
+    var ta = document.getElementById('ee-yt-text');
+    if (!ta) return;
+    ta.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(ta.value).then(function() {
+            if (typeof mc1Toast === 'function') mc1Toast('Copied to clipboard', 'ok');
+        });
+    } else {
+        document.execCommand('copy');
+        if (typeof mc1Toast === 'function') mc1Toast('Copied to clipboard', 'ok');
+    }
+}
+
+/* We download a Podcasting 2.0 JSON chapters file */
+window.eeExportChaptersJson = function() {
+    if (!EP_DATA || !EP_DATA.id) return;
+
+    var btn = document.getElementById('ee-btn-export-json');
+    if (btn) btn.disabled = true;
+
+    mc1Api('POST', '/app/api/podcast.php', {
+        action: 'generate_chapters_json',
+        episode_id: EP_DATA.id
+    }).then(function(d) {
+        if (btn) btn.disabled = false;
+        if (d.ok && d.chapters_json) {
+            /* We trigger a download of the JSON file in the browser */
+            var jsonText = JSON.stringify(d.chapters_json, null, 2);
+            var blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = (EP_DATA.title || 'episode').replace(/[^a-zA-Z0-9_-]/g, '_') + '_chapters.json';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+            eeChaptersStatus(d.chapter_count + ' chapters exported', false);
+            if (typeof mc1Toast === 'function') mc1Toast(d.message, 'ok');
+        } else {
+            eeChaptersStatus('Export failed', true);
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'No chapters to export', 'err');
+        }
+    }).catch(function(e) {
+        if (btn) btn.disabled = false;
+        if (typeof mc1Toast === 'function') mc1Toast('Request failed: ' + e.message, 'err');
     });
 };
 

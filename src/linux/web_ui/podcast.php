@@ -617,6 +617,17 @@ require __DIR__ . '/app/inc/header.php';
   </div>
 </div>
 
+<!-- Chapters Quick View Modal -->
+<div class="modal-overlay" id="modal-chapters">
+  <div class="modal-box" style="width:550px">
+    <div class="modal-title"><i class="fa-solid fa-bookmark"></i> Chapter Markers</div>
+    <div id="chapters-qv-content"></div>
+    <div class="modal-acts">
+      <button class="btn btn-secondary" onclick="closeModal('chapters')">Close</button>
+    </div>
+  </div>
+</div>
+
 <script>
 var currentShowId = 0;
 var currentShow   = null;
@@ -772,6 +783,8 @@ function loadEpisodes() {
             }
             html += '<button class="btn btn-icon btn-xs" onclick="openPublishEpisode(' + ep.id + ')" title="Publish to platforms">'
                   + '<i class="fa-solid fa-tower-broadcast"></i></button>'
+                  + '<button class="btn btn-icon btn-xs" onclick="showChaptersQuickView(' + ep.id + ')" title="View/manage chapters">'
+                  + '<i class="fa-solid fa-bookmark"></i></button>'
                   + '<button class="btn btn-icon btn-xs" onclick="playPreview(' + ep.id + ')" title="Preview ' + (isVideo ? 'video' : 'audio') + '">'
                   + '<i class="fa-solid fa-play"></i></button>'
                   + '<a class="btn btn-icon btn-xs" href="/episode-editor.php?episode_id=' + ep.id + '" title="Open in Episode Editor">'
@@ -2005,6 +2018,74 @@ document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
         }
     });
 });
+
+/* ── Chapters Quick View ── */
+
+function showChaptersQuickView(episodeId) {
+    mc1Api('POST', '/app/api/podcast.php', {
+        action: 'list_markers', episode_id: episodeId
+    }).then(function(d) {
+        if (!d.ok || !d.markers) {
+            if (typeof mc1Toast === 'function') mc1Toast('Could not load markers', 'err');
+            return;
+        }
+
+        var chapters = d.markers.filter(function(m) { return m.marker_type === 'chapter'; });
+        var content = document.getElementById('chapters-qv-content');
+        if (!content) return;
+
+        var html = '';
+
+        if (chapters.length === 0) {
+            html += '<div style="text-align:center;padding:30px;color:var(--muted)">'
+                  + '<i class="fa-solid fa-bookmark fa-2x" style="display:block;margin-bottom:10px"></i>'
+                  + 'No chapters. <a href="/episode-editor.php?episode_id=' + episodeId + '" style="color:var(--teal)">Add chapters in the Episode Editor</a>.'
+                  + '</div>';
+        } else {
+            html += '<div style="max-height:350px;overflow-y:auto;margin-bottom:12px">';
+            chapters.forEach(function(ch) {
+                var sec = Math.floor(parseInt(ch.timestamp_ms) / 1000);
+                var h = Math.floor(sec / 3600);
+                var m = Math.floor((sec % 3600) / 60);
+                var s = sec % 60;
+                var ts = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+                html += '<div style="display:flex;gap:10px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--border);font-size:13px">'
+                      + '<span style="font-family:\'SF Mono\',monospace;color:var(--teal);min-width:70px">' + esc(ts) + '</span>'
+                      + '<span style="flex:1;color:var(--text)">' + esc(ch.title || 'Chapter') + '</span>';
+                if (ch.url) {
+                    html += '<a href="' + esc(ch.url) + '" target="_blank" style="color:var(--teal);font-size:11px" title="Chapter link"><i class="fa-solid fa-link"></i></a>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+
+            html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+            html += '<button class="btn btn-secondary btn-sm" onclick="eeEmbedChaptersFromList(' + episodeId + ')" title="Embed chapters into MP4/M4A file">'
+                  + '<i class="fa-solid fa-file-import"></i> Embed into File</button>';
+            html += '<a class="btn btn-primary btn-sm" href="/episode-editor.php?episode_id=' + episodeId + '">'
+                  + '<i class="fa-solid fa-wave-square"></i> Open in Editor</a>';
+            html += '</div>';
+        }
+
+        content.innerHTML = html;
+        document.getElementById('modal-chapters').classList.add('open');
+    });
+}
+
+/* We embed chapters from the podcast list view */
+function eeEmbedChaptersFromList(episodeId) {
+    mc1Api('POST', '/app/api/podcast.php', {
+        action: 'embed_chapters', episode_id: episodeId
+    }).then(function(d) {
+        if (d.ok) {
+            if (typeof mc1Toast === 'function') mc1Toast(d.message, 'ok');
+        } else {
+            if (typeof mc1Toast === 'function') mc1Toast(d.error || 'Embedding failed', 'err');
+        }
+    }).catch(function(e) {
+        if (typeof mc1Toast === 'function') mc1Toast('Request failed: ' + e.message, 'err');
+    });
+}
 
 /* ── Init ── */
 document.addEventListener('DOMContentLoaded', function() {

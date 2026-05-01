@@ -621,6 +621,117 @@ require_once __DIR__ . '/app/inc/header.php';
 </div>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     SRT (SECURE RELIABLE TRANSPORT) STREAMING
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-lock fa-fw"></i> SRT Streaming
+      <span class="badge badge-red" style="margin-left:6px">Admin Only</span>
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="srtNew()"><i class="fa-solid fa-plus"></i> Add Target</button>
+  </div>
+  <div style="padding:8px 18px 4px;font-size:12px;color:var(--text-dim)">
+    <i class="fa-solid fa-info-circle" style="color:var(--teal)"></i>
+    SRT (Secure Reliable Transport) provides low-latency (&lt;1s), encrypted (AES-128/256) streaming with NAT traversal. Used by OBS, vMix, Wirecast, and most modern broadcast infrastructure.
+  </div>
+  <div id="srt-list"><div class="empty"><div class="spinner"></div></div></div>
+</div>
+
+<!-- SRT Add/Edit Modal -->
+<div id="srt-modal" style="display:none;position:fixed;inset:0;z-index:8400;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);overflow-y:auto;padding:24px 16px">
+  <div style="max-width:680px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <div id="srt-modal-title" style="font-size:16px;font-weight:700;color:var(--text)">Add SRT Target</div>
+      <button onclick="srtModalClose()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;line-height:1">&times;</button>
+    </div>
+    <div style="padding:20px 24px">
+      <input type="hidden" id="srt-id" value="0">
+
+      <!-- Mode description -->
+      <div id="srt-mode-desc" class="alert alert-info" style="margin-bottom:14px;font-size:12px">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        <strong>Caller mode:</strong> Push stream TO an SRT server (like OBS pushing to a server).
+      </div>
+
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Display Name <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="srt-name" placeholder="My SRT Stream" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mode <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="srt-mode" onchange="srtModeChanged()">
+            <option value="caller">Caller (push to server)</option>
+            <option value="listener">Listener (act as server)</option>
+            <option value="rendezvous">Rendezvous (NAT traversal)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Encoder Slot <span style="color:var(--red)">*</span></label>
+          <select class="form-select" id="srt-slot">
+            <?php foreach ($enc_configs as $ec): ?>
+            <option value="<?= (int)$ec['slot_id'] ?>">Slot <?= (int)$ec['slot_id'] ?> — <?= h($ec['name']) ?></option>
+            <?php endforeach; ?>
+            <?php if (empty($enc_configs)): ?>
+            <option value="1">Slot 1 (default)</option>
+            <?php endif; ?>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" id="srt-host-label">Host <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="srt-host" placeholder="srt.server.com" autocomplete="off">
+          <span class="form-hint" id="srt-host-hint">Destination SRT server hostname or IP</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Port <span style="color:var(--red)">*</span></label>
+          <input class="form-input" id="srt-port" type="number" min="1" max="65535" value="9000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Encryption</label>
+          <select class="form-select" id="srt-encryption" onchange="srtEncryptionChanged()">
+            <option value="aes128">AES-128 (recommended)</option>
+            <option value="aes256">AES-256</option>
+            <option value="aes192">AES-192</option>
+            <option value="none">None (unencrypted)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Latency (ms)</label>
+          <input class="form-input" id="srt-latency" type="range" min="50" max="2000" step="50" value="200" oninput="document.getElementById('srt-lat-val').textContent=this.value+'ms'">
+          <span class="form-hint">Current: <span id="srt-lat-val">200ms</span> — Lower = less latency, higher = more reliable</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Audio Codec</label>
+          <select class="form-select" id="srt-codec">
+            <option value="aac">AAC (recommended)</option>
+            <option value="mp3">MP3</option>
+            <option value="opus">Opus</option>
+            <option value="copy">Copy (no re-encode)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Bitrate (kbps)</label>
+          <input class="form-input" id="srt-bitrate" type="number" min="32" max="512" value="128">
+        </div>
+      </div>
+      <div class="form-group" id="srt-pass-group">
+        <label class="form-label">Passphrase <span style="color:var(--red)">*</span></label>
+        <div style="display:flex;gap:6px">
+          <input type="password" class="form-input" id="srt-passphrase" placeholder="Minimum 10 characters (SRT requirement)" autocomplete="new-password" style="flex:1">
+          <button class="btn btn-secondary btn-xs" onclick="srtTogglePass()" title="Show/hide passphrase" style="width:36px"><i id="srt-pass-icon" class="fa-solid fa-eye"></i></button>
+        </div>
+        <span class="form-hint">Both ends must use the same passphrase. SRT requires minimum 10 characters when encryption is enabled.</span>
+      </div>
+    </div>
+    <div style="padding:14px 24px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn btn-primary btn-sm" onclick="srtSave()"><i class="fa-solid fa-check"></i> Save</button>
+      <button class="btn btn-secondary btn-sm" onclick="srtModalClose()"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      HLS/DASH ADAPTIVE BITRATE STREAMING
      ══════════════════════════════════════════════════════════════════════════ -->
 <div class="card" style="margin-top:4px">
@@ -1007,6 +1118,10 @@ document.addEventListener('DOMContentLoaded', function() {
   /* ── Load RTMP targets list ── */
   rtmpLoad();
   setInterval(rtmpPollStatus, 15000);
+
+  /* ── Load SRT targets list ── */
+  srtLoad();
+  setInterval(srtPollStatus, 15000);
 
   /* ── Load HLS/DASH adaptive streaming status ── */
   hlsRefresh();
@@ -1408,6 +1523,328 @@ document.addEventListener('click', function(e) {
 });
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape' && document.getElementById('rtmp-modal').style.display === 'block') rtmpModalClose();
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * SRT (SECURE RELIABLE TRANSPORT) STREAMING JS
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+var SRT_MODE_ICONS = {
+  caller:      '<i class="fa-solid fa-arrow-right-from-bracket" style="color:#14b8a6"></i>',
+  listener:    '<i class="fa-solid fa-arrow-right-to-bracket" style="color:#f59e0b"></i>',
+  rendezvous:  '<i class="fa-solid fa-arrows-left-right" style="color:#8b5cf6"></i>'
+};
+
+var SRT_MODE_LABELS = {
+  caller: 'Caller', listener: 'Listener', rendezvous: 'Rendezvous'
+};
+
+var SRT_MODE_DESCS = {
+  caller:     '<i class="fa-solid fa-arrow-right-from-bracket"></i> <strong>Caller mode:</strong> Push stream TO an SRT server (like OBS pushing to a server).',
+  listener:   '<i class="fa-solid fa-arrow-right-to-bracket"></i> <strong>Listener mode:</strong> Act AS an SRT server — others connect and pull the stream FROM you.',
+  rendezvous: '<i class="fa-solid fa-arrows-left-right"></i> <strong>Rendezvous mode:</strong> Both sides connect simultaneously — enables NAT/firewall traversal.'
+};
+
+var SRT_ENC_BADGES = {
+  none:   '<span class="badge badge-gray" style="font-size:10px">None</span>',
+  aes128: '<span class="badge badge-green" style="font-size:10px"><i class="fa-solid fa-lock" style="font-size:8px"></i> AES-128</span>',
+  aes192: '<span class="badge badge-green" style="font-size:10px"><i class="fa-solid fa-lock" style="font-size:8px"></i> AES-192</span>',
+  aes256: '<span class="badge badge-green" style="font-size:10px"><i class="fa-solid fa-shield-halved" style="font-size:8px"></i> AES-256</span>'
+};
+
+var _srtData = [];
+
+/* We load and render the SRT target list */
+window.srtLoad = function() {
+  mc1Api('POST', '/app/api/srt.php', { action: 'list' }).then(function(d) {
+    var el = document.getElementById('srt-list');
+    if (!d.ok || !d.targets || d.targets.length === 0) {
+      el.innerHTML = '<div class="empty">'
+        + '<i class="fa-solid fa-lock" style="font-size:28px;display:block;margin-bottom:10px;color:var(--border)"></i>'
+        + '<p>No SRT streaming targets configured. Click <strong>Add Target</strong> to set up low-latency encrypted streaming.</p></div>';
+      return;
+    }
+    _srtData = d.targets;
+    var html = '<div class="tbl-wrap"><table><thead><tr>'
+      + '<th>Mode</th><th>Name</th><th>Slot</th><th>Host:Port</th>'
+      + '<th>Encryption</th><th>Latency</th><th>Codec</th><th>Status</th><th>Last Connected</th><th></th>'
+      + '</tr></thead><tbody>';
+    d.targets.forEach(function(t) {
+      var icon = SRT_MODE_ICONS[t.mode] || SRT_MODE_ICONS.caller;
+      var label = SRT_MODE_LABELS[t.mode] || t.mode;
+      var running = t.relay_running;
+      var statusHtml = running
+        ? '<span style="display:inline-flex;align-items:center"><span class="srv-dot online"></span><span class="badge badge-green">Live</span></span>'
+        : (t.error_message
+          ? '<span style="display:inline-flex;align-items:center"><span class="srv-dot offline"></span><span class="badge badge-red" title="'+esc(t.error_message)+'">Error</span></span>'
+          : '<span style="display:inline-flex;align-items:center"><span class="srv-dot unknown"></span><span class="badge badge-gray">Stopped</span></span>');
+      var encBadge = SRT_ENC_BADGES[t.encryption] || SRT_ENC_BADGES.none;
+      var lastConn = t.last_connected_at || 'Never';
+      var passInfo = t.passphrase_masked ? '<span style="color:var(--muted);font-size:10px;margin-left:4px" title="Passphrase: '+esc(t.passphrase_masked)+'"><i class="fa-solid fa-key" style="font-size:8px"></i></span>' : '';
+
+      html += '<tr id="srt-row-'+t.id+'">'
+        + '<td>' + icon + ' ' + esc(label) + '</td>'
+        + '<td style="font-weight:600;color:var(--text)">' + esc(t.name) + '</td>'
+        + '<td><span class="badge badge-teal">S' + t.slot_id + '</span></td>'
+        + '<td class="td-mono" style="font-size:11px">' + esc(t.host) + ':' + t.port + '</td>'
+        + '<td>' + encBadge + passInfo + '</td>'
+        + '<td style="font-size:11px;color:var(--muted)">' + t.latency_ms + 'ms</td>'
+        + '<td style="font-size:11px;text-transform:uppercase">' + esc(t.codec) + ' ' + t.bitrate_kbps + 'k</td>'
+        + '<td id="srt-status-'+t.id+'">' + statusHtml + '</td>'
+        + '<td style="font-size:11px;color:var(--muted)">' + esc(lastConn) + '</td>'
+        + '<td class="td-acts">';
+
+      if (running) {
+        html += '<button class="btn btn-danger btn-xs" onclick="srtStop('+t.id+')" title="Stop relay"><i class="fa-solid fa-stop"></i></button>';
+      } else {
+        html += '<button class="btn btn-success btn-xs" onclick="srtStart('+t.id+')" title="Start relay"><i class="fa-solid fa-play"></i></button>';
+      }
+      /* We show a copy URL button for listener mode targets that are running */
+      if (t.mode === 'listener' && running) {
+        html += '<button class="btn btn-secondary btn-xs" onclick="srtCopyUrl('+t.port+')" title="Copy SRT URL"><i class="fa-solid fa-copy"></i></button>';
+      }
+      html += '<button class="btn btn-secondary btn-xs" onclick="srtEdit('+t.id+')" title="Edit"><i class="fa-solid fa-pen"></i></button>'
+        + '<button class="btn btn-danger btn-xs" onclick="srtDel('+t.id+','+esc(JSON.stringify(t.name))+')" title="Delete"><i class="fa-solid fa-trash"></i></button>'
+        + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  }).catch(function() {
+    document.getElementById('srt-list').innerHTML = '<div class="alert alert-error"><i class="fa-solid fa-xmark"></i> Failed to load SRT targets</div>';
+  });
+};
+
+/* We poll status for all SRT targets and update in-place */
+window.srtPollStatus = function() {
+  mc1Api('POST', '/app/api/srt.php', { action: 'status' }).then(function(d) {
+    if (!d.ok || !d.targets) return;
+    d.targets.forEach(function(t) {
+      var el = document.getElementById('srt-status-' + t.id);
+      if (!el) return;
+      if (t.relay_running) {
+        var extra = '';
+        if (t.stats && t.stats.bitrate_kbps > 0) {
+          extra = ' <span style="font-size:10px;color:var(--muted)">' + t.stats.bitrate_kbps.toFixed(0) + 'kbps</span>';
+        }
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot online"></span><span class="badge badge-green">Live</span></span>' + extra;
+      } else if (t.error_message) {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot offline"></span><span class="badge badge-red" title="'+esc(t.error_message)+'">Error</span></span>';
+      } else {
+        el.innerHTML = '<span style="display:inline-flex;align-items:center"><span class="srv-dot unknown"></span><span class="badge badge-gray">Stopped</span></span>';
+      }
+    });
+  }).catch(function(){});
+};
+
+/* We open the SRT modal in Add mode */
+window.srtNew = function() {
+  document.getElementById('srt-id').value = '0';
+  document.getElementById('srt-modal-title').textContent = 'Add SRT Target';
+  document.getElementById('srt-mode').value = 'caller';
+  document.getElementById('srt-name').value = '';
+  document.getElementById('srt-host').value = '';
+  document.getElementById('srt-port').value = '9000';
+  document.getElementById('srt-passphrase').value = '';
+  document.getElementById('srt-passphrase').type = 'password';
+  document.getElementById('srt-pass-icon').className = 'fa-solid fa-eye';
+  document.getElementById('srt-latency').value = '200';
+  document.getElementById('srt-lat-val').textContent = '200ms';
+  document.getElementById('srt-encryption').value = 'aes128';
+  document.getElementById('srt-codec').value = 'aac';
+  document.getElementById('srt-bitrate').value = '128';
+  srtModeChanged();
+  srtEncryptionChanged();
+  if (document.getElementById('srt-slot').options.length > 0) {
+    document.getElementById('srt-slot').selectedIndex = 0;
+  }
+  document.getElementById('srt-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+};
+
+/* We update the UI based on mode selection */
+window.srtModeChanged = function() {
+  var mode = document.getElementById('srt-mode').value;
+  var descEl = document.getElementById('srt-mode-desc');
+  var hostLabel = document.getElementById('srt-host-label');
+  var hostHint = document.getElementById('srt-host-hint');
+  var hostInput = document.getElementById('srt-host');
+
+  if (descEl) descEl.innerHTML = SRT_MODE_DESCS[mode] || '';
+
+  if (mode === 'listener') {
+    if (hostLabel) hostLabel.innerHTML = 'Bind Address';
+    if (hostHint) hostHint.textContent = 'Address to bind on (0.0.0.0 for all interfaces)';
+    hostInput.placeholder = '0.0.0.0';
+    if (!hostInput.value || hostInput.value === 'srt.server.com') hostInput.value = '0.0.0.0';
+  } else if (mode === 'caller') {
+    if (hostLabel) hostLabel.innerHTML = 'Host <span style="color:var(--red)">*</span>';
+    if (hostHint) hostHint.textContent = 'Destination SRT server hostname or IP';
+    hostInput.placeholder = 'srt.server.com';
+    if (hostInput.value === '0.0.0.0') hostInput.value = '';
+  } else {
+    if (hostLabel) hostLabel.innerHTML = 'Peer Host <span style="color:var(--red)">*</span>';
+    if (hostHint) hostHint.textContent = 'Peer host for rendezvous — both sides must connect simultaneously';
+    hostInput.placeholder = 'peer.host.com';
+  }
+};
+
+/* We update passphrase visibility based on encryption selection */
+window.srtEncryptionChanged = function() {
+  var enc = document.getElementById('srt-encryption').value;
+  var passGroup = document.getElementById('srt-pass-group');
+  if (passGroup) {
+    passGroup.style.display = (enc === 'none') ? 'none' : 'block';
+  }
+};
+
+/* We toggle passphrase visibility */
+window.srtTogglePass = function() {
+  var inp  = document.getElementById('srt-passphrase');
+  var icon = document.getElementById('srt-pass-icon');
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    icon.className = 'fa-solid fa-eye-slash';
+  } else {
+    inp.type = 'password';
+    icon.className = 'fa-solid fa-eye';
+  }
+};
+
+/* We open the SRT modal in Edit mode */
+window.srtEdit = function(id) {
+  var t = (_srtData || []).find(function(r) { return r.id == id; });
+  if (!t) { mc1Toast('Target not found', 'err'); return; }
+  document.getElementById('srt-id').value = t.id;
+  document.getElementById('srt-modal-title').textContent = 'Edit SRT Target — ' + t.name;
+  document.getElementById('srt-mode').value = t.mode || 'caller';
+  document.getElementById('srt-name').value = t.name || '';
+  document.getElementById('srt-host').value = t.host || '';
+  document.getElementById('srt-port').value = t.port || 9000;
+  document.getElementById('srt-passphrase').value = ''; /* We never pre-fill passphrases */
+  document.getElementById('srt-passphrase').type = 'password';
+  document.getElementById('srt-pass-icon').className = 'fa-solid fa-eye';
+  document.getElementById('srt-latency').value = t.latency_ms || 200;
+  document.getElementById('srt-lat-val').textContent = (t.latency_ms || 200) + 'ms';
+  document.getElementById('srt-encryption').value = t.encryption || 'aes128';
+  document.getElementById('srt-codec').value = t.codec || 'aac';
+  document.getElementById('srt-bitrate').value = t.bitrate_kbps || 128;
+  document.getElementById('srt-slot').value = t.slot_id || 1;
+  srtModeChanged();
+  srtEncryptionChanged();
+  document.getElementById('srt-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+};
+
+window.srtModalClose = function() {
+  document.getElementById('srt-modal').style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+/* We save (create or update) an SRT target */
+window.srtSave = function() {
+  var id         = parseInt(document.getElementById('srt-id').value) || 0;
+  var mode       = document.getElementById('srt-mode').value;
+  var name       = document.getElementById('srt-name').value.trim();
+  var host       = document.getElementById('srt-host').value.trim();
+  var port       = parseInt(document.getElementById('srt-port').value) || 9000;
+  var passphrase = document.getElementById('srt-passphrase').value;
+  var latency    = parseInt(document.getElementById('srt-latency').value) || 200;
+  var encryption = document.getElementById('srt-encryption').value;
+  var codec      = document.getElementById('srt-codec').value;
+  var bitrate    = parseInt(document.getElementById('srt-bitrate').value) || 128;
+  var slot       = parseInt(document.getElementById('srt-slot').value) || 1;
+
+  if (!name) { mc1Toast('Name is required', 'warn'); return; }
+  if (mode === 'caller' && !host) { mc1Toast('Host is required for caller mode', 'warn'); return; }
+  if (!host) host = '0.0.0.0';
+  if (encryption !== 'none' && !id && passphrase.length < 10) {
+    mc1Toast('Passphrase must be at least 10 characters when encryption is enabled', 'warn');
+    return;
+  }
+
+  var payload = {
+    action:       id > 0 ? 'update' : 'create',
+    id:           id > 0 ? id : undefined,
+    name:         name,
+    mode:         mode,
+    host:         host,
+    port:         port,
+    latency_ms:   latency,
+    encryption:   encryption,
+    codec:        codec,
+    bitrate_kbps: bitrate,
+    slot_id:      slot,
+  };
+  if (passphrase) payload.passphrase = passphrase;
+
+  mc1Api('POST', '/app/api/srt.php', payload).then(function(d) {
+    if (d.ok) {
+      mc1Toast(id > 0 ? 'SRT target updated' : 'SRT target created', 'ok');
+      srtModalClose();
+      srtLoad();
+    } else {
+      mc1Toast(d.error || 'Save failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We start an SRT relay */
+window.srtStart = function(id) {
+  mc1Toast('Starting SRT relay...', 'ok');
+  mc1Api('POST', '/app/api/srt.php', { action: 'start', id: id }).then(function(d) {
+    if (d.ok) {
+      var msg = 'SRT relay started (PID ' + (d.pid || '?') + ')';
+      if (d.listener_url) msg += ' — Listener URL: ' + d.srt_url;
+      mc1Toast(msg, 'ok');
+      srtLoad();
+    } else {
+      mc1Toast(d.error || 'Start failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We stop an SRT relay */
+window.srtStop = function(id) {
+  if (!confirm('Stop this SRT relay? The stream will go offline.')) return;
+  mc1Api('POST', '/app/api/srt.php', { action: 'stop', id: id }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('SRT relay stopped', 'ok');
+      srtLoad();
+    } else {
+      mc1Toast(d.error || 'Stop failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We delete an SRT target */
+window.srtDel = function(id, name) {
+  if (!confirm('Delete SRT target "' + name + '"? This will also stop any running relay.')) return;
+  mc1Api('POST', '/app/api/srt.php', { action: 'delete', id: id }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('SRT target deleted', 'ok');
+      srtLoad();
+    } else {
+      mc1Toast(d.error || 'Delete failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
+
+/* We copy the SRT listener URL to clipboard */
+window.srtCopyUrl = function(port) {
+  var url = 'srt://' + location.hostname + ':' + port;
+  navigator.clipboard.writeText(url).then(function() {
+    mc1Toast('SRT URL copied: ' + url, 'ok');
+  }).catch(function() {
+    prompt('Copy this SRT URL:', url);
+  });
+};
+
+/* We close SRT modal on backdrop click or Escape */
+document.addEventListener('click', function(e) {
+  if (e.target === document.getElementById('srt-modal')) srtModalClose();
+});
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape' && document.getElementById('srt-modal').style.display === 'block') srtModalClose();
 });
 
 /* ══════════════════════════════════════════════════════════════════════════

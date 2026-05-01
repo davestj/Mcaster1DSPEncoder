@@ -282,6 +282,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
 .mode-option span{font-size:13px;font-weight:600;color:var(--text)}
 .mode-option small{width:100%;padding-left:28px;font-size:10px;color:var(--muted);margin-top:-2px}
 .mode-divider{height:1px;background:var(--border);margin:4px 0}
+/* Active user avatars */
+.au-avatar{width:28px;height:28px;border-radius:50%;border:2px solid var(--bg2);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;cursor:pointer;position:relative;transition:transform .15s,box-shadow .15s;flex-shrink:0;margin-left:-8px}
+.au-avatar:first-child{margin-left:0}
+.au-avatar:hover{transform:scale(1.12);z-index:10;box-shadow:0 0 0 2px var(--teal)}
+.au-avatar.admin{background:linear-gradient(135deg,var(--teal),var(--cyan))}
+.au-avatar.user{background:linear-gradient(135deg,#3b82f6,#6366f1)}
+.au-avatar.guest{background:linear-gradient(135deg,#64748b,#475569)}
+.au-avatar-badge{position:absolute;top:-2px;right:-2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg2);animation:au-pulse 2s ease-in-out 3}
+@keyframes au-pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,.5)}50%{box-shadow:0 0 0 4px rgba(34,197,94,0)}}
+.au-overflow{width:28px;height:28px;border-radius:50%;border:2px solid var(--bg2);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text-dim);background:rgba(255,255,255,.08);cursor:pointer;margin-left:-8px;flex-shrink:0}
+.au-tooltip{position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid var(--border);border-radius:var(--radius-sm);padding:5px 9px;font-size:11px;color:var(--text);white-space:nowrap;pointer-events:none;z-index:700;opacity:0;transition:opacity .15s}
+.au-avatar:hover .au-tooltip{opacity:1}
+.au-unread{position:absolute;bottom:-2px;right:-2px;min-width:14px;height:14px;border-radius:7px;background:var(--red);border:2px solid var(--bg2);font-size:8px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;padding:0 3px}
+
 /* Nav section headers hide when all their children are hidden */
 .nav-section-wrap{display:contents}
 
@@ -324,6 +338,35 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;heigh
       <span style="width:7px;height:7px;border-radius:50%;background:var(--teal);display:inline-block;animation:live-dot 1.4s ease-in-out infinite;box-shadow:0 0 6px var(--teal)"></span>
       <span id="enc-live-label">0 Live</span>
     </div>
+    <!-- Active users indicator -->
+    <div id="active-users-strip" style="display:flex;align-items:center;gap:2px;position:relative">
+      <!-- Avatars rendered by JS -->
+    </div>
+
+    <!-- Active users popover (full list + chat) -->
+    <div id="active-users-popover" style="display:none;position:fixed;top:52px;right:200px;width:320px;max-height:480px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 30px rgba(0,0,0,.6);z-index:600;overflow:hidden">
+      <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;font-weight:700;color:var(--text)">Active Users</span>
+        <button onclick="document.getElementById('active-users-popover').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:14px;cursor:pointer;padding:2px"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div id="active-users-list" style="max-height:220px;overflow-y:auto;padding:6px 0"></div>
+      <!-- Page awareness notice -->
+      <div id="collab-notice" style="display:none;padding:8px 14px;border-top:1px solid var(--border);font-size:11px;color:var(--yellow);background:rgba(234,179,8,.06)"></div>
+      <!-- Chat section -->
+      <div id="chat-section" style="display:none;border-top:1px solid var(--border)">
+        <div style="padding:8px 14px;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(51,65,85,.4)">
+          <div id="chat-target-avatar" style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0"></div>
+          <span id="chat-target-name" style="font-size:12px;font-weight:600;color:var(--text);flex:1"></span>
+          <button onclick="mc1CloseChat()" style="background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="chat-messages" style="height:140px;overflow-y:auto;padding:8px 14px;display:flex;flex-direction:column;gap:4px"></div>
+        <div style="padding:6px 10px;border-top:1px solid rgba(51,65,85,.4);display:flex;gap:6px">
+          <input id="chat-input" type="text" placeholder="Type a message..." maxlength="1000" style="flex:1;padding:6px 10px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;outline:none" onkeydown="if(event.key==='Enter')mc1SendChat()">
+          <button onclick="mc1SendChat()" style="background:var(--teal);color:#0f172a;border:none;border-radius:var(--radius-sm);padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+      </div>
+    </div>
+
     <!-- Language selector -->
     <div class="mode-selector" id="lang-selector">
       <button class="mode-badge" id="lang-badge" onclick="toggleLangDropdown(event)" title="Change language" style="font-size:12px;padding:4px 8px">

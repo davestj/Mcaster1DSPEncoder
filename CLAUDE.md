@@ -320,6 +320,7 @@ Mcaster1DSPEncoder/
 │   │   │           ├── captions.php    ← Closed caption generation API
 │   │   │           ├── health.php      ← Multi-daemon health status API
 │   │   │           ├── rtmp.php        ← RTMP stream management API
+│   │   │           ├── srt.php         ← SRT encrypted streaming API (caller/listener/rendezvous)
 │   │   │           ├── schedule.php    ← Clockwheel schedule API
 │   │   │           └── upload.php      ← File upload handler
 │   │   ├── external/
@@ -566,6 +567,7 @@ All `/api/v1/` endpoints require `mc1session` cookie or `X-API-Token` header.
 | POST | `/api/v1/playlist/skip` | Skip to next track |
 | POST | `/api/v1/playlist/load` | Load playlist file by path |
 | GET | `/api/v1/dnas/stats` | Proxy DNAS XML stats as JSON |
+| GET | `/api/v1/srt/status` | Active SRT streams with stats (bitrate, PID) |
 
 ### DNAS Stats Quirk
 
@@ -611,6 +613,7 @@ POST /app/api/ads.php         actions: list_campaigns, create_campaign, schedule
 POST /app/api/captions.php    actions: generate, get_status, download_srt, download_vtt, get_live, burn_in
 POST /app/api/health.php      actions: check_all, check_daemon (returns status of all 4 daemons)
 POST /app/api/rtmp.php        actions: list_streams, start, stop, get_stats
+POST /app/api/srt.php         actions: list, create, update, delete, start, stop, status (SRT encrypted streaming via ffmpeg)
 POST /app/api/schedule.php    actions: list, create, update, delete, get_active
 POST /app/api/upload.php      actions: upload (multipart file upload handler)
 ```
@@ -652,7 +655,7 @@ MySQL connection via `~/.my.cnf` (never inline credentials).
 
 | Database | Purpose |
 |----------|---------|
-| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers, pedalboard_layouts, mixer_configs, mixer_custom_units, webhook_configs, ad_campaigns, ad_schedule, ad_impressions, sponsor_configs |
+| `mcaster1_encoder` | users, roles, user_sessions, encoder_configs, streaming_servers, pedalboard_layouts, mixer_configs, mixer_custom_units, webhook_configs, ad_campaigns, ad_schedule, ad_impressions, sponsor_configs, srt_targets |
 | `mcaster1_media` | tracks, playlists, playlist_tracks, player_queue, cover_art, track_categories, categories, media_library_paths, podcast_shows, podcast_episodes, episode_markers, publish_targets, publish_queue, podcast_downloads, song_requests, dedications, remote_sessions, remote_participants, remote_chat, daw_projects, daw_tracks, daw_clips, daw_automation, captions, caption_segments |
 | `mcaster1_metrics` | listener_sessions, daily_stats, ad_impressions_log |
 | `mcaster1_voictune` | sessions, voice_profiles, analysis_snapshots, ai_interactions |

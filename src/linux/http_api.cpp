@@ -65,6 +65,7 @@
 #include <climits>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <signal.h>
 #include <unistd.h>
 
 using json = nlohmann::json;
@@ -1791,6 +1792,69 @@ static void setup_routes(httplib::Server& svr)
                     auto r = cli.Get(mount);
                     handle_result(r);
                 }
+            });
+        });
+
+    // ── GET /api/v1/srt/status — return active SRT streams with stats ────
+    //    We read PID files and parse ffmpeg log output for basic stats.
+    //    This is a lightweight C++ endpoint that complements the PHP SRT API.
+    svr.Get("/api/v1/srt/status",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json result;
+                result["ok"] = true;
+                result["targets"] = json::array();
+
+                // We scan /tmp for mc1_srt_*.pid files to find active relays
+                for (int tid = 1; tid <= 100; ++tid) {
+                    std::string pid_file = "/tmp/mc1_srt_" + std::to_string(tid) + ".pid";
+                    std::ifstream pf(pid_file);
+                    if (!pf.is_open()) continue;
+
+                    int pid = 0;
+                    pf >> pid;
+                    pf.close();
+                    if (pid <= 0) continue;
+
+                    // We check if the process is alive
+                    bool alive = (kill(pid, 0) == 0);
+                    if (!alive) continue;
+
+                    json entry;
+                    entry["id"]      = tid;
+                    entry["pid"]     = pid;
+                    entry["running"] = true;
+
+                    // We parse ffmpeg stderr log for bitrate stats
+                    std::string log_file = "/tmp/mc1_srt_" + std::to_string(tid) + ".log";
+                    std::ifstream lf(log_file);
+                    if (lf.is_open()) {
+                        std::string line, last_bitrate_line;
+                        while (std::getline(lf, line)) {
+                            if (line.find("bitrate=") != std::string::npos) {
+                                last_bitrate_line = line;
+                            }
+                        }
+                        lf.close();
+                        if (!last_bitrate_line.empty()) {
+                            // We extract bitrate from "bitrate= 128.0kbits/s"
+                            auto pos = last_bitrate_line.find("bitrate=");
+                            if (pos != std::string::npos) {
+                                std::string rest = last_bitrate_line.substr(pos + 8);
+                                // We trim whitespace
+                                while (!rest.empty() && rest[0] == ' ') rest.erase(0, 1);
+                                try {
+                                    double br = std::stod(rest);
+                                    entry["bitrate_kbps"] = br;
+                                } catch (...) {}
+                            }
+                        }
+                    }
+
+                    result["targets"].push_back(entry);
+                }
+
+                res.set_content(result.dump(), "application/json");
             });
         });
 

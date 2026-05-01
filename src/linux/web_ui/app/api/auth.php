@@ -134,6 +134,253 @@ if ($action === 'auto_login') {
     return;
 }
 
+// ── heartbeat ─────────────────────────────────────────────────────────────
+// Called every 30s by footer.php JS to update user presence + current page.
+
+if ($action === 'heartbeat') {
+    $u = mc1_current_user();
+    if (!$u) {
+        echo json_encode(['ok' => false, 'error' => 'No PHP session']);
+        return;
+    }
+
+    $page = trim($req['page'] ?? 'dashboard');
+    $page = substr(preg_replace('/[^a-zA-Z0-9_\-\/]/', '', $page), 0, 128);
+    $ip   = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+    $token = $_COOKIE[MC1_SESSION_COOKIE] ?? '';
+    $tokenHash = $token !== '' ? substr(mc1_hash_token($token), 0, 64) : '';
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+
+        // Clean up stale sessions older than 5 minutes
+        $db->exec("DELETE FROM active_sessions WHERE last_heartbeat < DATE_SUB(NOW(), INTERVAL 5 MINUTE)");
+
+        // Upsert: update if same user_id exists, otherwise insert
+        $st = $db->prepare(
+            "INSERT INTO active_sessions (user_id, username, display_name, current_page, ip_address, session_token, last_heartbeat)
+             VALUES (?, ?, ?, ?, ?, ?, NOW())
+             ON DUPLICATE KEY UPDATE
+               current_page = VALUES(current_page),
+               ip_address = VALUES(ip_address),
+               session_token = VALUES(session_token),
+               last_heartbeat = NOW(),
+               display_name = VALUES(display_name)"
+        );
+        $st->execute([
+            (int)$u['id'],
+            $u['username'],
+            $u['display_name'] ?? $u['username'],
+            $page,
+            $ip,
+            $tokenHash
+        ]);
+
+        echo json_encode(['ok' => true]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    return;
+}
+
+// ── active_users ──────────────────────────────────────────────────────────
+// Returns list of users with heartbeat within last 60 seconds.
+
+if ($action === 'active_users') {
+    $u = mc1_current_user();
+    if (!$u) {
+        echo json_encode(['ok' => false, 'error' => 'No PHP session']);
+        return;
+    }
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+
+        $rows = $db->query(
+            "SELECT a.user_id, a.username, a.display_name, a.current_page, a.ip_address,
+                    a.last_heartbeat,
+                    COALESCE(u.role_id, 0) AS role_id,
+                    COALESCE(r.name, 'user') AS role_name,
+                    COALESCE(r.can_admin, 0) AS can_admin
+             FROM active_sessions a
+             LEFT JOIN users u ON u.id = a.user_id
+             LEFT JOIN roles r ON r.id = u.role_id
+             WHERE a.last_heartbeat >= DATE_SUB(NOW(), INTERVAL 60 SECOND)
+             ORDER BY a.last_heartbeat DESC"
+        )->fetchAll(\PDO::FETCH_ASSOC);
+
+        $users = [];
+        foreach ($rows as $row) {
+            $users[] = [
+                'user_id'      => (int)$row['user_id'],
+                'username'     => $row['username'],
+                'display_name' => $row['display_name'] ?: $row['username'],
+                'current_page' => $row['current_page'],
+                'role_name'    => $row['role_name'],
+                'can_admin'    => (bool)$row['can_admin'],
+                'is_self'      => ((int)$row['user_id'] === (int)$u['id']),
+            ];
+        }
+
+        echo json_encode(['ok' => true, 'users' => $users]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    return;
+}
+
+// ── send_message ──────────────────────────────────────────────────────────
+// Send a quick message to another active user.
+
+if ($action === 'send_message') {
+    $u = mc1_current_user();
+    if (!$u) {
+        echo json_encode(['ok' => false, 'error' => 'No PHP session']);
+        return;
+    }
+
+    $toUserId = (int)($req['to_user_id'] ?? 0);
+    $message  = trim($req['message'] ?? '');
+
+    if ($toUserId < 1 || $message === '') {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'to_user_id and message are required']);
+        return;
+    }
+
+    if (mb_strlen($message) > 1000) {
+        $message = mb_substr($message, 0, 1000);
+    }
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+        $st = $db->prepare(
+            "INSERT INTO user_messages (from_user_id, to_user_id, message) VALUES (?, ?, ?)"
+        );
+        $st->execute([(int)$u['id'], $toUserId, $message]);
+
+        echo json_encode(['ok' => true, 'id' => (int)$db->lastInsertId()]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    return;
+}
+
+// ── get_messages ──────────────────────────────────────────────────────────
+// Get unread + recent messages for the current user.
+
+if ($action === 'get_messages') {
+    $u = mc1_current_user();
+    if (!$u) {
+        echo json_encode(['ok' => false, 'error' => 'No PHP session']);
+        return;
+    }
+
+    $withUserId = (int)($req['with_user_id'] ?? 0);
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+
+        if ($withUserId > 0) {
+            // Get conversation with specific user (last 50 messages)
+            $st = $db->prepare(
+                "SELECT m.id, m.from_user_id, m.to_user_id, m.message, m.is_read, m.created_at,
+                        u.username AS from_username, u.display_name AS from_display_name
+                 FROM user_messages m
+                 LEFT JOIN users u ON u.id = m.from_user_id
+                 WHERE (m.from_user_id = ? AND m.to_user_id = ?)
+                    OR (m.from_user_id = ? AND m.to_user_id = ?)
+                 ORDER BY m.created_at DESC LIMIT 50"
+            );
+            $st->execute([(int)$u['id'], $withUserId, $withUserId, (int)$u['id']]);
+            $messages = $st->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Mark messages from that user as read
+            $st2 = $db->prepare(
+                "UPDATE user_messages SET is_read = 1
+                 WHERE from_user_id = ? AND to_user_id = ? AND is_read = 0"
+            );
+            $st2->execute([$withUserId, (int)$u['id']]);
+        } else {
+            // Get all unread messages grouped by sender
+            $st = $db->prepare(
+                "SELECT m.id, m.from_user_id, m.to_user_id, m.message, m.is_read, m.created_at,
+                        u.username AS from_username, u.display_name AS from_display_name
+                 FROM user_messages m
+                 LEFT JOIN users u ON u.id = m.from_user_id
+                 WHERE m.to_user_id = ? AND m.is_read = 0
+                 ORDER BY m.created_at DESC LIMIT 50"
+            );
+            $st->execute([(int)$u['id']]);
+            $messages = $st->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
+        // Get unread count
+        $st3 = $db->prepare(
+            "SELECT COUNT(*) FROM user_messages WHERE to_user_id = ? AND is_read = 0"
+        );
+        $st3->execute([(int)$u['id']]);
+        $unreadCount = (int)$st3->fetchColumn();
+
+        $formatted = [];
+        foreach ($messages as $msg) {
+            $formatted[] = [
+                'id'                => (int)$msg['id'],
+                'from_user_id'      => (int)$msg['from_user_id'],
+                'to_user_id'        => (int)$msg['to_user_id'],
+                'from_username'     => $msg['from_username'],
+                'from_display_name' => $msg['from_display_name'] ?: $msg['from_username'],
+                'message'           => $msg['message'],
+                'is_read'           => (bool)$msg['is_read'],
+                'created_at'        => $msg['created_at'],
+                'is_mine'           => ((int)$msg['from_user_id'] === (int)$u['id']),
+            ];
+        }
+
+        echo json_encode(['ok' => true, 'messages' => $formatted, 'unread_count' => $unreadCount]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    return;
+}
+
+// ── mark_read ─────────────────────────────────────────────────────────────
+// Mark messages from a specific user as read.
+
+if ($action === 'mark_read') {
+    $u = mc1_current_user();
+    if (!$u) {
+        echo json_encode(['ok' => false, 'error' => 'No PHP session']);
+        return;
+    }
+
+    $fromUserId = (int)($req['from_user_id'] ?? 0);
+    if ($fromUserId < 1) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => 'from_user_id required']);
+        return;
+    }
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+        $st = $db->prepare(
+            "UPDATE user_messages SET is_read = 1
+             WHERE from_user_id = ? AND to_user_id = ? AND is_read = 0"
+        );
+        $st->execute([$fromUserId, (int)$u['id']]);
+
+        echo json_encode(['ok' => true, 'marked' => $st->rowCount()]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    }
+    return;
+}
+
 // ── whoami ────────────────────────────────────────────────────────────────
 
 if ($action === 'whoami') {

@@ -24,6 +24,14 @@
  *  generate_rss     — Generate iTunes-compatible RSS XML for a show
  *  scan_archives    — Scan archive directory for unlinked recordings
  *
+ * Chapter embedding & export:
+ *  embed_chapters              — Embed chapter atoms into MP4/M4A via ffmpeg FFMETADATA
+ *  generate_chapters_json      — Generate Podcasting 2.0 JSON chapters file + save to disk
+ *  generate_youtube_description — Generate YouTube-compatible timestamp description text
+ *
+ * Public GET endpoints (no auth):
+ *  GET ?action=chapters_json&episode_id=N — Serve Podcasting 2.0 JSON chapters (for RSS)
+ *
  * Phase PC-3 — Multi-platform publishing:
  *  list_targets       — List publish targets for a show
  *  create_target      — Add platform target (platform, name, credentials, config)
@@ -63,6 +71,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'downloa
         return;
     }
     PodcastApi::handleDownload($episode_id);
+    return;
+}
+
+/* ── Public chapters JSON endpoint (no auth — RSS readers need access) ── */
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['action'] ?? '') === 'chapters_json') {
+    $episode_id = (int)($_GET['episode_id'] ?? 0);
+    if ($episode_id < 1) {
+        http_response_code(400);
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Missing episode_id']);
+        return;
+    }
+    PodcastApi::serveChaptersJson($episode_id);
     return;
 }
 
@@ -643,6 +664,314 @@ class PodcastApi {
         );
         $id = self::lastId(self::DB);
         return ['ok' => true, 'id' => (int)$id, 'message' => 'Marker created'];
+    }
+
+    /* ── CHAPTER EMBEDDING & EXPORT ── */
+
+    /**
+     * We build a Podcasting 2.0 JSON chapters object from episode_markers.
+     * Spec: https://github.com/Podcastindex-org/podcast-namespace/blob/main/chapters/jsonChapters.md
+     */
+    public static function buildChaptersJson(int $episode_id): array
+    {
+        $markers = self::rows(self::DB,
+            "SELECT * FROM episode_markers
+             WHERE episode_id = ? AND marker_type = 'chapter'
+             ORDER BY timestamp_ms ASC",
+            [$episode_id]
+        );
+
+        $chapters = [];
+        foreach ($markers as $m) {
+            $ch = [
+                'startTime' => round((int)$m['timestamp_ms'] / 1000, 3),
+                'title'     => $m['title'] ?? 'Chapter',
+            ];
+            if (!empty($m['image_url'])) {
+                $ch['img'] = $m['image_url'];
+            }
+            if (!empty($m['url'])) {
+                $ch['url'] = $m['url'];
+            }
+            $chapters[] = $ch;
+        }
+
+        return [
+            'version'  => '1.2.0',
+            'chapters' => $chapters,
+        ];
+    }
+
+    /**
+     * We serve a Podcasting 2.0 JSON chapters file publicly (no auth).
+     * Called from the GET ?action=chapters_json&episode_id=N endpoint.
+     */
+    public static function serveChaptersJson(int $episode_id): void
+    {
+        $ep = self::row(self::DB,
+            "SELECT id FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Episode not found']);
+            return;
+        }
+
+        $json = self::buildChaptersJson($episode_id);
+
+        header('Content-Type: application/json+chapters; charset=UTF-8');
+        header('Cache-Control: public, max-age=300');
+        header('Access-Control-Allow-Origin: *');
+        echo json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * We generate a Podcasting 2.0 JSON chapters file and save it to disk.
+     * Returns the JSON data and file path.
+     */
+    public static function generateChaptersJson(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $ep = self::row(self::DB,
+            "SELECT * FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) return ['error' => 'Episode not found'];
+
+        $json = self::buildChaptersJson($episode_id);
+
+        if (empty($json['chapters'])) {
+            return ['error' => 'No chapter markers found for this episode'];
+        }
+
+        /* We save the JSON file alongside the episode audio or in the archive dir */
+        $dir = !empty($ep['file_path']) && is_dir(dirname($ep['file_path']))
+            ? dirname($ep['file_path'])
+            : self::archiveDir();
+
+        $filename = $episode_id . '_chapters.json';
+        $filepath = $dir . '/' . $filename;
+        $written = file_put_contents($filepath, json_encode($json, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        if ($written === false) {
+            return ['error' => 'Failed to write chapters file to ' . basename($dir)];
+        }
+
+        return [
+            'ok'             => true,
+            'chapters_json'  => $json,
+            'file_path'      => $filepath,
+            'chapter_count'  => count($json['chapters']),
+            'message'        => 'Chapters JSON generated (' . count($json['chapters']) . ' chapters)',
+        ];
+    }
+
+    /**
+     * We embed chapter markers into an MP4/M4A file using ffmpeg FFMETADATA format.
+     * For MP3 files we skip embedding (limited chapter support in ID3v2).
+     */
+    public static function embedChapters(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $ep = self::row(self::DB,
+            "SELECT * FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) return ['error' => 'Episode not found'];
+
+        $file_path = $ep['file_path'] ?? '';
+        if (!file_exists($file_path)) {
+            return ['error' => 'Source file not found: ' . basename($file_path)];
+        }
+
+        $format = strtolower($ep['format'] ?? pathinfo($file_path, PATHINFO_EXTENSION));
+
+        /* We only support chapter embedding for MP4/M4A containers */
+        $supported = ['mp4', 'm4a', 'mov'];
+        if (!in_array($format, $supported)) {
+            return ['error' => 'Chapter embedding is only supported for MP4/M4A/MOV files. This episode is ' . strtoupper($format) . '.'];
+        }
+
+        /* We check that ffmpeg is available */
+        $ffmpegPath = '';
+        if (function_exists('exec')) {
+            $lines = [];
+            @exec('which ffmpeg 2>/dev/null', $lines);
+            $ffmpegPath = $lines[0] ?? '';
+        }
+        if ($ffmpegPath === '') {
+            return ['error' => 'ffmpeg not found on this server'];
+        }
+
+        /* We load chapter markers */
+        $markers = self::rows(self::DB,
+            "SELECT * FROM episode_markers
+             WHERE episode_id = ? AND marker_type = 'chapter'
+             ORDER BY timestamp_ms ASC",
+            [$episode_id]
+        );
+
+        if (empty($markers)) {
+            return ['error' => 'No chapter markers found for this episode'];
+        }
+
+        /* We get the total duration in milliseconds */
+        $duration_ms = (int)($ep['duration_sec'] ?? 0) * 1000;
+        if ($duration_ms < 1) {
+            /* We try to get duration via ffprobe */
+            if (function_exists('exec')) {
+                $dlines = [];
+                @exec('ffprobe -v quiet -show_entries format=duration -of csv=p=0 '
+                    . escapeshellarg($file_path) . ' 2>/dev/null', $dlines);
+                if (!empty($dlines[0])) {
+                    $duration_ms = (int)round((float)$dlines[0] * 1000);
+                }
+            }
+        }
+
+        /* We build the FFMETADATA file content */
+        $meta = ";FFMETADATA1\n";
+        for ($i = 0; $i < count($markers); $i++) {
+            $start_ms = (int)$markers[$i]['timestamp_ms'];
+            /* End time is either the next chapter start or the episode end */
+            $end_ms = ($i + 1 < count($markers))
+                ? (int)$markers[$i + 1]['timestamp_ms']
+                : max($duration_ms, $start_ms + 1000);
+
+            $title = str_replace(['=', ';', '#', '\\', "\n"], ['\\=', '\\;', '\\#', '\\\\', ' '], $markers[$i]['title'] ?? 'Chapter');
+
+            $meta .= "[CHAPTER]\n";
+            $meta .= "TIMEBASE=1/1000\n";
+            $meta .= "START=" . $start_ms . "\n";
+            $meta .= "END=" . $end_ms . "\n";
+            $meta .= "title=" . $title . "\n";
+        }
+
+        /* We write the metadata to a temp file */
+        $metaFile = sys_get_temp_dir() . '/mc1_chapters_' . $episode_id . '_' . time() . '.txt';
+        if (file_put_contents($metaFile, $meta) === false) {
+            return ['error' => 'Failed to write temporary metadata file'];
+        }
+
+        /* We create the output file path (same dir, with _chapters suffix) */
+        $dir  = dirname($file_path);
+        $base = pathinfo($file_path, PATHINFO_FILENAME);
+        $ext  = pathinfo($file_path, PATHINFO_EXTENSION);
+        $outputPath = $dir . '/' . $base . '_chapters.' . $ext;
+
+        /* We run ffmpeg to embed chapters: copy streams, apply chapter metadata */
+        $cmd = escapeshellarg($ffmpegPath) . ' -y'
+             . ' -i ' . escapeshellarg($file_path)
+             . ' -i ' . escapeshellarg($metaFile)
+             . ' -map_metadata 1'
+             . ' -c copy'
+             . ' ' . escapeshellarg($outputPath)
+             . ' 2>&1';
+
+        $output = [];
+        $retval = -1;
+        if (function_exists('exec')) {
+            @exec($cmd, $output, $retval);
+        }
+
+        /* We clean up the temp metadata file */
+        @unlink($metaFile);
+
+        if ($retval !== 0) {
+            $errMsg = implode("\n", array_slice($output, -5));
+            mc1_log(2, 'ffmpeg chapter embed failed: ' . $errMsg, 'podcast');
+            return ['error' => 'FFmpeg chapter embedding failed (code ' . $retval . '): ' . $errMsg];
+        }
+
+        if (!file_exists($outputPath)) {
+            return ['error' => 'Output file was not created'];
+        }
+
+        /* We update the episode record to point to the new file */
+        $outSize = filesize($outputPath);
+        self::run(self::DB,
+            "UPDATE podcast_episodes SET file_path=?, file_size_bytes=? WHERE id=?",
+            [$outputPath, $outSize, $episode_id]
+        );
+
+        return [
+            'ok'              => true,
+            'chapters_embedded' => count($markers),
+            'file_path'       => $outputPath,
+            'file_size'       => $outSize,
+            'message'         => count($markers) . ' chapters embedded into ' . basename($outputPath),
+        ];
+    }
+
+    /**
+     * We generate YouTube-compatible timestamp format for video description.
+     * YouTube auto-detects these as chapters when first timestamp is 0:00
+     * and there are 3+ chapters with 10s minimum per chapter.
+     */
+    public static function generateYoutubeDescription(array $data): array
+    {
+        $episode_id = (int)($data['episode_id'] ?? 0);
+        if ($episode_id < 1) return ['error' => 'Missing episode_id'];
+
+        $ep = self::row(self::DB,
+            "SELECT * FROM podcast_episodes WHERE id = ?", [$episode_id]);
+        if (!$ep) return ['error' => 'Episode not found'];
+
+        $markers = self::rows(self::DB,
+            "SELECT * FROM episode_markers
+             WHERE episode_id = ? AND marker_type = 'chapter'
+             ORDER BY timestamp_ms ASC",
+            [$episode_id]
+        );
+
+        if (empty($markers)) {
+            return ['error' => 'No chapter markers found for this episode'];
+        }
+
+        /* We build YouTube timestamp lines.
+         * YouTube requires first timestamp to be 0:00 for auto-detection. */
+        $lines = [];
+        $has_zero = false;
+
+        foreach ($markers as $m) {
+            $ms = (int)$m['timestamp_ms'];
+            $sec = (int)floor($ms / 1000);
+            $h = (int)floor($sec / 3600);
+            $min = (int)floor(($sec % 3600) / 60);
+            $s = $sec % 60;
+
+            if ($sec === 0) $has_zero = true;
+
+            /* We use H:MM:SS for episodes over 1 hour, otherwise M:SS */
+            if ($h > 0) {
+                $ts = $h . ':' . str_pad((string)$min, 2, '0', STR_PAD_LEFT) . ':' . str_pad((string)$s, 2, '0', STR_PAD_LEFT);
+            } else {
+                $ts = $min . ':' . str_pad((string)$s, 2, '0', STR_PAD_LEFT);
+            }
+
+            $lines[] = $ts . ' ' . ($m['title'] ?? 'Chapter');
+        }
+
+        /* We ensure first timestamp is 0:00 for YouTube auto-detection */
+        if (!$has_zero && !empty($lines)) {
+            array_unshift($lines, '0:00 Introduction');
+        }
+
+        $text = implode("\n", $lines);
+
+        /* We include validation warnings */
+        $warnings = [];
+        if (count($lines) < 3) {
+            $warnings[] = 'YouTube requires at least 3 chapters for auto-detection.';
+        }
+
+        return [
+            'ok'             => true,
+            'description'    => $text,
+            'chapter_count'  => count($lines),
+            'warnings'       => $warnings,
+            'message'        => 'YouTube chapter description generated (' . count($lines) . ' chapters)',
+        ];
     }
 
     /* ── EPISODE EXPORT (PC-2) ── */
@@ -1912,6 +2241,10 @@ try {
         'add_marker'        => PodcastApi::addMarker($data),
         /* PC-2: Episode export */
         'export_episode'    => PodcastApi::exportEpisode($data),
+        /* Chapter embedding & export */
+        'embed_chapters'              => PodcastApi::embedChapters($data),
+        'generate_chapters_json'      => PodcastApi::generateChaptersJson($data),
+        'generate_youtube_description'=> PodcastApi::generateYoutubeDescription($data),
         /* PC-3: Multi-platform publishing */
         'list_targets'      => PodcastApi::listTargets($data),
         'create_target'     => PodcastApi::createTarget($data),

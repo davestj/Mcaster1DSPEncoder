@@ -181,6 +181,33 @@ class PodcastFeed {
                 }
             }
 
+            /* We check if this episode has chapter markers and add podcast:chapters element */
+            $chapterCount = (int)self::scalar(self::DB,
+                "SELECT COUNT(*) FROM episode_markers WHERE episode_id = ? AND marker_type = 'chapter'",
+                [$ep_id]);
+            if ($chapterCount > 0) {
+                $chaptersUrl = $base_url . '/app/api/podcast.php?action=chapters_json&episode_id=' . $ep_id;
+                $xml .= '      <podcast:chapters url="' . self::xa($chaptersUrl) . '" type="application/json+chapters"/>' . "\n";
+
+                /* We also add chapter timestamps in content:encoded for apps that support HTML */
+                $chapterMarkers = self::rows(self::DB,
+                    "SELECT timestamp_ms, title FROM episode_markers
+                     WHERE episode_id = ? AND marker_type = 'chapter'
+                     ORDER BY timestamp_ms ASC",
+                    [$ep_id]);
+                if (!empty($chapterMarkers)) {
+                    $chapHtml = '<h3>Chapters</h3><ul>';
+                    foreach ($chapterMarkers as $cm) {
+                        $cmSec = (int)floor((int)$cm['timestamp_ms'] / 1000);
+                        $cmTs = sprintf('%02d:%02d:%02d',
+                            (int)($cmSec / 3600), (int)(($cmSec % 3600) / 60), $cmSec % 60);
+                        $chapHtml .= '<li>' . $cmTs . ' - ' . self::xe($cm['title'] ?? 'Chapter') . '</li>';
+                    }
+                    $chapHtml .= '</ul>';
+                    $xml .= '      <content:encoded>' . self::xe($chapHtml) . "</content:encoded>\n";
+                }
+            }
+
             /* We check if this episode has captions and add podcast:transcript elements */
             $captions = self::rows(self::DB,
                 "SELECT language, format FROM episode_captions WHERE episode_id = ? ORDER BY language",
