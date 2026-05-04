@@ -34,6 +34,11 @@ require_once __DIR__ . '/app/inc/header.php';
 ?>
 
 <style>
+/* ── Recording button pulse ── */
+#btn-record.recording { animation: rec-pulse 1s ease-in-out infinite; background:#ef4444 !important; color:#fff !important; border-color:#ef4444 !important; }
+@keyframes rec-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+#record-panel { position:fixed; top:var(--topbar-h); right:-360px; height:calc(100vh - var(--topbar-h)); z-index:200; background:var(--bg2); border-left:1px solid var(--border); transition:right .3s ease; overflow-y:auto; }
+
 /* ── DAW Layout ── */
 .daw-wrap{display:flex;flex-direction:column;height:calc(100vh - var(--topbar-h) - 40px);min-height:500px}
 
@@ -213,7 +218,7 @@ require_once __DIR__ . '/app/inc/header.php';
       <button class="btn btn-secondary btn-sm" id="btn-rewind" title="Rewind"><i class="fa-solid fa-backward-step"></i></button>
       <button class="btn btn-primary btn-sm" id="btn-play" title="Play"><i class="fa-solid fa-play"></i></button>
       <button class="btn btn-secondary btn-sm" id="btn-stop" title="Stop"><i class="fa-solid fa-stop"></i></button>
-      <button class="btn btn-secondary btn-sm" id="btn-record" title="Record (placeholder)"><i class="fa-solid fa-circle" style="color:#ef4444"></i></button>
+      <button class="btn btn-secondary btn-sm" id="btn-record" title="Record to Track" onclick="openRecordPanel()"><i class="fa-solid fa-circle" style="color:#ef4444"></i> REC</button>
     </div>
     <div class="time-display" id="time-display">00:00:00.000 / 00:00:00.000</div>
     <div class="sep"></div>
@@ -351,6 +356,88 @@ require_once __DIR__ . '/app/inc/header.php';
     </div>
     <div style="margin-top:12px">
       <button class="btn btn-primary btn-sm" id="btn-new-project"><i class="fa-solid fa-plus"></i> New Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Record to Track panel (slide-out) -->
+<div class="fx-panel" id="record-panel" style="width:340px">
+  <div class="fx-panel-header">
+    <i class="fa-solid fa-microphone fa-fw" style="color:#ef4444"></i>
+    <h4>Record to Track</h4>
+    <span class="fx-panel-close" onclick="closeRecordPanel()"><i class="fa-solid fa-xmark"></i></span>
+  </div>
+  <div style="padding:12px">
+    <!-- Input Source -->
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Audio Input</label>
+      <select class="form-select" id="rec-device" style="width:100%;font-size:11px;padding:5px 8px">
+        <option value="">Detecting devices...</option>
+      </select>
+    </div>
+
+    <!-- Target Track -->
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Record to Track</label>
+      <select class="form-select" id="rec-track" style="width:100%;font-size:11px;padding:5px 8px">
+        <option value="_new">+ New Track</option>
+      </select>
+    </div>
+
+    <!-- Format -->
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Format</label>
+        <select class="form-select" id="rec-format" style="width:100%;font-size:11px;padding:5px 8px">
+          <option value="wav">WAV (Lossless)</option>
+          <option value="webm">WebM (Opus)</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Mode</label>
+        <select class="form-select" id="rec-mode" style="width:100%;font-size:11px;padding:5px 8px">
+          <option value="at_cursor">At Cursor</option>
+          <option value="at_end">At End</option>
+          <option value="replace">Replace Selection</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Monitor toggle -->
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="rec-monitor" checked style="accent-color:var(--teal)">
+        Monitor input (hear yourself)
+      </label>
+    </div>
+
+    <!-- Level Meter -->
+    <div style="margin-bottom:12px">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px">Input Level</label>
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;height:20px;overflow:hidden;position:relative">
+        <div id="rec-level-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);transition:width 50ms"></div>
+        <span id="rec-level-db" style="position:absolute;right:4px;top:2px;font-size:9px;color:var(--text)">-∞ dB</span>
+      </div>
+    </div>
+
+    <!-- Timer -->
+    <div id="rec-timer" style="text-align:center;font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted);margin:12px 0">
+      00:00.0
+    </div>
+
+    <!-- Controls -->
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:12px">
+      <button class="btn btn-sm" id="btn-rec-start" onclick="startDawRecording()" style="background:#ef4444;color:#fff;border:none;padding:6px 20px;font-weight:700">
+        <i class="fa-solid fa-circle"></i> Record
+      </button>
+      <button class="btn btn-sm btn-secondary" id="btn-rec-stop" onclick="stopDawRecording()" disabled style="padding:6px 20px">
+        <i class="fa-solid fa-stop"></i> Stop
+      </button>
+    </div>
+
+    <!-- Status -->
+    <div id="rec-status" style="text-align:center;font-size:11px;color:var(--muted)">
+      Select an input device and click Record
     </div>
   </div>
 </div>
@@ -563,11 +650,212 @@ require_once __DIR__ . '/app/inc/header.php';
 <script src="/js/daw-engine.js"></script>
 
 <script>
+/* ── DAW Mic Recording Module ──────────────────────────────────────────── */
+var _recStream = null, _recCtx = null, _recAnalyser = null, _recRecorder = null;
+var _recChunks = [], _recStartTime = 0, _recTimerInt = null, _recLevelInt = null;
+
+function openRecordPanel() {
+    document.getElementById('record-panel').style.display = '';
+    document.getElementById('record-panel').style.right = '0';
+    _enumRecDevices();
+    _populateRecTracks();
+}
+function closeRecordPanel() {
+    stopDawRecording();
+    document.getElementById('record-panel').style.right = '-360px';
+    setTimeout(function(){ document.getElementById('record-panel').style.display = 'none'; }, 300);
+}
+
+function _enumRecDevices() {
+    var sel = document.getElementById('rec-device');
+    sel.innerHTML = '<option value="">Detecting...</option>';
+    navigator.mediaDevices.enumerateDevices().then(function(devs) {
+        var mics = devs.filter(function(d){ return d.kind === 'audioinput'; });
+        sel.innerHTML = '';
+        if (!mics.length) { sel.innerHTML = '<option value="">No microphones found</option>'; return; }
+        mics.forEach(function(d) {
+            var opt = document.createElement('option');
+            opt.value = d.deviceId;
+            opt.textContent = d.label || ('Mic ' + d.deviceId.substring(0,8));
+            sel.appendChild(opt);
+        });
+    }).catch(function() {
+        sel.innerHTML = '<option value="">Permission denied</option>';
+    });
+    navigator.mediaDevices.addEventListener('devicechange', _enumRecDevices);
+}
+
+function _populateRecTracks() {
+    var sel = document.getElementById('rec-track');
+    sel.innerHTML = '<option value="_new">+ New Track</option>';
+    if (window._daw && window._daw.tracks) {
+        window._daw.tracks.forEach(function(t) {
+            var opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name;
+            sel.appendChild(opt);
+        });
+    }
+}
+
+function startDawRecording() {
+    var deviceId = document.getElementById('rec-device').value;
+    if (!deviceId) { mc1Toast('Select a microphone first', 'err'); return; }
+
+    var constraints = {
+        audio: {
+            deviceId: { exact: deviceId },
+            sampleRate: 48000,
+            channelCount: 1,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        }
+    };
+
+    navigator.mediaDevices.getUserMedia(constraints).then(function(stream) {
+        _recStream = stream;
+        _recCtx = new (window.AudioContext || window.webkitAudioContext)({sampleRate: 48000});
+        var src = _recCtx.createMediaStreamSource(stream);
+
+        /* Level meter via analyser */
+        _recAnalyser = _recCtx.createAnalyser();
+        _recAnalyser.fftSize = 256;
+        src.connect(_recAnalyser);
+
+        /* Monitor (hear yourself) */
+        if (document.getElementById('rec-monitor').checked) {
+            src.connect(_recCtx.destination);
+        }
+
+        /* MediaRecorder */
+        var fmt = document.getElementById('rec-format').value;
+        var mimeType = fmt === 'wav' ? 'audio/webm;codecs=pcm' : 'audio/webm;codecs=opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/webm';
+        _recRecorder = new MediaRecorder(stream, { mimeType: mimeType });
+        _recChunks = [];
+        _recRecorder.ondataavailable = function(e) { if (e.data.size > 0) _recChunks.push(e.data); };
+        _recRecorder.onstop = function() { _onRecordingComplete(); };
+        _recRecorder.start(500); /* 500ms chunks */
+
+        _recStartTime = Date.now();
+        document.getElementById('btn-rec-start').disabled = true;
+        document.getElementById('btn-rec-stop').disabled = false;
+        document.getElementById('rec-status').textContent = 'Recording...';
+        document.getElementById('rec-status').style.color = '#ef4444';
+
+        /* Timer */
+        _recTimerInt = setInterval(function() {
+            var elapsed = (Date.now() - _recStartTime) / 1000;
+            var m = Math.floor(elapsed / 60);
+            var s = Math.floor(elapsed % 60);
+            var ms = Math.floor((elapsed % 1) * 10);
+            document.getElementById('rec-timer').textContent =
+                (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + '.' + ms;
+        }, 100);
+
+        /* Level meter */
+        var data = new Uint8Array(_recAnalyser.frequencyBinCount);
+        _recLevelInt = setInterval(function() {
+            _recAnalyser.getByteFrequencyData(data);
+            var sum = 0; for (var i = 0; i < data.length; i++) sum += data[i];
+            var avg = sum / data.length;
+            var pct = Math.min(100, (avg / 128) * 100);
+            var db = avg > 0 ? (20 * Math.log10(avg / 255)).toFixed(1) : '-∞';
+            document.getElementById('rec-level-bar').style.width = pct + '%';
+            document.getElementById('rec-level-db').textContent = db + ' dB';
+        }, 50);
+
+        /* Pulse the record button */
+        document.getElementById('btn-record').classList.add('recording');
+
+    }).catch(function(err) {
+        mc1Toast('Mic access denied: ' + err.message, 'err');
+    });
+}
+
+function stopDawRecording() {
+    if (_recRecorder && _recRecorder.state !== 'inactive') {
+        _recRecorder.stop();
+    }
+    if (_recTimerInt) { clearInterval(_recTimerInt); _recTimerInt = null; }
+    if (_recLevelInt) { clearInterval(_recLevelInt); _recLevelInt = null; }
+    if (_recStream) { _recStream.getTracks().forEach(function(t){ t.stop(); }); _recStream = null; }
+    if (_recCtx) { _recCtx.close().catch(function(){}); _recCtx = null; }
+    document.getElementById('btn-rec-start').disabled = false;
+    document.getElementById('btn-rec-stop').disabled = true;
+    document.getElementById('btn-record').classList.remove('recording');
+    document.getElementById('rec-level-bar').style.width = '0%';
+    document.getElementById('rec-level-db').textContent = '-∞ dB';
+}
+
+function _onRecordingComplete() {
+    if (!_recChunks.length) { document.getElementById('rec-status').textContent = 'No audio recorded'; return; }
+    var blob = new Blob(_recChunks, { type: _recChunks[0].type });
+    document.getElementById('rec-status').textContent = 'Processing ' + (blob.size / 1024).toFixed(0) + ' KB...';
+    document.getElementById('rec-status').style.color = 'var(--teal)';
+
+    /* Decode the recorded audio into an AudioBuffer */
+    var reader = new FileReader();
+    reader.onload = function() {
+        var decodeCtx = new (window.AudioContext || window.webkitAudioContext)();
+        decodeCtx.decodeAudioData(reader.result).then(function(audioBuffer) {
+            /* Add as clip to the selected track */
+            var trackId = document.getElementById('rec-track').value;
+            var mode = document.getElementById('rec-mode').value;
+
+            if (!window._daw) { mc1Toast('DAW not initialized', 'err'); return; }
+
+            if (trackId === '_new') {
+                window._daw.addTrack('Recording ' + new Date().toLocaleTimeString());
+                var tracks = window._daw.tracks;
+                trackId = tracks[tracks.length - 1].id;
+            }
+
+            var startTime = 0;
+            if (mode === 'at_cursor') {
+                startTime = window._daw.currentTime || 0;
+            } else if (mode === 'at_end') {
+                startTime = window._daw.duration || 0;
+            }
+
+            /* Create a clip from the recorded buffer */
+            var clip = {
+                id: 'rec_' + Date.now(),
+                audioBuffer: audioBuffer,
+                startTime: startTime,
+                duration: audioBuffer.duration,
+                offset: 0,
+                fadeIn: 0.05,
+                fadeOut: 0.05,
+                gainEnvelope: []
+            };
+
+            /* Find the track and add the clip */
+            var track = window._daw.tracks.find(function(t){ return t.id === trackId; });
+            if (track) {
+                track.clips.push(clip);
+                window._daw._computePeaks(clip);
+                window._daw.render();
+                mc1Toast('Recording added to ' + track.name + ' (' + audioBuffer.duration.toFixed(1) + 's)', 'ok');
+            }
+
+            document.getElementById('rec-status').textContent = 'Recording added — ' + audioBuffer.duration.toFixed(1) + 's';
+            decodeCtx.close().catch(function(){});
+        }).catch(function(err) {
+            mc1Toast('Failed to decode recording: ' + err.message, 'err');
+            document.getElementById('rec-status').textContent = 'Decode failed';
+        });
+    };
+    reader.readAsArrayBuffer(blob);
+}
+
 (function(){
     var daw = null;
 
     document.addEventListener('DOMContentLoaded', function(){
         daw = new DawEngine('daw-root');
+        window._daw = daw; /* expose for recording module */
         window._daw = daw; // expose for debugging
 
         // Transport buttons
