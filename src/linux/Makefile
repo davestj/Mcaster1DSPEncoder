@@ -97,58 +97,69 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
+build_triplet = x86_64-pc-linux-gnu
+host_triplet = x86_64-pc-linux-gnu
 bin_PROGRAMS = mcaster1-dsp-encoder-admin$(EXEEXT) \
 	mcaster1-dsp-encoder$(EXEEXT) mcaster1-voictune$(EXEEXT) \
 	mcaster1-producer$(EXEEXT)
 
+# ── Platform-specific flags ───────────────────────────────────────────────────
+#am__append_1 = -DMC1_MACOS
+#am__append_2 = -framework CoreAudio -framework AudioUnit -framework CoreServices
+# macOS does not have -lrt or -lcrypt (crypt() is in libc / libxcrypt via brew)
+am__append_3 = -DMC1_LINUX
+am__append_4 = -lcrypt -lrt
+
 # Admin links all codec/audio libs too (shares source files with encoder for symbols).
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
 # the ProcessSupervisor running the encoder as a separate child process.
-am__append_1 = -DHAVE_JACK
-am__append_2 = jack_manager.cpp
-am__append_3 = $(JACK_LIBS)
-am__append_4 = $(PORTAUDIO_LIBS)
-am__append_5 = $(LAME_LIBS)
-am__append_6 = $(VORBIS_LIBS)
-am__append_7 = $(FLAC_LIBS)
-am__append_8 = $(OPUS_LIBS)
-am__append_9 = $(FDKAAC_LIBS)
-am__append_10 = $(MPG123_LIBS)
-am__append_11 = $(AVFORMAT_LIBS)
-am__append_12 = $(TAGLIB_LIBS)
+am__append_5 = -DHAVE_JACK
+am__append_6 = jack_manager.cpp
+am__append_7 = $(JACK_LIBS)
+am__append_8 = $(PORTAUDIO_LIBS)
+am__append_9 = $(LAME_LIBS)
+am__append_10 = $(VORBIS_LIBS)
+am__append_11 = $(FLAC_LIBS)
+am__append_12 = $(OPUS_LIBS)
+am__append_13 = $(FDKAAC_LIBS)
+am__append_14 = $(MPG123_LIBS)
+am__append_15 = $(AVFORMAT_LIBS)
+am__append_16 = $(TAGLIB_LIBS)
+am__append_17 = -lcrypt -lrt
 
 # ── PortAudio (optional — encoder only) ──────────────────────────────────────
-am__append_13 = $(PORTAUDIO_LIBS)
+am__append_18 = $(PORTAUDIO_LIBS)
 
 # ── JACK (encoder also needs it — audio_pipeline.h includes jack_manager.h) ──
-am__append_14 = jack_manager.cpp
-am__append_15 = $(JACK_LIBS)
+am__append_19 = jack_manager.cpp
+am__append_20 = $(JACK_LIBS)
 
 # ── Per-codec (optional — encoder only) ──────────────────────────────────────
-am__append_16 = $(LAME_CFLAGS) -DHAVE_LAME
-am__append_17 = $(LAME_LIBS)
-am__append_18 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
-am__append_19 = $(VORBIS_LIBS)
-am__append_20 = $(FLAC_CFLAGS) -DHAVE_FLAC
-am__append_21 = $(FLAC_LIBS)
-am__append_22 = $(OPUS_CFLAGS) -DHAVE_OPUS
-am__append_23 = $(OPUS_LIBS)
-am__append_24 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
-am__append_25 = $(FDKAAC_LIBS)
+am__append_21 = $(LAME_CFLAGS) -DHAVE_LAME
+am__append_22 = $(LAME_LIBS)
+am__append_23 = $(VORBIS_CFLAGS) -DHAVE_VORBIS
+am__append_24 = $(VORBIS_LIBS)
+am__append_25 = $(FLAC_CFLAGS) -DHAVE_FLAC
+am__append_26 = $(FLAC_LIBS)
+am__append_27 = $(OPUS_CFLAGS) -DHAVE_OPUS
+am__append_28 = $(OPUS_LIBS)
+am__append_29 = $(FDKAAC_CFLAGS) -DHAVE_FDK_AAC
+am__append_30 = $(FDKAAC_LIBS)
 
 # ── Media / metadata libs (optional — encoder only) ──────────────────────────
-am__append_26 = $(MPG123_CFLAGS) -DHAVE_MPG123
-am__append_27 = $(MPG123_LIBS)
-am__append_28 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
-am__append_29 = $(AVFORMAT_LIBS)
-am__append_30 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
-am__append_31 = $(TAGLIB_LIBS)
+am__append_31 = $(MPG123_CFLAGS) -DHAVE_MPG123
+am__append_32 = $(MPG123_LIBS)
+am__append_33 = $(AVFORMAT_CFLAGS) -DHAVE_AVFORMAT
+am__append_34 = $(AVFORMAT_LIBS)
+am__append_35 = $(TAGLIB_CFLAGS) -DHAVE_TAGLIB
+am__append_36 = $(TAGLIB_LIBS)
+am__append_37 = -lcrypt -lrt
 
 # VoicTune uses PortAudio for mic capture (optional — can run browser-mic-only mode)
-am__append_32 = $(PORTAUDIO_LIBS)
+am__append_38 = $(PORTAUDIO_LIBS)
 
 # VoicTune uses JACK for advanced audio routing (optional)
-am__append_33 = $(JACK_LIBS)
+am__append_39 = $(JACK_LIBS)
 subdir = src/linux
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -167,7 +178,7 @@ am__mcaster1_dsp_encoder_SOURCES_DIST = main_encoder.cpp \
 	stream_client.cpp archive_writer.cpp config_loader.cpp \
 	mc1_db.cpp system_health.cpp server_monitors.cpp dsp/eq.cpp \
 	dsp/agc.cpp dsp/crossfader.cpp dsp/dj_crossfader.cpp \
-	dsp/dsp_chain.cpp dsp/effects_rack.cpp \
+	dsp/dsp_chain.cpp dsp/effects_rack.cpp dsp/plugin_loader.cpp \
 	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
 	clockwheel_scheduler.cpp jack_manager.cpp
 am__dirstamp = $(am__leading_dot)dirstamp
@@ -181,9 +192,9 @@ am_mcaster1_dsp_encoder_OBJECTS = main_encoder.$(OBJEXT) \
 	system_health.$(OBJEXT) server_monitors.$(OBJEXT) \
 	dsp/eq.$(OBJEXT) dsp/agc.$(OBJEXT) dsp/crossfader.$(OBJEXT) \
 	dsp/dj_crossfader.$(OBJEXT) dsp/dsp_chain.$(OBJEXT) \
-	dsp/effects_rack.$(OBJEXT) dsp/sidechain_ducker.$(OBJEXT) \
-	dsp/dead_air_detector.$(OBJEXT) clockwheel_scheduler.$(OBJEXT) \
-	$(am__objects_1)
+	dsp/effects_rack.$(OBJEXT) dsp/plugin_loader.$(OBJEXT) \
+	dsp/sidechain_ducker.$(OBJEXT) dsp/dead_air_detector.$(OBJEXT) \
+	clockwheel_scheduler.$(OBJEXT) $(am__objects_1)
 mcaster1_dsp_encoder_OBJECTS = $(am_mcaster1_dsp_encoder_OBJECTS)
 am__DEPENDENCIES_1 =
 am__DEPENDENCIES_2 = $(am__DEPENDENCIES_1)
@@ -198,11 +209,12 @@ am__DEPENDENCIES_10 = $(am__DEPENDENCIES_1)
 am__DEPENDENCIES_11 = $(am__DEPENDENCIES_1)
 mcaster1_dsp_encoder_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_3) \
-	$(am__DEPENDENCIES_4) $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
-	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
-	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
+	$(am__DEPENDENCIES_3) $(am__DEPENDENCIES_4) \
+	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_7) $(am__DEPENDENCIES_8) \
+	$(am__DEPENDENCIES_9) $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_11)
 am__mcaster1_dsp_encoder_admin_SOURCES_DIST = main_cli.cpp \
 	http_api.cpp fastcgi_client.cpp audio_pipeline.cpp \
 	encoder_slot.cpp audio_source.cpp file_source.cpp \
@@ -211,9 +223,9 @@ am__mcaster1_dsp_encoder_admin_SOURCES_DIST = main_cli.cpp \
 	server_monitors.cpp process_supervisor.cpp ipc_proxy.cpp \
 	clockwheel_scheduler.cpp dsp/eq.cpp dsp/agc.cpp \
 	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
-	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
-	dsp/dead_air_detector.cpp voictune/ollama_client.cpp \
-	jack_manager.cpp
+	dsp/effects_rack.cpp dsp/plugin_loader.cpp \
+	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
+	voictune/ollama_client.cpp jack_manager.cpp
 am__objects_2 = mcaster1_dsp_encoder_admin-jack_manager.$(OBJEXT)
 am_mcaster1_dsp_encoder_admin_OBJECTS =  \
 	mcaster1_dsp_encoder_admin-main_cli.$(OBJEXT) \
@@ -239,6 +251,7 @@ am_mcaster1_dsp_encoder_admin_OBJECTS =  \
 	dsp/mcaster1_dsp_encoder_admin-dj_crossfader.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-dsp_chain.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-effects_rack.$(OBJEXT) \
+	dsp/mcaster1_dsp_encoder_admin-plugin_loader.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT) \
 	dsp/mcaster1_dsp_encoder_admin-dead_air_detector.$(OBJEXT) \
 	voictune/mcaster1_dsp_encoder_admin-ollama_client.$(OBJEXT) \
@@ -247,11 +260,12 @@ mcaster1_dsp_encoder_admin_OBJECTS =  \
 	$(am_mcaster1_dsp_encoder_admin_OBJECTS)
 mcaster1_dsp_encoder_admin_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_3) $(am__DEPENDENCIES_2) \
-	$(am__DEPENDENCIES_4) $(am__DEPENDENCIES_5) \
-	$(am__DEPENDENCIES_6) $(am__DEPENDENCIES_7) \
-	$(am__DEPENDENCIES_8) $(am__DEPENDENCIES_9) \
-	$(am__DEPENDENCIES_10) $(am__DEPENDENCIES_11)
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_3) \
+	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_4) \
+	$(am__DEPENDENCIES_5) $(am__DEPENDENCIES_6) \
+	$(am__DEPENDENCIES_7) $(am__DEPENDENCIES_8) \
+	$(am__DEPENDENCIES_9) $(am__DEPENDENCIES_10) \
+	$(am__DEPENDENCIES_11)
 am_mcaster1_producer_OBJECTS =  \
 	producer/mcaster1_producer-main_producer.$(OBJEXT) \
 	producer/mcaster1_producer-pr_http_api.$(OBJEXT) \
@@ -277,7 +291,8 @@ am_mcaster1_voictune_OBJECTS =  \
 mcaster1_voictune_OBJECTS = $(am_mcaster1_voictune_OBJECTS)
 mcaster1_voictune_DEPENDENCIES = $(am__DEPENDENCIES_1) \
 	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_1) \
-	$(am__DEPENDENCIES_2) $(am__DEPENDENCIES_3)
+	$(am__DEPENDENCIES_1) $(am__DEPENDENCIES_2) \
+	$(am__DEPENDENCIES_3)
 AM_V_P = $(am__v_P_$(V))
 am__v_P_ = $(am__v_P_$(AM_DEFAULT_VERBOSITY))
 am__v_P_0 = false
@@ -331,7 +346,9 @@ am__depfiles_remade = ./$(DEPDIR)/archive_writer.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po \
+	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po \
 	dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po \
+	dsp/$(DEPDIR)/plugin_loader.Po \
 	dsp/$(DEPDIR)/sidechain_ducker.Po \
 	producer/$(DEPDIR)/mcaster1_producer-main_producer.Po \
 	producer/$(DEPDIR)/mcaster1_producer-pr_config.Po \
@@ -491,14 +508,22 @@ am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
+build = x86_64-pc-linux-gnu
 build_alias = 
+build_cpu = x86_64
+build_os = linux-gnu
+build_vendor = pc
 builddir = .
 datadir = ${datarootdir}
 datarootdir = ${prefix}/share
 docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
+host = x86_64-pc-linux-gnu
 host_alias = 
+host_cpu = x86_64
+host_os = linux-gnu
+host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
@@ -530,11 +555,12 @@ AM_CPPFLAGS = -I$(srcdir)/external/include -I$(top_srcdir)/src \
 	-I$(top_srcdir)/src/libmcaster1dspencoder \
 	-DCPPHTTPLIB_OPENSSL_SUPPORT $(OPENSSL_CFLAGS) \
 	$(LIBYAML_CFLAGS) $(MARIADB_CFLAGS) $(am__append_1) \
-	$(am__append_16) $(am__append_18) $(am__append_20) \
-	$(am__append_22) $(am__append_24) $(am__append_26) \
-	$(am__append_28) $(am__append_30)
+	$(am__append_3) $(am__append_5) $(am__append_21) \
+	$(am__append_23) $(am__append_25) $(am__append_27) \
+	$(am__append_29) $(am__append_31) $(am__append_33) \
+	$(am__append_35)
 AM_CXXFLAGS = -std=c++17 -Wall -Wno-unused-parameter -O2
-AM_LDFLAGS = -rdynamic
+AM_LDFLAGS = -rdynamic $(am__append_2)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ADMIN BINARY — Web UI, FastCGI, auth, supervisor, system health
@@ -548,16 +574,18 @@ mcaster1_dsp_encoder_admin_SOURCES = main_cli.cpp http_api.cpp \
 	process_supervisor.cpp ipc_proxy.cpp clockwheel_scheduler.cpp \
 	dsp/eq.cpp dsp/agc.cpp dsp/crossfader.cpp \
 	dsp/dj_crossfader.cpp dsp/dsp_chain.cpp dsp/effects_rack.cpp \
-	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
-	voictune/ollama_client.cpp $(am__append_2)
+	dsp/plugin_loader.cpp dsp/sidechain_ducker.cpp \
+	dsp/dead_air_detector.cpp voictune/ollama_client.cpp \
+	$(am__append_6)
 
 # Admin needs these shared DSP headers for static curve data / effects type listing
 # but does NOT need the audio processing source files.
 mcaster1_dsp_encoder_admin_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_3) \
-	$(am__append_4) $(am__append_5) $(am__append_6) \
+	$(MARIADB_LIBS) -lpthread -lm -ldl $(am__append_4) \
 	$(am__append_7) $(am__append_8) $(am__append_9) \
-	$(am__append_10) $(am__append_11) $(am__append_12)
+	$(am__append_10) $(am__append_11) $(am__append_12) \
+	$(am__append_13) $(am__append_14) $(am__append_15) \
+	$(am__append_16)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ENCODER BINARY — Audio pipeline, DSP, codecs, streaming (restartable worker)
@@ -568,14 +596,15 @@ mcaster1_dsp_encoder_SOURCES = main_encoder.cpp encoder_ipc_api.cpp \
 	archive_writer.cpp config_loader.cpp mc1_db.cpp \
 	system_health.cpp server_monitors.cpp dsp/eq.cpp dsp/agc.cpp \
 	dsp/crossfader.cpp dsp/dj_crossfader.cpp dsp/dsp_chain.cpp \
-	dsp/effects_rack.cpp dsp/sidechain_ducker.cpp \
-	dsp/dead_air_detector.cpp clockwheel_scheduler.cpp \
-	$(am__append_14)
+	dsp/effects_rack.cpp dsp/plugin_loader.cpp \
+	dsp/sidechain_ducker.cpp dsp/dead_air_detector.cpp \
+	clockwheel_scheduler.cpp $(am__append_19)
 mcaster1_dsp_encoder_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_13) \
-	$(am__append_15) $(am__append_17) $(am__append_19) \
-	$(am__append_21) $(am__append_23) $(am__append_25) \
-	$(am__append_27) $(am__append_29) $(am__append_31)
+	$(MARIADB_LIBS) -lpthread -lm -ldl $(am__append_17) \
+	$(am__append_18) $(am__append_20) $(am__append_22) \
+	$(am__append_24) $(am__append_26) $(am__append_28) \
+	$(am__append_30) $(am__append_32) $(am__append_34) \
+	$(am__append_36)
 
 # ── Web UI install ─────────────────────────────────────────────────────────────
 webuidir = $(WEBROOT)
@@ -635,8 +664,8 @@ mcaster1_voictune_SOURCES = \
     voictune/ollama_client.cpp
 
 mcaster1_voictune_LDADD = $(OPENSSL_LIBS) $(LIBYAML_LIBS) \
-	$(MARIADB_LIBS) -lpthread -lcrypt -lm $(am__append_32) \
-	$(am__append_33)
+	$(MARIADB_LIBS) -lpthread -lm $(am__append_37) \
+	$(am__append_38) $(am__append_39)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # PRODUCER BINARY — Video encoding, audio mixdown, forensic FFT (Phase PR)
@@ -753,6 +782,8 @@ dsp/dsp_chain.$(OBJEXT): dsp/$(am__dirstamp) \
 	dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/effects_rack.$(OBJEXT): dsp/$(am__dirstamp) \
 	dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/plugin_loader.$(OBJEXT): dsp/$(am__dirstamp) \
+	dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/sidechain_ducker.$(OBJEXT): dsp/$(am__dirstamp) \
 	dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/dead_air_detector.$(OBJEXT): dsp/$(am__dirstamp) \
@@ -772,6 +803,8 @@ dsp/mcaster1_dsp_encoder_admin-dj_crossfader.$(OBJEXT):  \
 dsp/mcaster1_dsp_encoder_admin-dsp_chain.$(OBJEXT):  \
 	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/mcaster1_dsp_encoder_admin-effects_rack.$(OBJEXT):  \
+	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
+dsp/mcaster1_dsp_encoder_admin-plugin_loader.$(OBJEXT):  \
 	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
 dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.$(OBJEXT):  \
 	dsp/$(am__dirstamp) dsp/$(DEPDIR)/$(am__dirstamp)
@@ -894,7 +927,9 @@ include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dj_crossfader.Po # am--include-
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po # am--include-marker
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po # am--include-marker
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po # am--include-marker
+include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po # am--include-marker
 include dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po # am--include-marker
+include dsp/$(DEPDIR)/plugin_loader.Po # am--include-marker
 include dsp/$(DEPDIR)/sidechain_ducker.Po # am--include-marker
 include producer/$(DEPDIR)/mcaster1_producer-main_producer.Po # am--include-marker
 include producer/$(DEPDIR)/mcaster1_producer-pr_config.Po # am--include-marker
@@ -1258,6 +1293,20 @@ dsp/mcaster1_dsp_encoder_admin-effects_rack.obj: dsp/effects_rack.cpp
 #	$(AM_V_CXX)source='dsp/effects_rack.cpp' object='dsp/mcaster1_dsp_encoder_admin-effects_rack.obj' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
 #	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-effects_rack.obj `if test -f 'dsp/effects_rack.cpp'; then $(CYGPATH_W) 'dsp/effects_rack.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/effects_rack.cpp'; fi`
+
+dsp/mcaster1_dsp_encoder_admin-plugin_loader.o: dsp/plugin_loader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-plugin_loader.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-plugin_loader.o `test -f 'dsp/plugin_loader.cpp' || echo '$(srcdir)/'`dsp/plugin_loader.cpp
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po
+#	$(AM_V_CXX)source='dsp/plugin_loader.cpp' object='dsp/mcaster1_dsp_encoder_admin-plugin_loader.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-plugin_loader.o `test -f 'dsp/plugin_loader.cpp' || echo '$(srcdir)/'`dsp/plugin_loader.cpp
+
+dsp/mcaster1_dsp_encoder_admin-plugin_loader.obj: dsp/plugin_loader.cpp
+	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-plugin_loader.obj -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-plugin_loader.obj `if test -f 'dsp/plugin_loader.cpp'; then $(CYGPATH_W) 'dsp/plugin_loader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/plugin_loader.cpp'; fi`
+	$(AM_V_at)$(am__mv) dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Tpo dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po
+#	$(AM_V_CXX)source='dsp/plugin_loader.cpp' object='dsp/mcaster1_dsp_encoder_admin-plugin_loader.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CXXDEPMODE) $(depcomp) \
+#	$(AM_V_CXX_no)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -c -o dsp/mcaster1_dsp_encoder_admin-plugin_loader.obj `if test -f 'dsp/plugin_loader.cpp'; then $(CYGPATH_W) 'dsp/plugin_loader.cpp'; else $(CYGPATH_W) '$(srcdir)/dsp/plugin_loader.cpp'; fi`
 
 dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o: dsp/sidechain_ducker.cpp
 	$(AM_V_CXX)$(CXX) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(mcaster1_dsp_encoder_admin_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS) -MT dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o -MD -MP -MF dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Tpo -c -o dsp/mcaster1_dsp_encoder_admin-sidechain_ducker.o `test -f 'dsp/sidechain_ducker.cpp' || echo '$(srcdir)/'`dsp/sidechain_ducker.cpp
@@ -1732,7 +1781,9 @@ distclean: distclean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+	-rm -f dsp/$(DEPDIR)/plugin_loader.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
 	-rm -f producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
 	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_config.Po
@@ -1844,7 +1895,9 @@ maintainer-clean: maintainer-clean-am
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-dsp_chain.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-effects_rack.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-eq.Po
+	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-plugin_loader.Po
 	-rm -f dsp/$(DEPDIR)/mcaster1_dsp_encoder_admin-sidechain_ducker.Po
+	-rm -f dsp/$(DEPDIR)/plugin_loader.Po
 	-rm -f dsp/$(DEPDIR)/sidechain_ducker.Po
 	-rm -f producer/$(DEPDIR)/mcaster1_producer-main_producer.Po
 	-rm -f producer/$(DEPDIR)/mcaster1_producer-pr_config.Po

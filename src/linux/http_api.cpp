@@ -28,6 +28,7 @@
 #include "audio_pipeline.h"
 #include "playlist_parser.h"
 #include "dsp/dsp_chain.h"
+#include "dsp/plugin_loader.h"
 #include "system_health.h"
 #include "server_monitors.h"
 #endif
@@ -1012,6 +1013,101 @@ static void setup_routes(httplib::Server& svr)
             });
         });
 
+    // ── GET /api/v1/plugins — list installed plugins with metadata ────────────
+    svr.Get("/api/v1/plugins",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                json r; r["ok"] = true;
+                auto plugins = mc1dsp::PluginLoader::instance().get_all();
+                json arr = json::array();
+                for (const auto& p : plugins) {
+                    json entry;
+                    entry["type_id"]      = p.info.type_id ? p.info.type_id : "";
+                    entry["display_name"] = p.info.display_name ? p.info.display_name : "";
+                    entry["version"]      = p.info.version ? p.info.version : "0.0.0";
+                    entry["author"]       = p.info.author ? p.info.author : "";
+                    entry["description"]  = p.info.description ? p.info.description : "";
+                    entry["num_params"]   = p.info.num_params;
+                    entry["param_count"]  = p.param_count;
+                    entry["path"]         = p.path;
+                    entry["enabled"]      = p.enabled;
+                    arr.push_back(entry);
+                }
+                r["plugins"] = arr;
+                r["plugin_count"] = (int)plugins.size();
+                r["search_dirs"] = mc1dsp::PluginLoader::plugin_directories();
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── POST /api/v1/plugins/scan — rescan plugin directories ──────────────
+    svr.Post("/api/v1/plugins/scan",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                int loaded = mc1dsp::PluginLoader::instance().scan_plugins();
+                json r; r["ok"] = true;
+                r["newly_loaded"] = loaded;
+                auto plugins = mc1dsp::PluginLoader::instance().get_all();
+                r["total_plugins"] = (int)plugins.size();
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── GET /api/v1/plugins/:id/params — get parameter descriptors ─────────
+    svr.Get(R"(/api/v1/plugins/([^/]+)/params)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string type_id = req.matches[1].str();
+                const auto* plugin = mc1dsp::PluginLoader::instance().find(type_id);
+                if (!plugin) {
+                    json r; r["ok"] = false; r["error"] = "Plugin not found: " + type_id;
+                    res.status = 404;
+                    res.set_content(r.dump(), "application/json");
+                    return;
+                }
+                json r; r["ok"] = true;
+                r["type_id"] = plugin->info.type_id ? plugin->info.type_id : "";
+                r["display_name"] = plugin->info.display_name ? plugin->info.display_name : "";
+                json params = json::array();
+                for (int i = 0; i < plugin->param_count; ++i) {
+                    const auto& pd = plugin->params[i];
+                    params.push_back({
+                        {"key",         pd.key ? pd.key : ""},
+                        {"label",       pd.label ? pd.label : ""},
+                        {"default_val", pd.default_val},
+                        {"min_val",     pd.min_val},
+                        {"max_val",     pd.max_val},
+                        {"step",        pd.step},
+                        {"unit",        pd.unit ? pd.unit : ""}
+                    });
+                }
+                r["params"] = params;
+                r["param_count"] = plugin->param_count;
+                res.set_content(r.dump(2), "application/json");
+            });
+        });
+
+    // ── PUT /api/v1/plugins/:id/enabled — enable/disable a plugin ──────────
+    svr.Put(R"(/api/v1/plugins/([^/]+)/enabled)",
+        [](const httplib::Request& req, httplib::Response& res) {
+            with_auth(req, res, [&]() {
+                std::string type_id = req.matches[1].str();
+                json body;
+                try { body = json::parse(req.body); }
+                catch (...) {
+                    json r; r["ok"] = false; r["error"] = "Invalid JSON";
+                    res.status = 400;
+                    res.set_content(r.dump(), "application/json");
+                    return;
+                }
+                bool enabled = body.value("enabled", true);
+                bool ok = mc1dsp::PluginLoader::instance().set_enabled(type_id, enabled);
+                json r; r["ok"] = ok;
+                if (!ok) { r["error"] = "Plugin not found: " + type_id; res.status = 404; }
+                res.set_content(r.dump(), "application/json");
+            });
+        });
+
     // ── GET /api/v1/crossfader/curves — list all 9 curve algorithms ──────────
     svr.Get("/api/v1/crossfader/curves",
         [](const httplib::Request& req, httplib::Response& res) {
@@ -1444,12 +1540,18 @@ static void setup_routes(httplib::Server& svr)
 #else
                     r["daemon_running"] = false;
 #endif
-                    /* Detect available ALSA hardware + supported rates */
+                    /* Detect available audio hardware + supported rates */
                     json hw; hw["has_alsa_cards"] = false;
                     hw["driver_available"] = json::array();
                     hw["driver_available"].push_back("dummy");
 
-                    /* Check /proc/asound/cards for ALSA hardware */
+#ifdef MC1_MACOS
+                    /* macOS: CoreAudio is always available via PortAudio */
+                    hw["driver_available"].push_back("coreaudio");
+                    hw["platform"] = "macos";
+#else
+                    /* Linux: Check /proc/asound/cards for ALSA hardware */
+                    hw["platform"] = "linux";
                     FILE* cards = fopen("/proc/asound/cards", "r");
                     if (cards) {
                         char line[256];
@@ -1474,6 +1576,7 @@ static void setup_routes(httplib::Server& svr)
                             hw["driver_available"].push_back("alsa");
                         }
                     }
+#endif // MC1_MACOS
 
                     /* Supported sample rates — dummy supports all; ALSA depends on hardware */
                     json rates = json::array();
@@ -4832,6 +4935,17 @@ void http_api_start(const std::string& webroot)
                  + " timeout=" + std::to_string(gAdminConfig.ollama.timeout_sec) + "s");
     } else if (!gAdminConfig.ollama.enabled) {
         MC1_INFO("Ollama AI disabled in configuration");
+    }
+
+    /* We scan plugin directories for third-party DSP effects at startup */
+    {
+        int n = mc1dsp::PluginLoader::instance().scan_plugins();
+        if (n > 0) {
+            MC1_INFO("Plugin SDK: loaded " + std::to_string(n) + " plugin(s) from "
+                     + std::to_string(mc1dsp::PluginLoader::plugin_directories().size()) + " search dir(s)");
+        } else {
+            MC1_DBG("Plugin SDK: no plugins found in search directories");
+        }
     }
 
     if (!gAdminConfig.enabled || gAdminConfig.num_sockets == 0) {

@@ -75,8 +75,8 @@ static const VtComponentVersion VT_VERSIONS[] = {
 
     {"vt_usb_monitor", "Mcaster1 VoicTune USB Monitor v2.0.0", "2.0.0",
      2, 0, 0, "", "2026-03-27",
-     "USB/BT audio device hotplug detection via inotify on /dev/snd/",
-     "v2.0.0: inotify watch, settle delay, PortAudio re-enumeration, USB/BT device flags."},
+     "USB/BT audio device hotplug detection (Linux: inotify, macOS: periodic polling)",
+     "v2.0.0: inotify watch, settle delay, PortAudio re-enumeration, USB/BT device flags. macOS: periodic poll fallback."},
 
     {"vt_coach", "Mcaster1 VoicTune Voice Coach v2.0.0", "2.0.0",
      2, 0, 0, "", "2026-03-27",

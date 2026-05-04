@@ -96,6 +96,8 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
+build_triplet = x86_64-pc-linux-gnu
+host_triplet = x86_64-pc-linux-gnu
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -164,7 +166,8 @@ am__define_uniq_tagged_files = \
   done | $(am__uniquify_input)`
 DIST_SUBDIRS = $(SUBDIRS)
 am__DIST_COMMON = $(srcdir)/Makefile.in $(srcdir)/config.h.in AUTHORS \
-	README.md compile depcomp install-sh missing
+	README.md compile config.guess config.sub depcomp install-sh \
+	missing
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 distdir = $(PACKAGE)-$(VERSION)
 top_distdir = $(distdir)
@@ -301,14 +304,22 @@ am__quote =
 am__tar = $${TAR-tar} chof - "$$tardir"
 am__untar = $${TAR-tar} xf -
 bindir = ${exec_prefix}/bin
+build = x86_64-pc-linux-gnu
 build_alias = 
+build_cpu = x86_64
+build_os = linux-gnu
+build_vendor = pc
 builddir = .
 datadir = ${datarootdir}
 datarootdir = ${prefix}/share
 docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
 dvidir = ${docdir}
 exec_prefix = ${prefix}
+host = x86_64-pc-linux-gnu
 host_alias = 
+host_cpu = x86_64
+host_os = linux-gnu
+host_vendor = pc
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info

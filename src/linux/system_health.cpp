@@ -15,6 +15,10 @@
 #include "mc1_logger.h"
 #include "../libmcaster1dspencoder/libmcaster1dspencoder.h"
 
+#ifdef MC1_MACOS
+#include "platform_mac.h"
+#endif
+
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -218,8 +222,67 @@ void SystemHealth::write_to_db(const HealthSnapshot& snap)
 }
 
 // ---------------------------------------------------------------------------
-// /proc/ readers
+// /proc/ readers (Linux) / Mach+sysctl readers (macOS)
 // ---------------------------------------------------------------------------
+
+#ifdef MC1_MACOS
+
+// ── macOS implementations using platform_mac.h helpers ──────────────────────
+
+SystemHealth::CpuTicks SystemHealth::read_cpu_ticks()
+{
+    CpuTicks t{};
+    MacCpuTicks mt = mc1_read_cpu_ticks();
+    t.user    = mt.user;
+    t.nice    = mt.nice;
+    t.sys     = mt.sys;
+    t.idle    = mt.idle;
+    t.iowait  = mt.iowait;
+    t.irq     = mt.irq;
+    t.softirq = mt.softirq;
+    return t;
+}
+
+float SystemHealth::cpu_pct_from_ticks(const CpuTicks& t1, const CpuTicks& t2)
+{
+    unsigned long u1 = t1.user + t1.nice + t1.sys + t1.irq + t1.softirq;
+    unsigned long u2 = t2.user + t2.nice + t2.sys + t2.irq + t2.softirq;
+    unsigned long i1 = t1.idle + t1.iowait;
+    unsigned long i2 = t2.idle + t2.iowait;
+    unsigned long du = (u2 > u1) ? (u2 - u1) : 0;
+    unsigned long di = (i2 > i1) ? (i2 - i1) : 0;
+    unsigned long total = du + di;
+    if (total == 0) return 0.0f;
+    return (float)du / (float)total * 100.0f;
+}
+
+void SystemHealth::read_meminfo(int& used_mb, int& total_mb)
+{
+    mc1_read_meminfo(used_mb, total_mb);
+}
+
+SystemHealth::NetBytes SystemHealth::read_net_bytes(const std::string& iface)
+{
+    NetBytes nb{};
+    MacNetBytes mnb = mc1_read_net_bytes(iface);
+    nb.rx = mnb.rx;
+    nb.tx = mnb.tx;
+    return nb;
+}
+
+std::string SystemHealth::detect_net_iface(const std::string& bind_addr)
+{
+    return mc1_detect_net_iface(bind_addr);
+}
+
+int SystemHealth::read_thread_count()
+{
+    return mc1_read_thread_count();
+}
+
+#else // MC1_LINUX (or default)
+
+// ── Linux implementations using /proc/ ──────────────────────────────────────
 
 SystemHealth::CpuTicks SystemHealth::read_cpu_ticks()
 {
@@ -345,3 +408,5 @@ int SystemHealth::read_thread_count()
     }
     return 0;
 }
+
+#endif // MC1_MACOS / MC1_LINUX

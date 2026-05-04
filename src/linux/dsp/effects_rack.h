@@ -15,6 +15,7 @@
 #include "eq.h"
 #include "agc.h"
 #include "effect_versions.h"
+#include "plugin_loader.h"
 
 #include <atomic>
 #include <utility>
@@ -419,6 +420,39 @@ private:
     float compute_integrated();
     float compute_lra();
     float detect_true_peak(float s0, float s1);
+};
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PluginUnit — wraps a third-party C plugin as a DspUnit
+ *
+ * We hold a pointer to the LoadedPlugin (owned by PluginLoader singleton)
+ * and manage one plugin instance via the C API. The plugin's process()
+ * function is called directly on the audio thread.
+ * ══════════════════════════════════════════════════════════════════════════════ */
+class PluginUnit : public DspUnit {
+public:
+    PluginUnit(const LoadedPlugin* plugin, int sample_rate, int channels);
+    ~PluginUnit() override;
+
+    void process(float* pcm, size_t frames, int channels) override;
+    void set_sample_rate(int sr) override;
+    void set_enabled(bool on) override { enabled_ = on; }
+    bool is_enabled() const override { return enabled_; }
+    const char* type_name() const override;
+    json get_params() const override;
+    void set_params(const json& j) override;
+    void reset() override;
+    MeterData get_meters() const override;
+
+private:
+    const LoadedPlugin*   plugin_;         /* owned by PluginLoader — do not free */
+    mc1_plugin_handle_t   instance_;       /* plugin-managed instance */
+    std::string           type_id_;        /* cached for type_name() return */
+    bool                  enabled_ = true;
+    int                   sample_rate_;
+    int                   channels_;
+    std::atomic<float>    meter_input_db_{-96.0f};
+    std::atomic<float>    meter_output_db_{-96.0f};
 };
 
 /* ══════════════════════════════════════════════════════════════════════════════

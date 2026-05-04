@@ -2,8 +2,8 @@
  * Mcaster1 VoicTune — USB/BT Audio Device Hot-Plug Monitor
  * voictune/vt_usb_monitor.h
  *
- * Monitors /dev/snd/ via inotify for USB mic hotplug events.
- * Optionally monitors PulseAudio for Bluetooth audio devices.
+ * Linux:  Monitors /dev/snd/ via inotify for USB mic hotplug events.
+ * macOS:  Uses periodic PortAudio device re-enumeration (no inotify).
  * On device change: re-enumerates PortAudio, notifies via callback.
  *
  * Copyright (c) 2026 David St. John <davestj@gmail.com>
@@ -40,7 +40,8 @@ public:
     UsbAudioMonitor() = default;
     ~UsbAudioMonitor();
 
-    /* Start inotify monitoring thread.
+    /* Start device monitoring thread.
+     * Linux: inotify on /dev/snd/. macOS: periodic PortAudio polling.
      * settle_ms: delay after event before re-enumeration (device init time).
      * cb: called on device add/remove (from monitor thread). */
     void start(DeviceChangeCallback cb, int settle_ms = 500);
@@ -57,8 +58,10 @@ public:
 private:
     std::thread              monitor_thread_;
     std::atomic<bool>        running_{false};
+#ifdef MC1_LINUX
     int                      inotify_fd_ = -1;
     int                      watch_fd_   = -1;
+#endif
     int                      settle_ms_  = 500;
 
     mutable std::shared_mutex devices_mtx_;

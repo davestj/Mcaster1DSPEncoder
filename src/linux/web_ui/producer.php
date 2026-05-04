@@ -789,6 +789,7 @@ input[type="color"].sm-color {
                 <option value="webcam" selected>Webcam</option>
                 <option value="file">Video File</option>
                 <option value="library">Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-0">
                 <select class="form-select" id="camera-0" onchange="onCameraChange(0)" style="margin-bottom:4px">
@@ -815,6 +816,13 @@ input[type="color"].sm-color {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div id="ctrl-ndi-0" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(0)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-0" onchange="onNdiSourceChange(0)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-0" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
+            </div>
         </div>
     </div>
 
@@ -840,6 +848,7 @@ input[type="color"].sm-color {
                 <option value="webcam">Webcam</option>
                 <option value="file" selected>Video File</option>
                 <option value="library">Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-1" style="display:none">
                 <select class="form-select" id="camera-1" onchange="onCameraChange(1)" style="margin-bottom:4px">
@@ -866,6 +875,13 @@ input[type="color"].sm-color {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div id="ctrl-ndi-1" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(1)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-1" onchange="onNdiSourceChange(1)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-1" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
+            </div>
         </div>
     </div>
 
@@ -891,6 +907,7 @@ input[type="color"].sm-color {
                 <option value="webcam">Webcam</option>
                 <option value="file">Video File</option>
                 <option value="library" selected>Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-2" style="display:none">
                 <select class="form-select" id="camera-2" onchange="onCameraChange(2)" style="margin-bottom:4px">
@@ -917,6 +934,13 @@ input[type="color"].sm-color {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div id="ctrl-ndi-2" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(2)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-2" onchange="onNdiSourceChange(2)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-2" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
+            </div>
         </div>
     </div>
 
@@ -942,6 +966,7 @@ input[type="color"].sm-color {
                 <option value="webcam">Webcam</option>
                 <option value="file">Video File</option>
                 <option value="library">Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-3" style="display:none">
                 <select class="form-select" id="camera-3" onchange="onCameraChange(3)" style="margin-bottom:4px">
@@ -964,6 +989,13 @@ input[type="color"].sm-color {
                     <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div id="ctrl-ndi-3" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(3)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-3" onchange="onNdiSourceChange(3)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-3" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
             </div>
         </div>
     </div>
@@ -990,6 +1022,7 @@ input[type="color"].sm-color {
                 <option value="webcam">Webcam</option>
                 <option value="file">Video File</option>
                 <option value="library">Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-4" style="display:none">
                 <select class="form-select" id="camera-4" onchange="onCameraChange(4)" style="margin-bottom:4px">
@@ -1016,6 +1049,13 @@ input[type="color"].sm-color {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div id="ctrl-ndi-4" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(4)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-4" onchange="onNdiSourceChange(4)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-4" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
+            </div>
         </div>
     </div>
 
@@ -1041,6 +1081,7 @@ input[type="color"].sm-color {
                 <option value="webcam">Webcam</option>
                 <option value="file">Video File</option>
                 <option value="library">Media Library</option>
+                <option value="ndi">NDI / Network</option>
             </select>
             <div id="ctrl-webcam-5" style="display:none">
                 <select class="form-select" id="camera-5" onchange="onCameraChange(5)" style="margin-bottom:4px">
@@ -1066,6 +1107,13 @@ input[type="color"].sm-color {
                     <option value="<?= (int)$cat['id'] ?>"><?= h($cat['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+            </div>
+            <div id="ctrl-ndi-5" style="display:none">
+                <button class="btn btn-secondary btn-xs" onclick="ndiDiscover(5)"><i class="fa-solid fa-satellite-dish"></i> Discover Sources</button>
+                <select class="form-select" id="ndi-source-5" onchange="onNdiSourceChange(5)" style="margin-top:4px">
+                    <option value="">-- NDI Source --</option>
+                </select>
+                <span id="ndi-status-5" style="font-size:10px;color:var(--muted);margin-top:2px;display:block"></span>
             </div>
         </div>
     </div>
@@ -1839,6 +1887,7 @@ input[type="color"].sm-color {
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.7/dist/hls.min.js"></script>
 <script src="/js/webgl-video.js"></script>
 <script src="/js/video-producer.js"></script>
 <script src="/js/chat-overlay.js"></script>
@@ -1935,7 +1984,7 @@ function onTypeChange(slot) {
     var type = document.getElementById('type-' + slot).value;
     var src = producer.getSource(slot);
 
-    var panels = ['webcam', 'file', 'library'];
+    var panels = ['webcam', 'file', 'library', 'ndi'];
     for (var i = 0; i < panels.length; i++) {
         var el = document.getElementById('ctrl-' + panels[i] + '-' + slot);
         if (el) el.style.display = (panels[i] === type) ? '' : 'none';
@@ -1962,6 +2011,8 @@ function onTypeChange(slot) {
         if (overlay) { overlay.classList.remove('hidden'); overlay.innerHTML = '<i class="fa-solid fa-film"></i>&nbsp; Click Browse to select'; }
     } else if (type === 'library') {
         if (overlay) { overlay.classList.remove('hidden'); overlay.innerHTML = '<i class="fa-solid fa-photo-film"></i>&nbsp; Select a category'; }
+    } else if (type === 'ndi') {
+        if (overlay) { overlay.classList.remove('hidden'); overlay.innerHTML = '<i class="fa-solid fa-satellite-dish"></i>&nbsp; Click Discover Sources'; }
     } else {
         if (overlay) { overlay.classList.remove('hidden'); overlay.innerHTML = '<i class="fa-solid fa-video-slash"></i>&nbsp; No source'; }
     }
@@ -2084,6 +2135,134 @@ function esc(s) {
     var d = document.createElement('div');
     d.textContent = s;
     return d.innerHTML;
+}
+
+/* -- NDI / Network source management --------------------------------- */
+
+var _ndiSources = [];   /* Cached discover results */
+var _ndiHls = {};       /* slot -> { hlsUrl, hlsPlayer } */
+
+function ndiDiscover(slot) {
+    var statusEl = document.getElementById('ndi-status-' + slot);
+    if (statusEl) statusEl.textContent = 'Scanning network...';
+
+    mc1Api('POST', '/app/api/ndi.php', { action: 'discover' })
+    .then(function(d) {
+        if (!d || !d.ok) {
+            if (statusEl) statusEl.textContent = d.error || 'Discovery failed';
+            mc1Toast('NDI discovery failed', 'err');
+            return;
+        }
+
+        _ndiSources = d.sources || [];
+        var method = d.method || 'none';
+
+        /* We populate the NDI source select for this slot */
+        var sel = document.getElementById('ndi-source-' + slot);
+        if (sel) {
+            sel.innerHTML = '<option value="">-- NDI Source --</option>';
+            for (var i = 0; i < _ndiSources.length; i++) {
+                var s = _ndiSources[i];
+                var opt = document.createElement('option');
+                opt.value = s.url || s.name;
+                opt.textContent = s.name + (s.ip ? ' (' + s.ip + ')' : '');
+                opt.setAttribute('data-type', s.type || 'ndi');
+                sel.appendChild(opt);
+            }
+        }
+
+        /* We also add saved network sources from DB */
+        mc1Api('POST', '/app/api/ndi.php', { action: 'list_sources' })
+        .then(function(db) {
+            if (db && db.ok && db.sources) {
+                for (var j = 0; j < db.sources.length; j++) {
+                    var ns = db.sources[j];
+                    /* We skip if already in discovered list */
+                    var dupe = false;
+                    for (var k = 0; k < _ndiSources.length; k++) {
+                        if (_ndiSources[k].url === ns.url) { dupe = true; break; }
+                    }
+                    if (dupe) continue;
+                    var opt2 = document.createElement('option');
+                    opt2.value = ns.url;
+                    opt2.textContent = ns.name + ' [' + ns.type + '] (saved)';
+                    opt2.setAttribute('data-type', ns.type);
+                    if (sel) sel.appendChild(opt2);
+                }
+            }
+        }).catch(function() {});
+
+        var msg = d.count + ' source(s) found';
+        if (method === 'avahi_mdns') msg += ' (mDNS fallback)';
+        if (method === 'none') msg = 'No sources found — try manual URL';
+        if (statusEl) statusEl.textContent = msg;
+        mc1Toast('NDI: ' + msg, d.count > 0 ? 'ok' : 'warn');
+    })
+    .catch(function(e) {
+        if (statusEl) statusEl.textContent = 'Discovery error';
+        mc1Toast('NDI discovery error: ' + (e.message || e), 'err');
+    });
+}
+
+function onNdiSourceChange(slot) {
+    var sel = document.getElementById('ndi-source-' + slot);
+    if (!sel || !sel.value) return;
+
+    var sourceUrl = sel.value;
+    var sourceName = sel.options[sel.selectedIndex].textContent;
+    var sourceType = sel.options[sel.selectedIndex].getAttribute('data-type') || 'ndi';
+    var statusEl = document.getElementById('ndi-status-' + slot);
+    var overlay = document.getElementById('overlay-' + slot);
+    var src = producer.getSource(slot);
+
+    if (statusEl) statusEl.textContent = 'Starting preview...';
+
+    /* We stop any existing NDI preview for this slot */
+    if (_ndiHls[slot]) {
+        ndiStopPreview(slot);
+    }
+
+    /* We request an HLS preview from the server via ffmpeg */
+    mc1Api('POST', '/app/api/ndi.php', {
+        action: 'preview',
+        url:    sourceUrl,
+        type:   sourceType,
+        name:   'slot_' + slot
+    }).then(function(d) {
+        if (!d || !d.ok) {
+            if (statusEl) statusEl.textContent = d.error || 'Preview failed';
+            mc1Toast('NDI preview failed', 'err');
+            return;
+        }
+
+        /* We use HLS.js to play the preview into a hidden video element,
+         * then draw frames to the WebGL canvas via setNDISource */
+        var hlsUrl = d.hls_url;
+        if (statusEl) statusEl.textContent = 'Preview active (HLS)';
+
+        src.setNDISource(hlsUrl);
+        if (overlay) overlay.classList.add('hidden');
+        updateBadges();
+
+        _ndiHls[slot] = { hlsUrl: hlsUrl, name: 'slot_' + slot };
+        mc1Toast('NDI source connected: ' + sourceName, 'ok');
+
+    }).catch(function(e) {
+        if (statusEl) statusEl.textContent = 'Preview error';
+        mc1Toast('NDI preview error: ' + (e.message || e), 'err');
+    });
+}
+
+function ndiStopPreview(slot) {
+    var info = _ndiHls[slot];
+    if (!info) return;
+
+    mc1Api('POST', '/app/api/ndi.php', {
+        action: 'stop_preview',
+        name: info.name
+    }).catch(function() {});
+
+    delete _ndiHls[slot];
 }
 
 /* -- PGM / PVW bus control ------------------------------------------- */

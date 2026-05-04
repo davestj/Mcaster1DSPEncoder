@@ -174,6 +174,74 @@ VideoSource.prototype._nextLibraryTrack = function() {
     this._playLibraryTrack();
 };
 
+/* -- NDI / Network Source (HLS preview) ------------------------------- */
+
+VideoSource.prototype.setNDISource = function(hlsUrl) {
+    this.stop();
+    this.type = 'ndi';
+
+    if (!this.videoEl) {
+        this.videoEl = document.createElement('video');
+        this.videoEl.setAttribute('playsinline', '');
+    }
+    this.videoEl.muted = true;
+    this.videoEl.srcObject = null;
+
+    var self = this;
+
+    /* We use HLS.js if available (most browsers except Safari which has native HLS) */
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        if (this._hlsInstance) {
+            this._hlsInstance.destroy();
+        }
+        this._hlsInstance = new Hls({
+            enableWorker: true,
+            lowLatencyMode: true,
+            liveSyncDurationCount: 3
+        });
+        this._hlsInstance.loadSource(hlsUrl);
+        this._hlsInstance.attachMedia(this.videoEl);
+        this._hlsInstance.on(Hls.Events.MANIFEST_PARSED, function() {
+            self.videoEl.play().catch(function() {});
+        });
+        this._hlsInstance.on(Hls.Events.ERROR, function(event, data) {
+            if (data.fatal) {
+                console.error('HLS fatal error for NDI source:', data.type, data.details);
+                /* We attempt recovery */
+                if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                    self._hlsInstance.startLoad();
+                } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+                    self._hlsInstance.recoverMediaError();
+                }
+            }
+        });
+    } else if (this.videoEl.canPlayType('application/vnd.apple.mpegurl')) {
+        /* Safari native HLS */
+        this.videoEl.src = hlsUrl;
+        this.videoEl.load();
+        this.videoEl.play().catch(function() {});
+    } else {
+        console.warn('HLS not supported in this browser for NDI preview');
+        return;
+    }
+
+    this._startRender();
+};
+
+VideoSource.prototype.stopNDI = function() {
+    if (this._hlsInstance) {
+        this._hlsInstance.destroy();
+        this._hlsInstance = null;
+    }
+};
+
+/* Override stop to also clean up HLS */
+var _origStop = VideoSource.prototype.stop;
+VideoSource.prototype.stop = function() {
+    this.stopNDI();
+    _origStop.call(this);
+};
+
 /* -- Render Loop ----------------------------------------------------- */
 
 VideoSource.prototype._startRender = function() {

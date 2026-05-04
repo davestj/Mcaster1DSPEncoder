@@ -962,6 +962,94 @@ require_once __DIR__ . '/app/inc/header.php';
   </div>
 
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     NDI / NETWORK SOURCES
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-satellite-dish fa-fw"></i> NDI / Network Sources
+      <span class="badge badge-red" style="margin-left:6px">Admin Only</span>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="btn btn-secondary btn-sm" onclick="ndiScanNetwork()"><i class="fa-solid fa-radar"></i> Scan Network</button>
+      <button class="btn btn-primary btn-sm" onclick="ndiAddManual()"><i class="fa-solid fa-plus"></i> Add Source</button>
+    </div>
+  </div>
+
+  <!-- NDI support status -->
+  <div id="ndi-support-status" style="padding:10px 16px;font-size:12px;color:var(--muted)">
+    <div class="spinner" style="width:16px;height:16px;display:inline-block;vertical-align:middle"></div>
+    Checking NDI support...
+  </div>
+
+  <!-- Discovered sources -->
+  <div id="ndi-discovered" style="display:none;padding:0 16px 12px">
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);margin-bottom:6px;letter-spacing:.04em">Discovered Sources</div>
+    <div id="ndi-discovered-list"></div>
+  </div>
+
+  <!-- Saved network sources table -->
+  <div id="ndi-saved-wrap">
+    <div class="tbl-wrap">
+      <table id="ndi-sources-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>URL</th>
+            <th>Active</th>
+            <th>Last Seen</th>
+            <th style="width:120px">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="ndi-sources-body">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- NDI Add/Edit Modal -->
+<div id="ndi-modal" style="display:none;position:fixed;inset:0;z-index:8100;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);overflow-y:auto;padding:24px 16px">
+  <div style="max-width:520px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 20px 60px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--border)">
+      <div style="font-size:15px;font-weight:700;color:var(--text)" id="ndi-modal-title">Add Network Source</div>
+      <button class="btn-icon" onclick="ndiCloseModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="padding:20px 24px">
+      <input type="hidden" id="ndi-edit-id" value="0">
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">Name</label>
+        <input class="form-input" id="ndi-edit-name" placeholder="OBS Studio PC">
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">Type</label>
+        <select class="form-select" id="ndi-edit-type">
+          <option value="ndi">NDI</option>
+          <option value="mpeg_ts">MPEG-TS (UDP/TCP)</option>
+          <option value="rtsp">RTSP</option>
+          <option value="srt">SRT</option>
+          <option value="http">HTTP / HLS</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:.04em">URL</label>
+        <input class="form-input" id="ndi-edit-url" placeholder="udp://239.0.0.1:1234 or rtsp://192.168.1.50/stream">
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">
+          NDI: source name &mdash; MPEG-TS: udp://ip:port &mdash; RTSP: rtsp://ip/path &mdash; SRT: srt://ip:port &mdash; HTTP: http(s)://url
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn btn-secondary btn-sm" onclick="ndiCloseModal()">Cancel</button>
+        <button class="btn btn-primary btn-sm" onclick="ndiSaveSource()"><i class="fa-solid fa-check"></i> Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <?php endif; // can_admin ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════
@@ -1066,6 +1154,21 @@ require_once __DIR__ . '/app/inc/header.php';
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════════════════
+     PLUGINS — Third-Party DSP Effect Plugins
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div class="card" style="margin-top:4px" data-mc1-mode="broadcast,producer,daw">
+  <div class="card-hdr">
+    <div class="card-title">
+      <i class="fa-solid fa-puzzle-piece fa-fw"></i> DSP Plugins
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="pluginScan()"><i class="fa-solid fa-rotate"></i> Scan for Plugins</button>
+  </div>
+  <div id="plugins-body">
+    <div class="empty" style="padding:18px;color:var(--muted)"><div class="spinner"></div> Loading plugins...</div>
+  </div>
+</div>
+
 <script>
 (function(){
 
@@ -1128,7 +1231,91 @@ document.addEventListener('DOMContentLoaded', function() {
   setInterval(hlsRefresh, 15000);
 <?php endif; ?>
 
+  /* ── Load plugins ── */
+  pluginLoad();
+
 }); /* end DOMContentLoaded */
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Plugin Management
+ * ─────────────────────────────────────────────────────────────────────────*/
+window.pluginLoad = function() {
+  mc1Api('GET', '/api/v1/plugins').then(function(d) {
+    var el = document.getElementById('plugins-body');
+    if (!el) return;
+    if (!d.ok) {
+      el.innerHTML = '<div class="empty" style="padding:18px;color:var(--red)">Error loading plugins</div>';
+      return;
+    }
+    var plugins = d.plugins || [];
+    var dirs = d.search_dirs || [];
+    if (plugins.length === 0) {
+      el.innerHTML = '<div style="padding:18px">'
+        + '<div style="color:var(--muted);font-size:13px;margin-bottom:12px">No plugins installed.</div>'
+        + '<div style="font-size:11px;color:var(--muted)">'
+        + '<div style="font-weight:700;margin-bottom:4px">Plugin search directories:</div>'
+        + dirs.map(function(d) { return '<div style="font-family:var(--font-mono);font-size:11px;padding:2px 0">' + esc(d) + '</div>'; }).join('')
+        + '</div>'
+        + '<div style="margin-top:12px;font-size:11px;color:var(--muted)">Place <code>.so</code> plugin files in any directory above, then click <strong>Scan for Plugins</strong>.</div>'
+        + '</div>';
+      return;
+    }
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      + '<thead><tr style="border-bottom:1px solid var(--border)">'
+      + '<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Plugin</th>'
+      + '<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Version</th>'
+      + '<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Author</th>'
+      + '<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Params</th>'
+      + '<th style="padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Path</th>'
+      + '<th style="padding:10px 12px;text-align:center;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">Enabled</th>'
+      + '</tr></thead><tbody>';
+    plugins.forEach(function(p) {
+      var tid = esc(p.type_id);
+      html += '<tr style="border-bottom:1px solid var(--border)">'
+        + '<td style="padding:10px 12px"><div style="font-weight:600;color:var(--text)">' + esc(p.display_name) + '</div>'
+        + '<div style="font-size:11px;color:var(--muted);font-family:var(--font-mono)">' + tid + '</div>';
+      if (p.description) html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + esc(p.description) + '</div>';
+      html += '</td>'
+        + '<td style="padding:10px 12px"><span class="badge badge-teal">' + esc(p.version) + '</span></td>'
+        + '<td style="padding:10px 12px;color:var(--text)">' + esc(p.author) + '</td>'
+        + '<td style="padding:10px 12px"><span class="badge badge-gray">' + (p.param_count || 0) + '</span></td>'
+        + '<td style="padding:10px 12px;font-family:var(--font-mono);font-size:11px;color:var(--muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(p.path) + '">' + esc(p.path) + '</td>'
+        + '<td style="padding:10px 12px;text-align:center">'
+        + '<label style="cursor:pointer"><input type="checkbox" ' + (p.enabled ? 'checked' : '')
+        + ' onchange="pluginToggle(\'' + tid + '\', this.checked)"></label>'
+        + '</td></tr>';
+    });
+    html += '</tbody></table>'
+      + '<div style="padding:10px 12px;font-size:11px;color:var(--muted)">' + plugins.length + ' plugin(s) loaded from '
+      + dirs.length + ' search director' + (dirs.length === 1 ? 'y' : 'ies') + '</div>';
+    el.innerHTML = html;
+  }).catch(function() {
+    var el = document.getElementById('plugins-body');
+    if (el) el.innerHTML = '<div class="empty" style="padding:18px;color:var(--muted)">Could not load plugins</div>';
+  });
+};
+
+window.pluginScan = function() {
+  mc1Api('POST', '/api/v1/plugins/scan').then(function(d) {
+    if (d.ok) {
+      mc1Toast('Plugin scan complete: ' + d.newly_loaded + ' new, ' + d.total_plugins + ' total', d.newly_loaded > 0 ? 'ok' : 'info');
+      pluginLoad();
+    } else {
+      mc1Toast(d.error || 'Scan failed', 'err');
+    }
+  }).catch(function() { mc1Toast('Plugin scan request failed', 'err'); });
+};
+
+window.pluginToggle = function(typeId, enabled) {
+  mc1Api('PUT', '/api/v1/plugins/' + encodeURIComponent(typeId) + '/enabled', { enabled: enabled }).then(function(d) {
+    if (d.ok) {
+      mc1Toast('Plugin ' + typeId + (enabled ? ' enabled' : ' disabled'), 'ok');
+    } else {
+      mc1Toast(d.error || 'Toggle failed', 'err');
+      pluginLoad(); /* reload to restore UI state */
+    }
+  }).catch(function() { mc1Toast('Request failed', 'err'); });
+};
 
 <?php if ($can_admin): ?>
 
@@ -2823,6 +3010,216 @@ window.aiSaveConfig = function() {
     }
   }).catch(function() { mc1Toast('Request failed', 'err'); });
 };
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * NDI / Network Sources management
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+<?php if ($can_admin): ?>
+
+(function() {
+  /* We check NDI support status on page load */
+  function ndiCheckSupport() {
+    mc1Api('POST', '/app/api/ndi.php', { action: 'check_support' }).then(function(d) {
+      var el = document.getElementById('ndi-support-status');
+      if (!el) return;
+      if (!d || !d.ok) {
+        el.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:var(--red)"></i> NDI check failed';
+        return;
+      }
+      var parts = [];
+      parts.push('ffmpeg: ' + (d.ffmpeg_found ? '<span style="color:var(--green)">found</span>' : '<span style="color:var(--red)">not found</span>'));
+      parts.push('NDI support: ' + (d.ndi_supported ? '<span style="color:var(--green)">yes</span>' : '<span style="color:var(--red)">no</span>'));
+      parts.push('avahi: ' + (d.avahi_found ? '<span style="color:var(--green)">found</span>' : '<span style="color:var(--muted)">not found</span>'));
+      if (d.fallback_mode) {
+        parts.push('<span style="color:var(--yellow)">NDI SDK not installed &mdash; using network stream fallback</span>');
+      }
+      el.innerHTML = '<i class="fa-solid fa-circle-info" style="color:var(--teal)"></i> ' + parts.join(' &bull; ');
+    }).catch(function() {
+      var el = document.getElementById('ndi-support-status');
+      if (el) el.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:var(--red)"></i> NDI check request failed';
+    });
+  }
+
+  /* We load saved network sources from DB */
+  function ndiLoadSources() {
+    mc1Api('POST', '/app/api/ndi.php', { action: 'list_sources' }).then(function(d) {
+      var body = document.getElementById('ndi-sources-body');
+      if (!body) return;
+      if (!d || !d.ok || !d.sources || d.sources.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px"><i class="fa-solid fa-satellite-dish"></i> No saved network sources</td></tr>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < d.sources.length; i++) {
+        var s = d.sources[i];
+        var typeBadge = '<span class="badge badge-' + (s.type === 'ndi' ? 'green' : 'blue') + '">' + esc(s.type) + '</span>';
+        var activeDot = s.is_active ? '<span class="srv-dot online"></span>Active' : '<span class="srv-dot offline"></span>Inactive';
+        html += '<tr>'
+          + '<td style="font-weight:600">' + esc(s.name) + '</td>'
+          + '<td>' + typeBadge + '</td>'
+          + '<td class="td-mono" style="font-size:11px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(s.url) + '">' + esc(s.url) + '</td>'
+          + '<td>' + activeDot + '</td>'
+          + '<td style="font-size:11px;color:var(--muted)">' + (s.last_seen_at || '&mdash;') + '</td>'
+          + '<td>'
+          + '  <button class="btn btn-secondary btn-xs" onclick="ndiPreviewSource(' + s.id + ',' + esc(JSON.stringify(s.name)) + ',' + esc(JSON.stringify(s.url)) + ',' + esc(JSON.stringify(s.type)) + ')"><i class="fa-solid fa-eye"></i></button>'
+          + '  <button class="btn btn-secondary btn-xs" onclick="ndiEditSource(' + s.id + ',' + esc(JSON.stringify(s.name)) + ',' + esc(JSON.stringify(s.type)) + ',' + esc(JSON.stringify(s.url)) + ')"><i class="fa-solid fa-pen"></i></button>'
+          + '  <button class="btn btn-secondary btn-xs" style="color:var(--red)" onclick="ndiDeleteSource(' + s.id + ',' + esc(JSON.stringify(s.name)) + ')"><i class="fa-solid fa-trash"></i></button>'
+          + '</td>'
+          + '</tr>';
+      }
+      body.innerHTML = html;
+    }).catch(function() {
+      var body = document.getElementById('ndi-sources-body');
+      if (body) body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--red);padding:20px">Failed to load sources</td></tr>';
+    });
+  }
+
+  /* We expose functions to window for onclick handlers */
+  window.ndiScanNetwork = function() {
+    var list = document.getElementById('ndi-discovered-list');
+    var wrap = document.getElementById('ndi-discovered');
+    if (list) list.innerHTML = '<div class="spinner" style="margin:10px auto"></div>';
+    if (wrap) wrap.style.display = '';
+
+    mc1Api('POST', '/app/api/ndi.php', { action: 'discover' }).then(function(d) {
+      if (!d || !d.ok) {
+        if (list) list.innerHTML = '<div style="color:var(--red);font-size:12px">' + esc(d.error || 'Discovery failed') + '</div>';
+        return;
+      }
+      var sources = d.sources || [];
+      if (sources.length === 0) {
+        if (list) list.innerHTML = '<div style="color:var(--muted);font-size:12px">No NDI sources discovered on the network. You can add manual network sources using the Add Source button.</div>';
+        return;
+      }
+      var html = '';
+      for (var i = 0; i < sources.length; i++) {
+        var s = sources[i];
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">'
+          + '<span class="srv-dot online"></span>'
+          + '<span style="font-weight:600;font-size:12px">' + esc(s.name) + '</span>'
+          + (s.ip ? '<span style="font-size:11px;color:var(--muted)">' + esc(s.ip) + '</span>' : '')
+          + '<span class="badge badge-green" style="font-size:9px">' + esc(s.type || 'ndi') + '</span>'
+          + '<div style="flex:1"></div>'
+          + '<button class="btn btn-primary btn-xs" onclick="ndiSaveDiscovered(' + esc(JSON.stringify(s.name)) + ',' + esc(JSON.stringify(s.type || 'ndi')) + ',' + esc(JSON.stringify(s.url || s.name)) + ')"><i class="fa-solid fa-plus"></i> Save</button>'
+          + '</div>';
+      }
+      if (list) list.innerHTML = html;
+      mc1Toast(sources.length + ' NDI source(s) discovered', 'ok');
+    }).catch(function() {
+      if (list) list.innerHTML = '<div style="color:var(--red);font-size:12px">Discovery request failed</div>';
+    });
+  };
+
+  window.ndiSaveDiscovered = function(name, type, url) {
+    mc1Api('POST', '/app/api/ndi.php', { action: 'save_source', name: name, type: type, url: url }).then(function(d) {
+      if (d && d.ok) {
+        mc1Toast('Source saved: ' + name, 'ok');
+        ndiLoadSources();
+      } else {
+        mc1Toast(d.error || 'Save failed', 'err');
+      }
+    }).catch(function() { mc1Toast('Request failed', 'err'); });
+  };
+
+  window.ndiAddManual = function() {
+    document.getElementById('ndi-edit-id').value = '0';
+    document.getElementById('ndi-edit-name').value = '';
+    document.getElementById('ndi-edit-type').value = 'mpeg_ts';
+    document.getElementById('ndi-edit-url').value = '';
+    document.getElementById('ndi-modal-title').textContent = 'Add Network Source';
+    document.getElementById('ndi-modal').style.display = '';
+  };
+
+  window.ndiEditSource = function(id, name, type, url) {
+    document.getElementById('ndi-edit-id').value = String(id);
+    document.getElementById('ndi-edit-name').value = name;
+    document.getElementById('ndi-edit-type').value = type;
+    document.getElementById('ndi-edit-url').value = url;
+    document.getElementById('ndi-modal-title').textContent = 'Edit Network Source';
+    document.getElementById('ndi-modal').style.display = '';
+  };
+
+  window.ndiCloseModal = function() {
+    document.getElementById('ndi-modal').style.display = 'none';
+  };
+
+  window.ndiSaveSource = function() {
+    var id   = parseInt(document.getElementById('ndi-edit-id').value) || 0;
+    var name = document.getElementById('ndi-edit-name').value.trim();
+    var type = document.getElementById('ndi-edit-type').value;
+    var url  = document.getElementById('ndi-edit-url').value.trim();
+
+    if (!name || !url) {
+      mc1Toast('Name and URL are required', 'warn');
+      return;
+    }
+
+    mc1Api('POST', '/app/api/ndi.php', { action: 'save_source', id: id, name: name, type: type, url: url }).then(function(d) {
+      if (d && d.ok) {
+        mc1Toast('Network source saved', 'ok');
+        ndiCloseModal();
+        ndiLoadSources();
+      } else {
+        mc1Toast(d.error || 'Save failed', 'err');
+      }
+    }).catch(function() { mc1Toast('Request failed', 'err'); });
+  };
+
+  window.ndiDeleteSource = function(id, name) {
+    if (!confirm('Delete network source "' + name + '"?')) return;
+    mc1Api('POST', '/app/api/ndi.php', { action: 'delete_source', id: id }).then(function(d) {
+      if (d && d.ok) {
+        mc1Toast('Source deleted', 'ok');
+        ndiLoadSources();
+      } else {
+        mc1Toast(d.error || 'Delete failed', 'err');
+      }
+    }).catch(function() { mc1Toast('Request failed', 'err'); });
+  };
+
+  window.ndiPreviewSource = function(id, name, url, type) {
+    mc1Toast('Starting preview for: ' + name + '...', 'info');
+    mc1Api('POST', '/app/api/ndi.php', { action: 'preview', url: url, type: type, name: name }).then(function(d) {
+      if (d && d.ok && d.hls_url) {
+        /* We open a simple HLS preview in a small popup */
+        var w = window.open('', 'ndi_preview_' + id, 'width=720,height=440,resizable=yes');
+        if (w) {
+          w.document.write('<!DOCTYPE html><html><head><title>NDI Preview: ' + name + '</title>'
+            + '<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"><\/script>'
+            + '<style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;height:100vh}video{max-width:100%;max-height:100%}</style></head>'
+            + '<body><video id="v" controls autoplay></video>'
+            + '<script>'
+            + 'var video=document.getElementById("v");'
+            + 'if(typeof Hls!=="undefined"&&Hls.isSupported()){'
+            + 'var hls=new Hls();hls.loadSource("' + d.hls_url + '");hls.attachMedia(video);'
+            + 'hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play();});'
+            + '}else if(video.canPlayType("application/vnd.apple.mpegurl")){'
+            + 'video.src="' + d.hls_url + '";video.play();}'
+            + '<\/script></body></html>');
+          w.document.close();
+        }
+        mc1Toast('Preview started for: ' + name, 'ok');
+      } else {
+        mc1Toast(d.error || 'Preview failed', 'err');
+      }
+    }).catch(function() { mc1Toast('Preview request failed', 'err'); });
+  };
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  /* We initialize on DOMContentLoaded */
+  document.addEventListener('DOMContentLoaded', function() {
+    ndiCheckSupport();
+    ndiLoadSources();
+  });
+})();
+
+<?php endif; // can_admin ?>
 
 })();
 </script>

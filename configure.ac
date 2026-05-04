@@ -21,6 +21,35 @@ AC_LANG([C++])
 dnl AX_CXX_COMPILE_STDCXX is from autoconf-archive (ax_cxx_compile_stdcxx.m4)
 AX_CXX_COMPILE_STDCXX([17], [noext], [mandatory])
 
+dnl ── Platform detection ──────────────────────────────────────────────────────
+AC_CANONICAL_HOST
+case "$host_os" in
+    darwin*)
+        AC_DEFINE([MC1_MACOS], [1], [Building on macOS])
+        MACOS_BUILD=yes
+        dnl Homebrew on Apple Silicon installs to /opt/homebrew, Intel to /usr/local
+        CPPFLAGS="$CPPFLAGS -I/opt/homebrew/include -I/usr/local/include"
+        LDFLAGS="$LDFLAGS -L/opt/homebrew/lib -L/usr/local/lib"
+        PKG_CONFIG_PATH="/opt/homebrew/lib/pkgconfig:/usr/local/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        dnl OpenSSL from Homebrew needs explicit path (keg-only)
+        PKG_CONFIG_PATH="/opt/homebrew/opt/openssl@3/lib/pkgconfig:/usr/local/opt/openssl@3/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        dnl MariaDB connector from Homebrew
+        PKG_CONFIG_PATH="/opt/homebrew/opt/mariadb-connector-c/lib/pkgconfig:/usr/local/opt/mariadb-connector-c/lib/pkgconfig:${PKG_CONFIG_PATH}"
+        export PKG_CONFIG_PATH
+        ;;
+    linux*)
+        AC_DEFINE([MC1_LINUX], [1], [Building on Linux])
+        MACOS_BUILD=no
+        ;;
+    *)
+        AC_MSG_WARN([Unknown host OS: $host_os — assuming Linux-like])
+        AC_DEFINE([MC1_LINUX], [1], [Building on Linux])
+        MACOS_BUILD=no
+        ;;
+esac
+AM_CONDITIONAL([MC1_MACOS], [test "x$MACOS_BUILD" = "xyes"])
+AM_CONDITIONAL([MC1_LINUX], [test "x$MACOS_BUILD" != "xyes"])
+
 dnl ── Basic OS / library checks ────────────────────────────────────────────────
 AC_CHECK_HEADERS([unistd.h pthread.h])
 AC_SEARCH_LIBS([pthread_create], [pthread], [],
@@ -233,6 +262,10 @@ AC_OUTPUT
 
 echo ""
 echo "── Mcaster1 DSP Encoder v2.0.0 configuration ───────────────────────"
+echo "   Platform    : ${host_os}"
+AS_IF([test "x$MACOS_BUILD" = "xyes"],
+    [echo "   macOS build : yes (CoreAudio via PortAudio)"],
+    [echo "   macOS build : no (Linux native)"])
 echo "   Prefix      : $(eval echo ${prefix})"
 echo "   Web UI dir  : $(eval echo ${WEBROOT})"
 echo "   OpenSSL     : yes"

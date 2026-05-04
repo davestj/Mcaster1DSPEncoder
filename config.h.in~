@@ -72,6 +72,12 @@
 /* libvorbis available */
 #undef HAVE_VORBIS
 
+/* Building on Linux */
+#undef MC1_LINUX
+
+/* Building on macOS */
+#undef MC1_MACOS
+
 /* Default Ollama API endpoint URL */
 #undef OLLAMA_DEFAULT_ENDPOINT
 

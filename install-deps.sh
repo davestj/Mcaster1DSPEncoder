@@ -254,8 +254,8 @@ brew)
 
     AUDIO_DEPS=(
         openssl@3 libyaml mariadb-connector-c portaudio
-        lame libvorbis libogg flac opus opusfile
-        mpg123 ffmpeg taglib
+        lame libvorbis libogg flac opus opusfile libopusenc
+        mpg123 ffmpeg taglib libsndfile jack
     )
 
     echo "  Installing build tools..."
@@ -265,11 +265,24 @@ brew)
         echo "  Installing audio + codec libraries..."
         brew install "${AUDIO_DEPS[@]}"
 
-        # Ensure PKG_CONFIG_PATH is set for Homebrew-installed libs
+        # fdk-aac: try Homebrew first, fall back to manual build
+        echo "  Attempting fdk-aac install..."
+        brew install fdk-aac 2>/dev/null || {
+            echo "  WARNING: fdk-aac not available via Homebrew."
+            echo "  To enable AAC encoding, build from source (see below)."
+        }
+
+        # Set up PKG_CONFIG_PATH for the current shell
+        BREW_PREFIX="$(brew --prefix)"
+        export PKG_CONFIG_PATH="${BREW_PREFIX}/opt/openssl@3/lib/pkgconfig:${BREW_PREFIX}/opt/mariadb-connector-c/lib/pkgconfig:${PKG_CONFIG_PATH}"
+
         echo ""
         echo "  NOTE (macOS): Add these lines to ~/.zshrc or ~/.bash_profile:"
         echo "    export PKG_CONFIG_PATH=\"\$(brew --prefix openssl@3)/lib/pkgconfig:\$PKG_CONFIG_PATH\""
         echo "    export PKG_CONFIG_PATH=\"\$(brew --prefix mariadb-connector-c)/lib/pkgconfig:\$PKG_CONFIG_PATH\""
+        echo ""
+        echo "  Build command:"
+        echo "    ./autogen.sh && ./configure && make -j\$(sysctl -n hw.ncpu)"
     fi
     ;;
 

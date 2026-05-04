@@ -1169,6 +1169,13 @@ std::unique_ptr<DspUnit> EffectsRack::create_unit(const std::string& type) {
     if (type == "reverb")     return std::make_unique<ReverbUnit>();
     if (type == "delay")      return std::make_unique<DelayUnit>();
     if (type == "loudness")   return std::make_unique<LoudnessUnit>();
+
+    /* We check loaded plugins for a matching type_id */
+    const auto* plugin = PluginLoader::instance().find(type);
+    if (plugin && plugin->enabled) {
+        return std::make_unique<PluginUnit>(plugin, 44100, 2);
+    }
+
     return nullptr;
 }
 
@@ -1190,6 +1197,24 @@ json EffectsRack::available_types() {
         if (vi->is_stub) entry["stub"] = true;
         arr.push_back(entry);
     }
+
+    /* We append loaded third-party plugins to the available types list */
+    auto plugins = PluginLoader::instance().get_all();
+    for (const auto& p : plugins) {
+        if (!p.enabled) continue;
+        json entry;
+        entry["type"]         = p.info.type_id ? p.info.type_id : "";
+        entry["name"]         = p.info.display_name ? p.info.display_name : "";
+        entry["short_name"]   = p.info.display_name ? p.info.display_name : "";
+        entry["version"]      = p.info.version ? p.info.version : "0.0.0";
+        entry["release_date"] = "";
+        entry["description"]  = p.info.description ? p.info.description : "";
+        entry["changelog"]    = "";
+        entry["is_plugin"]    = true;
+        entry["author"]       = p.info.author ? p.info.author : "";
+        arr.push_back(entry);
+    }
+
     return arr;
 }
 
@@ -1212,6 +1237,29 @@ json EffectsRack::all_effect_versions() {
             {"is_stub",      vi.is_stub}
         });
     }
+
+    /* We append loaded third-party plugins to the version list */
+    auto plugins = PluginLoader::instance().get_all();
+    for (const auto& p : plugins) {
+        arr.push_back({
+            {"type",         p.info.type_id ? p.info.type_id : ""},
+            {"brand_name",   p.info.display_name ? p.info.display_name : ""},
+            {"short_name",   p.info.display_name ? p.info.display_name : ""},
+            {"version",      p.info.version ? p.info.version : "0.0.0"},
+            {"ver_major",    0},
+            {"ver_minor",    0},
+            {"ver_patch",    0},
+            {"release_date", ""},
+            {"description",  p.info.description ? p.info.description : ""},
+            {"changelog",    ""},
+            {"is_stub",      false},
+            {"is_plugin",    true},
+            {"author",       p.info.author ? p.info.author : ""},
+            {"path",         p.path},
+            {"enabled",      p.enabled}
+        });
+    }
+
     return arr;
 }
 
@@ -1331,6 +1379,122 @@ void EffectsRack::set_routing(const std::vector<RoutingEntry>& routing) {
     }
 
     chain_ = std::move(reordered);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * PluginUnit — wraps third-party C plugin API as a DspUnit
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+PluginUnit::PluginUnit(const LoadedPlugin* plugin, int sample_rate, int channels)
+    : plugin_(plugin)
+    , instance_(nullptr)
+    , type_id_(plugin->info.type_id ? plugin->info.type_id : "")
+    , sample_rate_(sample_rate)
+    , channels_(channels)
+{
+    if (plugin_->fn_create) {
+        instance_ = plugin_->fn_create(sample_rate, channels);
+    }
+}
+
+PluginUnit::~PluginUnit() {
+    if (instance_ && plugin_ && plugin_->fn_destroy) {
+        plugin_->fn_destroy(instance_);
+        instance_ = nullptr;
+    }
+}
+
+void PluginUnit::process(float* pcm, size_t frames, int channels) {
+    if (!enabled_ || !instance_ || !plugin_ || !plugin_->fn_process) return;
+
+    /* We measure input level for metering */
+    float in_peak = peak_db(pcm, frames, channels);
+    meter_input_db_.store(in_peak, std::memory_order_relaxed);
+
+    /* We delegate to the plugin's process function */
+    plugin_->fn_process(instance_, pcm, frames, channels);
+
+    /* We measure output level for metering */
+    float out_peak = peak_db(pcm, frames, channels);
+    meter_output_db_.store(out_peak, std::memory_order_relaxed);
+}
+
+void PluginUnit::set_sample_rate(int sr) {
+    /* We must recreate the plugin instance at the new sample rate */
+    if (instance_ && plugin_ && plugin_->fn_destroy) {
+        plugin_->fn_destroy(instance_);
+        instance_ = nullptr;
+    }
+    sample_rate_ = sr;
+    if (plugin_ && plugin_->fn_create) {
+        instance_ = plugin_->fn_create(sr, channels_);
+    }
+}
+
+const char* PluginUnit::type_name() const {
+    return type_id_.c_str();
+}
+
+json PluginUnit::get_params() const {
+    json j;
+    j["enabled"] = enabled_;
+    j["is_plugin"] = true;
+    j["plugin_name"] = plugin_->info.display_name ? plugin_->info.display_name : "";
+    j["plugin_version"] = plugin_->info.version ? plugin_->info.version : "";
+
+    /* We read all parameter values from the plugin instance */
+    if (plugin_->params && plugin_->param_count > 0 && instance_) {
+        json params = json::object();
+        for (int i = 0; i < plugin_->param_count; ++i) {
+            const auto& pd = plugin_->params[i];
+            if (pd.key) {
+                float val = plugin_->fn_get ? plugin_->fn_get(instance_, pd.key) : pd.default_val;
+                params[pd.key] = val;
+            }
+        }
+        j["params"] = params;
+    }
+
+    return j;
+}
+
+void PluginUnit::set_params(const json& j) {
+    if (j.contains("enabled")) enabled_ = j["enabled"].get<bool>();
+
+    /* We set parameter values on the plugin instance */
+    if (instance_ && plugin_->fn_set) {
+        /* We support flat key:value format: {"gain": 1.5, "mix": 0.7} */
+        for (auto it = j.begin(); it != j.end(); ++it) {
+            if (it.key() == "enabled" || it.key() == "is_plugin" ||
+                it.key() == "plugin_name" || it.key() == "plugin_version") continue;
+            if (it.value().is_number()) {
+                plugin_->fn_set(instance_, it.key().c_str(), it.value().get<float>());
+            }
+        }
+        /* We also support nested params object: {"params": {"gain": 1.5}} */
+        if (j.contains("params") && j["params"].is_object()) {
+            for (auto it = j["params"].begin(); it != j["params"].end(); ++it) {
+                if (it.value().is_number()) {
+                    plugin_->fn_set(instance_, it.key().c_str(), it.value().get<float>());
+                }
+            }
+        }
+    }
+}
+
+void PluginUnit::reset() {
+    if (instance_ && plugin_ && plugin_->fn_reset) {
+        plugin_->fn_reset(instance_);
+    }
+    meter_input_db_.store(-96.0f, std::memory_order_relaxed);
+    meter_output_db_.store(-96.0f, std::memory_order_relaxed);
+}
+
+MeterData PluginUnit::get_meters() const {
+    MeterData m;
+    m.input_db  = meter_input_db_.load(std::memory_order_relaxed);
+    m.output_db = meter_output_db_.load(std::memory_order_relaxed);
+    return m;
 }
 
 } // namespace mc1dsp

@@ -25,6 +25,15 @@ AM_CPPFLAGS = \
 AM_CXXFLAGS = -std=c++17 -Wall -Wno-unused-parameter -O2
 AM_LDFLAGS  = -rdynamic
 
+# ── Platform-specific flags ───────────────────────────────────────────────────
+if MC1_MACOS
+AM_CPPFLAGS += -DMC1_MACOS
+AM_LDFLAGS  += -framework CoreAudio -framework AudioUnit -framework CoreServices
+# macOS does not have -lrt or -lcrypt (crypt() is in libc / libxcrypt via brew)
+else
+AM_CPPFLAGS += -DMC1_LINUX
+endif
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ADMIN BINARY — Web UI, FastCGI, auth, supervisor, system health
 # ══════════════════════════════════════════════════════════════════════════════
@@ -54,6 +63,7 @@ mcaster1_dsp_encoder_admin_SOURCES = \
     dsp/dj_crossfader.cpp \
     dsp/dsp_chain.cpp \
     dsp/effects_rack.cpp \
+    dsp/plugin_loader.cpp \
     dsp/sidechain_ducker.cpp \
     dsp/dead_air_detector.cpp \
     voictune/ollama_client.cpp
@@ -66,8 +76,12 @@ mcaster1_dsp_encoder_admin_LDADD = \
     $(LIBYAML_LIBS) \
     $(MARIADB_LIBS) \
     -lpthread \
-    -lcrypt \
-    -lm
+    -lm \
+    -ldl
+
+if !MC1_MACOS
+mcaster1_dsp_encoder_admin_LDADD += -lcrypt -lrt
+endif
 
 # Admin links all codec/audio libs too (shares source files with encoder for symbols).
 # Audio code never executes in admin — g_pipeline is null. Fault isolation comes from
@@ -138,6 +152,7 @@ mcaster1_dsp_encoder_SOURCES = \
     dsp/dj_crossfader.cpp \
     dsp/dsp_chain.cpp \
     dsp/effects_rack.cpp \
+    dsp/plugin_loader.cpp \
     dsp/sidechain_ducker.cpp \
     dsp/dead_air_detector.cpp \
     clockwheel_scheduler.cpp
@@ -147,8 +162,12 @@ mcaster1_dsp_encoder_LDADD = \
     $(LIBYAML_LIBS) \
     $(MARIADB_LIBS) \
     -lpthread \
-    -lcrypt \
-    -lm
+    -lm \
+    -ldl
+
+if !MC1_MACOS
+mcaster1_dsp_encoder_LDADD += -lcrypt -lrt
+endif
 
 # ── PortAudio (optional — encoder only) ──────────────────────────────────────
 if HAVE_PORTAUDIO
@@ -265,8 +284,11 @@ mcaster1_voictune_LDADD = \
     $(LIBYAML_LIBS) \
     $(MARIADB_LIBS) \
     -lpthread \
-    -lcrypt \
     -lm
+
+if !MC1_MACOS
+mcaster1_voictune_LDADD += -lcrypt -lrt
+endif
 
 # VoicTune uses PortAudio for mic capture (optional — can run browser-mic-only mode)
 if HAVE_PORTAUDIO

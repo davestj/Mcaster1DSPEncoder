@@ -2,7 +2,8 @@
  * Mcaster1 VoicTune — USB/BT Audio Device Hot-Plug Monitor
  * voictune/vt_usb_monitor.cpp
  *
- * Uses inotify on /dev/snd/ to detect USB audio device changes.
+ * Linux:  Uses inotify on /dev/snd/ to detect USB audio device changes.
+ * macOS:  Uses periodic PortAudio re-enumeration (no inotify on macOS).
  * On event: waits settle_ms, re-enumerates PortAudio, fires callback.
  *
  * Copyright (c) 2026 David St. John <davestj@gmail.com>
@@ -12,7 +13,10 @@
 #include "vt_usb_monitor.h"
 #include "vt_logger.h"
 
+#ifdef MC1_LINUX
 #include <sys/inotify.h>
+#endif
+
 #include <unistd.h>
 #include <poll.h>
 #include <cstring>
@@ -39,6 +43,7 @@ void UsbAudioMonitor::start(DeviceChangeCallback cb, int settle_ms) {
     /* Initial enumeration */
     enumerate_usb_devices();
 
+#ifdef MC1_LINUX
     inotify_fd_ = inotify_init1(IN_NONBLOCK);
     if (inotify_fd_ < 0) {
         VT_WARN("inotify_init failed: " + std::string(strerror(errno))
@@ -54,22 +59,30 @@ void UsbAudioMonitor::start(DeviceChangeCallback cb, int settle_ms) {
         close(inotify_fd_); inotify_fd_ = -1;
         return;
     }
+#endif // MC1_LINUX
 
     running_.store(true);
     monitor_thread_ = std::thread(&UsbAudioMonitor::monitor_loop, this);
+
+#ifdef MC1_MACOS
+    VT_INFO("USB audio monitor started — periodic polling mode (settle=" + std::to_string(settle_ms_) + "ms)");
+#else
     VT_INFO("USB audio hotplug monitor started (settle=" + std::to_string(settle_ms_) + "ms)");
+#endif
 }
 
 void UsbAudioMonitor::stop() {
     if (!running_.load()) return;
     running_.store(false);
 
+#ifdef MC1_LINUX
     if (inotify_fd_ >= 0) {
         if (watch_fd_ >= 0) inotify_rm_watch(inotify_fd_, watch_fd_);
         close(inotify_fd_);
         inotify_fd_ = -1;
         watch_fd_   = -1;
     }
+#endif
 
     if (monitor_thread_.joinable()) monitor_thread_.join();
     VT_INFO("USB audio hotplug monitor stopped");
@@ -86,6 +99,33 @@ void UsbAudioMonitor::rescan() {
 }
 
 void UsbAudioMonitor::monitor_loop() {
+#ifdef MC1_MACOS
+    // macOS: no inotify. Poll PortAudio device list every 3 seconds.
+    // Compare device count to detect changes.
+    int prev_count = -1;
+    {
+        std::shared_lock<std::shared_mutex> lk(devices_mtx_);
+        prev_count = (int)usb_devices_.size();
+    }
+
+    while (running_.load()) {
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        if (!running_.load()) break;
+
+        enumerate_usb_devices();
+        int cur_count;
+        {
+            std::shared_lock<std::shared_mutex> lk(devices_mtx_);
+            cur_count = (int)usb_devices_.size();
+        }
+        if (cur_count != prev_count) {
+            VT_INFO("Audio device count changed: " + std::to_string(prev_count)
+                     + " -> " + std::to_string(cur_count));
+            prev_count = cur_count;
+            if (cb_) cb_();
+        }
+    }
+#else // MC1_LINUX
     const size_t BUF_LEN = 4096;
     char buf[BUF_LEN] __attribute__((aligned(__alignof__(struct inotify_event))));
 
@@ -131,6 +171,7 @@ void UsbAudioMonitor::monitor_loop() {
             if (cb_) cb_();
         }
     }
+#endif // MC1_MACOS / MC1_LINUX
 }
 
 void UsbAudioMonitor::enumerate_usb_devices() {
