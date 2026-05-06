@@ -37,7 +37,10 @@ require_once __DIR__ . '/app/inc/header.php';
 /* ── Recording button pulse ── */
 #btn-record.recording { animation: rec-pulse 1s ease-in-out infinite; background:#ef4444 !important; color:#fff !important; border-color:#ef4444 !important; }
 @keyframes rec-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
-#record-panel { position:fixed; top:var(--topbar-h); right:-360px; height:calc(100vh - var(--topbar-h)); z-index:200; background:var(--bg2); border-left:1px solid var(--border); transition:right .3s ease; overflow-y:auto; }
+/* Recording panel as a centered modal overlay — impossible to miss */
+.rec-modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:8000; display:none; align-items:center; justify-content:center; }
+.rec-modal-bg.open { display:flex; }
+.rec-modal { background:var(--bg2); border:2px solid #ef4444; border-radius:12px; width:min(400px,95vw); max-height:90vh; overflow-y:auto; box-shadow:0 0 40px rgba(239,68,68,.3); }
 
 /* ── DAW Layout ── */
 .daw-wrap{display:flex;flex-direction:column;height:calc(100vh - var(--topbar-h) - 40px);min-height:500px}
@@ -360,12 +363,15 @@ require_once __DIR__ . '/app/inc/header.php';
   </div>
 </div>
 
-<!-- Record to Track panel (slide-out) -->
-<div class="fx-panel" id="record-panel" style="width:340px">
-  <div class="fx-panel-header">
-    <i class="fa-solid fa-microphone fa-fw" style="color:#ef4444"></i>
-    <h4>Record to Track</h4>
-    <span class="fx-panel-close" onclick="closeRecordPanel()"><i class="fa-solid fa-xmark"></i></span>
+<!-- Record to Track modal -->
+<div class="rec-modal-bg" id="rec-modal-bg" onclick="if(event.target===this)closeRecordPanel()">
+<div class="rec-modal" id="record-panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;align-items:center;gap:8px">
+      <i class="fa-solid fa-microphone fa-fw" style="color:#ef4444;font-size:18px"></i>
+      <h4 style="margin:0;font-size:15px;font-weight:700">Record to Track</h4>
+    </div>
+    <button class="btn btn-secondary btn-xs" onclick="closeRecordPanel()"><i class="fa-solid fa-xmark"></i></button>
   </div>
   <div style="padding:12px">
     <!-- Input Source -->
@@ -440,6 +446,7 @@ require_once __DIR__ . '/app/inc/header.php';
       Select an input device and click Record
     </div>
   </div>
+</div>
 </div>
 
 <!-- Export modal -->
@@ -655,15 +662,13 @@ var _recStream = null, _recCtx = null, _recAnalyser = null, _recRecorder = null;
 var _recChunks = [], _recStartTime = 0, _recTimerInt = null, _recLevelInt = null;
 
 function openRecordPanel() {
-    document.getElementById('record-panel').style.display = '';
-    document.getElementById('record-panel').style.right = '0';
+    document.getElementById('rec-modal-bg').classList.add('open');
     _enumRecDevices();
     _populateRecTracks();
 }
 function closeRecordPanel() {
     stopDawRecording();
-    document.getElementById('record-panel').style.right = '-360px';
-    setTimeout(function(){ document.getElementById('record-panel').style.display = 'none'; }, 300);
+    document.getElementById('rec-modal-bg').classList.remove('open');
 }
 
 function _enumRecDevices() {

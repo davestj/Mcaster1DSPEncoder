@@ -1969,6 +1969,7 @@ DawEngine.prototype._renderTrackList = function() {
             '  <div class="track-btns">' +
             '    <button class="track-btn' + (track.muted ? ' muted' : '') + '" data-action="mute" data-track="' + track.id + '" title="Mute">M</button>' +
             '    <button class="track-btn' + (track.solo ? ' soloed' : '') + '" data-action="solo" data-track="' + track.id + '" title="Solo">S</button>' +
+            '    <button class="track-btn track-rec-arm" data-action="rec-arm" data-track="' + track.id + '" title="Record to this track" onclick="if(window.openRecordPanel){document.getElementById(\'rec-track\').value=\'' + track.id + '\';openRecordPanel()}"><i class="fa-solid fa-circle" style="font-size:8px;color:#ef4444"></i></button>' +
             '    <button class="track-fx-btn' + ((self.trackEffects[track.id] && self.trackEffects[track.id].length > 0) ? ' has-fx' : '') + (isFrozen ? ' frozen-fx' : '') + '" data-track="' + track.id + '" title="Effects"' + (isFrozen ? ' disabled' : '') + '><i class="fa-solid fa-sliders fa-xs"></i></button>' +
             '    <button class="track-btn track-denoise-btn' + (hasNoisePrint ? ' has-nr' : '') + '" data-track="' + track.id + '" title="Denoise Track"><i class="fa-solid fa-wand-magic-sparkles" style="font-size:8px"></i></button>' +
             '    <button class="track-btn track-freeze-btn' + (isFrozen ? ' frozen' : '') + '" data-track="' + track.id + '" title="' + (isFrozen ? 'Unfreeze' : 'Freeze') + ' Track"><i class="fa-solid fa-snowflake" style="font-size:8px"></i></button>' +
