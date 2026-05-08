@@ -328,6 +328,20 @@ require_once __DIR__ . '/app/inc/header.php';
   <div class="daw-ctx-item danger" data-action="delete"><i class="fa-solid fa-trash fa-fw"></i> Delete Clip</div>
 </div>
 
+<!-- Empty timeline area context menu -->
+<div class="daw-ctx" id="ctx-menu-empty" style="display:none">
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('paste')"><i class="fa-solid fa-paste fa-fw"></i> Paste Clip (Ctrl+V)</div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('add-marker')"><i class="fa-solid fa-flag fa-fw"></i> Add Marker Here</div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('add-region')"><i class="fa-solid fa-arrows-left-right fa-fw"></i> Start Region Here</div>
+  <div class="daw-ctx-sep"></div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('seek')"><i class="fa-solid fa-location-crosshairs fa-fw"></i> Set Playhead Here</div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('loop-start')"><i class="fa-solid fa-repeat fa-fw"></i> Set Loop Start</div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('loop-end')"><i class="fa-solid fa-repeat fa-fw"></i> Set Loop End</div>
+  <div class="daw-ctx-sep"></div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('record')"><i class="fa-solid fa-circle fa-fw" style="color:#ef4444"></i> Record Here</div>
+  <div class="daw-ctx-item" onclick="ctxEmptyAction('browse')"><i class="fa-solid fa-folder-open fa-fw"></i> Add from Library</div>
+</div>
+
 <!-- Clip Properties Panel -->
 <div id="clip-props-panel" class="clip-props" style="display:none">
   <div class="clip-props-title"><i class="fa-solid fa-sliders fa-fw"></i> Clip Properties</div>
@@ -1046,7 +1060,39 @@ function _onRecordingComplete() {
                 document.getElementById('ctx-menu').style.display = 'none';
             });
         });
-        document.addEventListener('click', function(){ document.getElementById('ctx-menu').style.display = 'none'; });
+        document.addEventListener('click', function(){
+            document.getElementById('ctx-menu').style.display = 'none';
+            var em = document.getElementById('ctx-menu-empty');
+            if (em) em.style.display = 'none';
+        });
+
+        /* Empty timeline context menu actions */
+        window.ctxEmptyAction = function(act) {
+            var em = document.getElementById('ctx-menu-empty');
+            if (em) em.style.display = 'none';
+            if (!daw) return;
+            var t = daw._ctxTime || 0;
+            var ti = daw._ctxTrackIdx || 0;
+            switch (act) {
+                case 'paste': daw.pasteClip(); break;
+                case 'add-marker': daw.addMarker(t, 'Marker', '#f59e0b'); break;
+                case 'add-region': daw.addRegion(t, t + 10, 'Region', '#3b82f6'); break;
+                case 'seek': daw.seek(t); break;
+                case 'loop-start': daw.loopStart = t; mc1Toast('Loop start: ' + t.toFixed(2) + 's', 'ok'); break;
+                case 'loop-end': daw.loopEnd = t; mc1Toast('Loop end: ' + t.toFixed(2) + 's', 'ok'); break;
+                case 'record':
+                    if (daw.tracks[ti]) document.getElementById('rec-track').value = daw.tracks[ti].id;
+                    openRecordPanel();
+                    break;
+                case 'browse':
+                    if (window.mc1MediaPicker) {
+                        mc1MediaPicker.open({ type:'audio', onSelect: function(track) {
+                            if (track && track.id) daw.addClipFromLibrary(track.id, track.title || 'Track');
+                        }});
+                    }
+                    break;
+            }
+        };
 
         // Close modals on backdrop click
         document.querySelectorAll('.daw-modal-bg').forEach(function(bg){

@@ -2292,22 +2292,7 @@ DawEngine.prototype._initInteraction = function() {
         }
     });
 
-    // Right-click context menu on clip
-    wrap.addEventListener('contextmenu', function(e) {
-        e.preventDefault();
-        var rect = wrap.getBoundingClientRect();
-        var mx = e.clientX - rect.left;
-        var my = e.clientY - rect.top;
-        var hit = self._hitTestClip(mx, my);
-        if (hit) {
-            self.ctxClip = hit.clip;
-            self.selectedClip = hit.clip.id;
-            var ctx = document.getElementById('ctx-menu');
-            ctx.style.left = e.clientX + 'px';
-            ctx.style.top = e.clientY + 'px';
-            ctx.style.display = 'block';
-        }
-    });
+    // (context menu moved to ruler section below)
 
     // Horizontal scroll sync
     self.hscroll.addEventListener('scroll', function() {
@@ -2351,12 +2336,59 @@ DawEngine.prototype._initInteraction = function() {
         }
     });
 
-    // Ruler click to seek
-    document.getElementById('ruler-area').addEventListener('mousedown', function(e) {
+    // Ruler click + drag to scrub playhead
+    var rulerDragging = false;
+    var rulerEl = document.getElementById('ruler-area');
+    rulerEl.style.cursor = 'col-resize';
+    rulerEl.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        rulerDragging = true;
         var rect = self.canvasWrap.getBoundingClientRect();
         var mx = e.clientX - rect.left;
         var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
         self.seek(self.snapTime(Math.max(0, timeSec)));
+        e.preventDefault();
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!rulerDragging) return;
+        var rect = self.canvasWrap.getBoundingClientRect();
+        var mx = e.clientX - rect.left;
+        var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
+        self.seek(Math.max(0, timeSec));
+    });
+    document.addEventListener('mouseup', function() { rulerDragging = false; });
+
+    // Empty timeline click to seek (when no clip is hit)
+    // Already handled in the main mousedown handler (line: self.seek(self.snapTime(timeSec)))
+
+    // Right-click on empty timeline area — show timeline context menu
+    wrap.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        var rect = wrap.getBoundingClientRect();
+        var mx = e.clientX - rect.left;
+        var my = e.clientY - rect.top;
+        var timeSec = (mx + self.scrollX) / self.pixelsPerSec;
+        var hit = self._hitTestClip(mx, my);
+
+        if (hit) {
+            // Clip context menu (existing)
+            self.ctxClip = hit.clip;
+            self.selectedClip = hit.clip.id;
+            var ctx = document.getElementById('ctx-menu');
+            ctx.style.left = e.clientX + 'px';
+            ctx.style.top = e.clientY + 'px';
+            ctx.style.display = 'block';
+        } else {
+            // Empty area context menu
+            self._ctxTime = self.snapTime(timeSec);
+            self._ctxTrackIdx = Math.floor(my / self.TRACK_HEIGHT);
+            var emCtx = document.getElementById('ctx-menu-empty');
+            if (emCtx) {
+                emCtx.style.left = e.clientX + 'px';
+                emCtx.style.top = e.clientY + 'px';
+                emCtx.style.display = 'block';
+            }
+        }
     });
 };
 
