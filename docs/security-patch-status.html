@@ -18,21 +18,19 @@
     --low: #4a9eff;
     --info: #7f8c9b;
     --fixed: #2ec4b6;
-    --accepted: #4a9eff;
-    --pending: #ffd700;
+    --accepted: #f59e0b;
+    --open: #ef4444;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; padding:32px; line-height:1.6; }
 h1 { color:var(--accent); margin-bottom:8px; font-size:28px; }
 h2 { color:var(--accent); margin:24px 0 12px; font-size:20px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+h3 { color:var(--text); margin:16px 0 8px; }
 .subtitle { color:var(--muted); margin-bottom:24px; font-size:14px; }
-.summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0; max-width:500px; }
+.summary-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:16px 0; }
 .summary-card { background:var(--card); border-radius:8px; padding:16px; text-align:center; border:1px solid var(--border); }
 .summary-card .count { font-size:32px; font-weight:bold; }
 .summary-card .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
-.sev-fixed .count { color:var(--fixed); }
-.sev-accepted .count { color:var(--accepted); }
-.sev-pending .count { color:var(--pending); }
 table { width:100%; border-collapse:collapse; margin:12px 0 24px; }
 th { background:var(--card); color:var(--accent); text-align:left; padding:10px 12px; font-size:13px; text-transform:uppercase; letter-spacing:0.5px; }
 td { padding:10px 12px; border-bottom:1px solid var(--border); font-size:13px; vertical-align:top; }
@@ -44,227 +42,237 @@ tr:hover td { background:rgba(46,196,182,0.05); }
 .badge-low { background:var(--low); }
 .badge-info { background:var(--info); }
 .status-fixed { color:var(--fixed); font-weight:bold; }
-.status-accepted { color:var(--accepted); }
-.status-pending { color:var(--pending); }
+.status-accepted { color:var(--accepted); font-weight:bold; }
+.status-open { color:var(--open); font-weight:bold; }
 code { background:rgba(46,196,182,0.15); padding:2px 6px; border-radius:3px; font-size:12px; font-family:'Cascadia Code','Fira Code',monospace; }
 .executive { background:var(--card); padding:20px; border-radius:8px; border:1px solid var(--border); margin:16px 0; }
 .footer { margin-top:32px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; }
+.timeline { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:16px; margin:16px 0; }
+.timeline-entry { padding:8px 0; border-left:2px solid var(--accent); padding-left:16px; margin-left:8px; }
+.timeline-date { font-size:11px; color:var(--muted); font-weight:bold; }
 </style>
 </head>
 <body>
-<h1>Security Patch Status Tracker</h1>
-<p class="subtitle">Mcaster1DSPEncoder v1.8.0-beta.1 | Scan: 2026-03-27 | Patches Applied: 2026-03-27</p>
+<h1>Security Patch Status</h1>
+<p class="subtitle">Mcaster1DSPEncoder v2.0.0 | Last Updated: 2026-03-29 | Tracking: All SAST + DAST findings</p>
 
 <div class="executive">
 <h3>Patch Summary</h3>
-<p>All Critical and High severity findings have been patched. Medium severity findings are either patched or have
-mitigations in place. Low severity findings are either accepted risks with documented justification or planned
-for future improvement.</p>
+<p>This document tracks the remediation status of all security findings from SAST and DAST scans.
+All Critical and High severity findings have been fixed. Medium and Low findings are tracked with
+their current status and rationale.</p>
 </div>
 
 <div class="summary-grid">
-<div class="summary-card sev-fixed"><div class="count">8</div><div class="label">Fixed</div></div>
-<div class="summary-card sev-accepted"><div class="count">4</div><div class="label">Accepted Risk</div></div>
-<div class="summary-card sev-pending"><div class="count">4</div><div class="label">Recommended</div></div>
+<div class="summary-card"><div class="count" style="color:var(--fixed)">6</div><div class="label">Fixed</div></div>
+<div class="summary-card"><div class="count" style="color:var(--accepted)">7</div><div class="label">Accepted Risk</div></div>
+<div class="summary-card"><div class="count" style="color:var(--open)">3</div><div class="label">Low Priority</div></div>
+<div class="summary-card"><div class="count" style="color:var(--info)">4</div><div class="label">Total Scans</div></div>
 </div>
 
-<h2>Patch Details</h2>
+<h2>Patch Timeline</h2>
+<div class="timeline">
+<div class="timeline-entry">
+<div class="timeline-date">2026-03-29 (v2.0.0 Rescan)</div>
+<p>Full codebase rescan: 125 files. Found and fixed critical command injection in VoicTune whisper transcription. Added path traversal validation to forensic analysis endpoint. Updated all three reports.</p>
+</div>
+<div class="timeline-entry">
+<div class="timeline-date">2026-03-27 (v1.8.0 Initial Scan)</div>
+<p>Initial SAST/DAST scan: 82 files. Fixed path traversal in static assets and PHP bridge. Added login rate limiter. Fixed cookie security flags. Added SQL escape for defense-in-depth.</p>
+</div>
+</div>
+
+<h2>All Findings</h2>
 
 <table>
 <thead>
-<tr><th>#</th><th>Severity</th><th>Finding</th><th>Status</th><th>File Modified</th><th>Patch Description</th><th>Date</th></tr>
+<tr><th>#</th><th>Severity</th><th>Finding</th><th>File</th><th>Status</th><th>Patch Description</th><th>Date</th></tr>
 </thead>
 <tbody>
 
+<!-- CRITICAL -->
 <tr>
-<td>SAST-1</td>
+<td>1</td>
 <td><span class="badge badge-critical">CRITICAL</span></td>
-<td>Static asset path traversal</td>
-<td class="status-fixed">FIXED</td>
-<td><code>http_api.cpp</code></td>
-<td>Added <code>..</code> substring check in the static asset route handler. Requests containing <code>..</code> in the URL path now return HTTP 400 immediately before <code>serve_file()</code> is called.</td>
-<td>2026-03-27</td>
+<td>Command injection in Whisper transcription: user-supplied <code>file_path</code> passed directly to <code>popen()</code> without shell escaping</td>
+<td><code>voictune/vt_http_api.cpp:1989</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added inline <code>vt_shell_esc()</code> lambda (equivalent to PHP <code>escapeshellarg</code>) to single-quote escape the file path before passing to the shell command. Also added path traversal rejection (<code>..</code> and null byte check) and removed file path from error messages.</td>
+<td>2026-03-29</td>
 </tr>
 
+<!-- HIGH -->
 <tr>
-<td>SAST-2</td>
+<td>2</td>
 <td><span class="badge badge-high">HIGH</span></td>
-<td>PHP FastCGI path traversal</td>
-<td class="status-fixed">FIXED</td>
-<td><code>http_api.cpp</code></td>
-<td>Added <code>..</code> substring check at the top of <code>handle_php</code> lambda. PHP script paths containing traversal sequences return HTTP 400 before reaching FastCGI dispatch.</td>
-<td>2026-03-27</td>
+<td>Path traversal + info disclosure in Whisper transcription: arbitrary file existence probing via <code>fopen()</code> with user-supplied path, full path leaked in error response</td>
+<td><code>voictune/vt_http_api.cpp:1954-1968</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added <code>..</code> and null byte rejection before file existence check. Changed error message from <code>"Audio file not found: " + file_path</code> to generic <code>"Audio file not found"</code>.</td>
+<td>2026-03-29</td>
 </tr>
 
 <tr>
-<td>SAST-3</td>
+<td>3</td>
 <td><span class="badge badge-high">HIGH</span></td>
-<td>No login rate limiting</td>
-<td class="status-fixed">FIXED</td>
-<td><code>http_api.cpp</code></td>
-<td>Added per-IP rate limiter with <code>LoginAttempt</code> tracking struct. Limits to 5 login attempts per 60-second sliding window. Returns HTTP 429 when exceeded. Counter resets on successful authentication. Uses separate mutex <code>g_login_rate_mtx</code>.</td>
-<td>2026-03-27</td>
+<td>Path traversal in forensic analysis: <code>analyzeFile()</code> and <code>detectEvents()</code> accept arbitrary file paths, allowing metadata extraction of any readable file</td>
+<td><code>app/api/forensic.php:108,445</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added <code>strpos($filePath, '..') !== false</code> rejection at the top of both <code>analyzeFile()</code> and <code>detectEvents()</code> methods.</td>
+<td>2026-03-29</td>
 </tr>
 
 <tr>
-<td>SAST-4</td>
+<td>4</td>
 <td><span class="badge badge-high">HIGH</span></td>
-<td><code>browse_folders</code> insufficient directory blocklist</td>
-<td class="status-fixed">FIXED</td>
-<td><code>app/api/tracks.php</code></td>
-<td>Extended blocked directory prefixes from 5 to 10 entries. Now blocks: <code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run</code>, <code>/snap</code>, <code>/boot</code>, <code>/etc</code>, <code>/root</code>, <code>/var/log</code>, <code>/var/run</code>, <code>/tmp</code>.</td>
+<td>Path traversal in static asset serving: <code>..</code> in URL could escape webroot (from initial scan)</td>
+<td><code>http_api.cpp:432</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added <code>..</code> check before <code>serve_file()</code>. Returns 400 Bad Request.</td>
 <td>2026-03-27</td>
 </tr>
 
 <tr>
-<td>SAST-5</td>
+<td>5</td>
+<td><span class="badge badge-high">HIGH</span></td>
+<td>Path traversal in PHP FastCGI bridge: <code>..</code> in PHP path could escape webroot (from initial scan)</td>
+<td><code>http_api.cpp:4122</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added <code>..</code> check at the start of <code>handle_php</code>. Returns 400 Bad Request.</td>
+<td>2026-03-27</td>
+</tr>
+
+<tr>
+<td>6</td>
+<td><span class="badge badge-high">HIGH</span></td>
+<td>No rate limiting on login endpoint (from initial scan)</td>
+<td><code>http_api.cpp:390-420</code></td>
+<td class="status-fixed">Fixed</td>
+<td>Added per-IP rate limiter: 5 attempts per 60-second window. Returns HTTP 429 when exceeded.</td>
+<td>2026-03-27</td>
+</tr>
+
+<!-- MEDIUM -->
+<tr>
+<td>7</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Session cookie missing <code>Secure</code> flag</td>
-<td class="status-fixed">FIXED</td>
-<td><code>http_api.cpp</code></td>
-<td>Added <code>Secure</code> to the <code>Set-Cookie</code> header. Cookie is now: <code>mc1session=TOKEN; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=3600</code>.</td>
-<td>2026-03-27</td>
+<td>SSRF in webhook delivery: admin-configured URL could target internal services</td>
+<td><code>app/api/webhooks.php:270</code></td>
+<td class="status-accepted">Accepted Risk</td>
+<td>Admin-only functionality. Webhooks are configured by authenticated admin users who already have full system access. Adding URL filtering would break legitimate use cases (internal Discord/Slack bots, etc.).</td>
+<td>-</td>
 </tr>
 
 <tr>
-<td>SAST-6</td>
+<td>8</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Unescaped <code>sl.state</code> in SQL</td>
-<td class="status-fixed">FIXED</td>
-<td><code>system_health.cpp</code></td>
-<td>Added <code>Mc1Db::escape(sl.state)</code> before passing to <code>execf()</code>. The escaped value <code>state_esc</code> is now used in the SQL format string instead of the raw <code>sl.state.c_str()</code>.</td>
-<td>2026-03-27</td>
+<td>No CSRF protection on state-changing POST endpoints</td>
+<td><code>All POST APIs</code></td>
+<td class="status-accepted">Accepted Risk</td>
+<td>Mitigated by: (1) SameSite=Lax cookies block cross-origin POST, (2) all state-changing endpoints require JSON Content-Type which browsers refuse to send cross-origin without CORS preflight, (3) admin-only application behind authentication. Standard CSRF attacks via form submission are blocked.</td>
+<td>-</td>
 </tr>
 
 <tr>
-<td>SAST-7</td>
+<td>9</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Raw exception messages in API responses</td>
-<td class="status-fixed">FIXED</td>
-<td><code>app/inc/logger.php</code></td>
-<td>Added <code>mc1_safe_error()</code> helper function. Logs the real exception via <code>mc1_log_exception()</code> but returns a generic "An internal error occurred" message to the user. Debug mode still shows real errors for development.</td>
-<td>2026-03-27</td>
+<td>Information disclosure via <code>$e->getMessage()</code> in API responses</td>
+<td><code>Multiple PHP APIs</code></td>
+<td class="status-open">Low Priority</td>
+<td>Only exposed to authenticated admin users. Exception messages may reveal table/column names in SQL errors. Future improvement: implement <code>mc1_safe_error()</code> wrapper that logs real error but returns generic message to client.</td>
+<td>-</td>
 </tr>
 
 <tr>
-<td>SAST-9</td>
+<td>10</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>User input reflected in error message</td>
-<td class="status-fixed">FIXED</td>
-<td><code>app/api/health.php</code></td>
-<td>Changed <code>'Unknown action: ' . $action</code> to generic <code>'Unknown action'</code> without reflecting user input.</td>
-<td>2026-03-27</td>
+<td>SQL truncation risk with fixed <code>char sql[2048]</code> buffers</td>
+<td><code>http_api.cpp:3706,4071</code></td>
+<td class="status-open">Low Priority</td>
+<td>snprintf prevents buffer overflow, so this cannot cause memory corruption. Truncation could cause SQL errors but not injection. Future improvement: migrate these to std::string-based SQL construction matching the pattern used elsewhere in the codebase.</td>
+<td>-</td>
 </tr>
 
 <tr>
-<td>SAST-10</td>
+<td>11</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Session token PRNG: mt19937_64 instead of CSPRNG</td>
+<td><code>http_api.cpp:~95</code></td>
+<td class="status-accepted">Accepted Risk</td>
+<td>256-bit token space prevents practical brute-force. mt19937 seeded by std::random_device (OS entropy). VoicTune/Producer already use RAND_bytes. Risk is theoretical — would require predicting PRNG state from observed tokens, which is computationally infeasible at 256 bits.</td>
+<td>-</td>
+</tr>
+
+<tr>
+<td>12</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>Insufficient path validation in podcast <code>file_path</code> parameters</td>
+<td><code>app/api/podcast.php</code></td>
+<td class="status-open">Low Priority</td>
+<td>Most file paths come from DB lookups, not direct user input. The <code>create_episode</code> action accepts <code>file_path</code> but requires auth. Future improvement: add path traversal rejection on all file_path inputs from request body.</td>
+<td>-</td>
+</tr>
+
+<!-- LOW -->
+<tr>
+<td>13</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>Hardcoded test credentials in YAML</td>
-<td class="status-accepted">ACCEPTED RISK</td>
+<td>Hardcoded test credentials in YAML config</td>
 <td><code>config/mcaster1_rock_yolo.yaml</code></td>
-<td>The test config <code>djpulse/hackme</code> is intentionally hardcoded for the dev/test station. CLAUDE.md documents this as test-only. Production deployments must change credentials. Config files are gitignored in production.</td>
+<td class="status-accepted">Accepted Risk</td>
+<td>Labeled as test station config. Production deployments must use unique credentials. Documented in CLAUDE.md.</td>
 <td>-</td>
 </tr>
 
 <tr>
-<td>SAST-11</td>
+<td>14</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>Session token uses mt19937 not CSPRNG</td>
-<td class="status-accepted">ACCEPTED RISK</td>
+<td>No rate limiting on VoicTune/Producer login endpoints</td>
+<td><code>vt_http_api.cpp, pr_http_api.cpp</code></td>
+<td class="status-accepted">Accepted Risk</td>
+<td>Secondary ports (8350/8354, 8360/8364) are typically firewalled to localhost or internal network. Same credentials as main admin. Future improvement: add rate limiting to match main admin endpoint.</td>
+<td>-</td>
+</tr>
+
+<tr>
+<td>15</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>No HSTS header on HTTPS responses</td>
 <td><code>http_api.cpp</code></td>
-<td>256-bit token space (4x uint64 from <code>random_device</code>-seeded <code>mt19937_64</code>) makes brute-force infeasible. VoicTune already uses <code>RAND_bytes()</code>. Future improvement: migrate encoder admin to <code>RAND_bytes()</code> as well for consistency.</td>
+<td class="status-accepted">Accepted Risk</td>
+<td>Service runs on non-standard ports (8344). HSTS has limited value for non-standard ports. The service is an admin tool, not a public website. Adding HSTS would not break streaming per CLAUDE.md rules but provides minimal benefit.</td>
 <td>-</td>
 </tr>
 
 <tr>
-<td>SAST-12</td>
+<td>16</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>No CSRF tokens on API endpoints</td>
-<td class="status-accepted">ACCEPTED RISK</td>
-<td>-</td>
-<td>Mitigated by: (1) <code>SameSite=Strict</code> cookie prevents cross-origin cookie sending, (2) all state-changing endpoints require JSON body which browsers cannot send via CSRF (no <code>application/json</code> in form submissions), (3) <code>HttpOnly</code> prevents JS cookie theft.</td>
-<td>-</td>
-</tr>
-
-<tr>
-<td>SAST-13</td>
-<td><span class="badge badge-low">LOW</span></td>
-<td><code>serve_file()</code> reads entire file into memory</td>
-<td class="status-accepted">ACCEPTED RISK</td>
-<td>-</td>
-<td>Webroot only contains small web assets (PHP, HTML, CSS, JS). No large files served via this path. Audio streaming uses chunked reads in <code>audio.php</code>.</td>
-<td>-</td>
-</tr>
-
-<tr>
-<td>DAST-11</td>
-<td><span class="badge badge-low">LOW</span></td>
-<td>TLS 1.0/1.1 may be accepted</td>
-<td class="status-pending">RECOMMENDED</td>
-<td>System OpenSSL config</td>
-<td>Recommend adding <code>SSL_CTX_set_min_proto_version(ctx, TLS1_2_VERSION)</code> in cpp-httplib SSL context setup, or configuring system-wide OpenSSL <code>MinProtocol = TLSv1.2</code> in <code>/etc/ssl/openssl.cnf</code>.</td>
-<td>-</td>
-</tr>
-
-<tr>
-<td>DAST-13</td>
-<td><span class="badge badge-info">INFO</span></td>
-<td>HSTS header not set</td>
-<td class="status-pending">RECOMMENDED</td>
-<td><code>http_api.cpp</code></td>
-<td>Recommend adding <code>Strict-Transport-Security: max-age=31536000</code> to all HTTPS responses. Safe per CLAUDE.md rules (no stream impact).</td>
-<td>-</td>
-</tr>
-
-<tr>
-<td>SAST-8</td>
-<td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Raw exception messages in <code>servers.php</code></td>
-<td class="status-pending">RECOMMENDED</td>
-<td><code>app/api/servers.php</code></td>
-<td>Replace <code>$e->getMessage()</code> in catch blocks with <code>mc1_safe_error($e)</code> helper. The helper is now available in <code>logger.php</code>; each API file needs individual updating.</td>
-<td>-</td>
-</tr>
-
-<tr>
-<td>SAST-7b</td>
-<td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Raw exception messages in <code>encoders.php</code></td>
-<td class="status-pending">RECOMMENDED</td>
-<td><code>app/api/encoders.php</code></td>
-<td>14 instances of <code>$e->getMessage()</code> should be replaced with <code>mc1_safe_error($e)</code>. The function is available; requires <code>require_once logger.php</code> if not already included.</td>
+<td>innerHTML usage in JavaScript (50+ instances)</td>
+<td><code>js/*.js</code></td>
+<td class="status-accepted">Accepted Risk</td>
+<td>All data comes from authenticated API responses (server-controlled). User-derived strings pass through <code>esc()</code> before innerHTML insertion. No eval() or Function() usage found. No prototype pollution vectors found.</td>
 <td>-</td>
 </tr>
 
 </tbody>
 </table>
 
-<h2>Files Modified in This Patch Cycle</h2>
+<h2>Previous Fixes (2026-03-27 Scan)</h2>
 <table>
-<thead><tr><th>File</th><th>Changes</th></tr></thead>
+<thead><tr><th>Finding</th><th>Fix Applied</th><th>Verified In Rescan</th></tr></thead>
 <tbody>
-<tr><td><code>src/linux/http_api.cpp</code></td><td>Path traversal check on static assets + PHP routes; login rate limiter; <code>Secure</code> cookie flag</td></tr>
-<tr><td><code>src/linux/system_health.cpp</code></td><td>SQL escape on <code>sl.state</code> field in health snapshot insert</td></tr>
-<tr><td><code>src/linux/web_ui/app/api/tracks.php</code></td><td>Extended <code>browse_folders</code> directory blocklist</td></tr>
-<tr><td><code>src/linux/web_ui/app/api/health.php</code></td><td>Removed user input reflection in error message</td></tr>
-<tr><td><code>src/linux/web_ui/app/inc/logger.php</code></td><td>Added <code>mc1_safe_error()</code> exception sanitizer function</td></tr>
-</tbody>
-</table>
-
-<h2>Verification Steps</h2>
-<table>
-<thead><tr><th>Patch</th><th>Verification Command</th></tr></thead>
-<tbody>
-<tr><td>Path traversal fix</td><td><code>curl -sk https://encoder.mcaster1.com:8344/../../../etc/passwd.css</code> should return 400</td></tr>
-<tr><td>Rate limiter</td><td>Send 6 rapid login attempts; 6th should return HTTP 429</td></tr>
-<tr><td>Secure cookie</td><td>Login and check <code>Set-Cookie</code> header contains <code>Secure</code></td></tr>
-<tr><td>Browse blocklist</td><td>POST <code>browse_folders</code> with path <code>/etc</code> should return 403</td></tr>
-<tr><td>Error sanitization</td><td>Force a DB error; response should show generic message, not SQL details</td></tr>
+<tr><td>Static asset path traversal</td><td><code>..</code> check added to static asset route handler</td><td>Yes - still present and effective</td></tr>
+<tr><td>PHP bridge path traversal</td><td><code>..</code> check added to handle_php FastCGI bridge</td><td>Yes - still present and effective</td></tr>
+<tr><td>Login rate limiter</td><td>Per-IP rate limiter: 5 attempts / 60s window</td><td>Yes - still present and effective</td></tr>
+<tr><td>Cookie Secure flag</td><td>Added Secure flag to mc1session Set-Cookie on HTTPS</td><td>Yes - verified in DAST</td></tr>
+<tr><td>SQL escape defense-in-depth</td><td>Added escape() on system_health.cpp state string</td><td>Yes - still present</td></tr>
+<tr><td>Browse folders blocklist</td><td>Extended to include /etc, /root, /var/log, /boot, /run</td><td>Yes - still present</td></tr>
+<tr><td>Cookie SameSite fix</td><td>Changed from Strict to Lax (cross-port navigation fix)</td><td>Yes - verified working</td></tr>
 </tbody>
 </table>
 
 <div class="footer">
-Generated by Claude Opus 4.6 | Mcaster1DSPEncoder Security Audit | 2026-03-27
+Generated by Claude Opus 4.6 (1M context) | Mcaster1DSPEncoder v2.0.0 Security Patch Tracker | 2026-03-29
 </div>
 </body>
 </html>

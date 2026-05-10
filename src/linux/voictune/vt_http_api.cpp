@@ -1957,6 +1957,13 @@ static void setup_routes(httplib::Server& svr)
                 return;
             }
 
+            /* Security: reject path traversal and null bytes (SAST fix 2026-03-29) */
+            if (file_path.find("..") != std::string::npos || file_path.find('\0') != std::string::npos) {
+                res.status = 400;
+                res.set_content(R"({"ok":false,"error":"Invalid file path"})", "application/json");
+                return;
+            }
+
             /* Check if the file exists */
             {
                 FILE* f = fopen(file_path.c_str(), "r");
@@ -1964,7 +1971,7 @@ static void setup_routes(httplib::Server& svr)
                     res.status = 404;
                     json err;
                     err["ok"]    = false;
-                    err["error"] = "Audio file not found: " + file_path;
+                    err["error"] = "Audio file not found";
                     res.set_content(err.dump(), "application/json");
                     return;
                 }
@@ -1986,8 +1993,20 @@ static void setup_routes(httplib::Server& svr)
             auto t0 = std::chrono::steady_clock::now();
 
             std::string tmp_dir = "/tmp/mc1vt_whisper_" + std::to_string(std::time(nullptr));
+
+            /* Security: shell-escape file_path to prevent command injection (SAST fix 2026-03-29) */
+            auto vt_shell_esc = [](const std::string& s) -> std::string {
+                std::string out = "'";
+                for (char c : s) {
+                    if (c == '\'') out += "'\\''";
+                    else           out += c;
+                }
+                out += "'";
+                return out;
+            };
+
             std::string cmd = "mkdir -p " + tmp_dir + " && whisper --model base --output_format txt --output_dir " +
-                              tmp_dir + " " + file_path + " 2>&1";
+                              tmp_dir + " " + vt_shell_esc(file_path) + " 2>&1";
 
             VT_INFO("Running Whisper transcription: " + file_path);
             FILE* pipe = popen(cmd.c_str(), "r");

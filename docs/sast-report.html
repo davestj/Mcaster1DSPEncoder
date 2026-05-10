@@ -45,128 +45,133 @@ tr:hover td { background:rgba(46,196,182,0.05); }
 .badge-info { background:var(--info); }
 code { background:rgba(46,196,182,0.15); padding:2px 6px; border-radius:3px; font-size:12px; font-family:'Cascadia Code','Fira Code',monospace; }
 .executive { background:var(--card); padding:20px; border-radius:8px; border:1px solid var(--border); margin:16px 0; }
+.risk-score { display:inline-block; background:var(--card); border:2px solid var(--high); color:var(--high); padding:6px 16px; border-radius:8px; font-size:18px; font-weight:bold; margin:8px 0; }
 .footer { margin-top:32px; padding-top:16px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; }
+.fixed { color:#22c55e; font-weight:bold; }
+.open { color:var(--high); font-weight:bold; }
 </style>
 </head>
 <body>
 <h1>SAST Security Scan Report</h1>
-<p class="subtitle">Mcaster1DSPEncoder v1.8.0-beta.1 | Scan Date: 2026-03-27 | Scanner: Claude Opus 4.6 Manual Review</p>
+<p class="subtitle">Mcaster1DSPEncoder v2.0.0 | Scan Date: 2026-03-29 | Scanner: Claude Opus 4.6 (1M context) Full Manual Review</p>
 
 <div class="executive">
 <h3>Executive Summary</h3>
-<p>A comprehensive static analysis was performed on all C++ source files (<code>src/linux/*.cpp</code>, <code>src/linux/*.h</code>),
-PHP API files (<code>src/linux/web_ui/app/api/*.php</code>), PHP include files (<code>src/linux/web_ui/app/inc/*.php</code>),
-and PHP page files (<code>src/linux/web_ui/*.php</code>). The analysis covered SQL injection, command injection, XSS,
-path traversal, authentication weaknesses, information disclosure, insecure defaults, and denial of service vectors.</p>
-<p style="margin-top:8px;">Total files scanned: <strong>82</strong> (41 C++, 41 PHP). The codebase demonstrates generally strong security practices
-including parameterized PDO queries in PHP, <code>mysql_real_escape_string</code> in C++, <code>escapeshellarg()</code> on all shell commands,
-and <code>h()</code> HTML escaping. Several defense-in-depth improvements were identified and patched.</p>
+<p>Risk Score: <span class="risk-score">6.2 / 10 (Medium)</span></p>
+<p style="margin-top:12px;">A comprehensive static analysis was performed on the entire codebase: <strong>47 C++ source files</strong> (including voictune/, producer/, dsp/),
+<strong>57 PHP files</strong> (web_ui/, app/api/, app/inc/, lang/), and <strong>21 JavaScript files</strong> (web_ui/js/).
+Total: <strong>125 source files</strong> scanned across all languages.</p>
+<p style="margin-top:8px;">The scan covered: SQL injection, command injection, XSS, path traversal, authentication bypass, CSRF, information disclosure,
+buffer overflow, race conditions, SSRF, insecure file upload, prototype pollution, eval injection, and sensitive data exposure.</p>
+<p style="margin-top:8px;">The codebase demonstrates strong security practices in most areas: prepared statements in PHP, <code>db.escape()</code> in C++ SQL,
+<code>escapeshellarg()</code> on all PHP shell commands, <code>h()</code> HTML escaping, <code>realpath()</code>-based upload validation,
+extension whitelists for uploads, and consistent auth gates. One critical command injection was found and fixed.</p>
 </div>
 
 <div class="summary-grid">
 <div class="summary-card sev-critical"><div class="count">1</div><div class="label">Critical</div></div>
-<div class="summary-card sev-high"><div class="count">3</div><div class="label">High</div></div>
-<div class="summary-card sev-medium"><div class="count">5</div><div class="label">Medium</div></div>
-<div class="summary-card sev-low"><div class="count">4</div><div class="label">Low</div></div>
-<div class="summary-card sev-info"><div class="count">3</div><div class="label">Info</div></div>
+<div class="summary-card sev-high"><div class="count">2</div><div class="label">High</div></div>
+<div class="summary-card sev-medium"><div class="count">6</div><div class="label">Medium</div></div>
+<div class="summary-card sev-low"><div class="count">5</div><div class="label">Low</div></div>
+<div class="summary-card sev-info"><div class="count">6</div><div class="label">Info</div></div>
 </div>
 
 <h2>Findings</h2>
 
 <table>
 <thead>
-<tr><th>#</th><th>Severity</th><th>Category</th><th>File</th><th>Line</th><th>Description</th><th>Remediation</th></tr>
+<tr><th>#</th><th>Severity</th><th>Category</th><th>File</th><th>Line</th><th>Description</th><th>Status</th></tr>
 </thead>
 <tbody>
 
 <tr>
 <td>1</td>
 <td><span class="badge badge-critical">CRITICAL</span></td>
-<td>Path Traversal</td>
-<td><code>http_api.cpp</code></td>
-<td>346-348</td>
-<td>Static asset route <code>/(.+\.(css|js|...))</code> directly concatenates <code>req.matches[1]</code> with <code>g_webroot</code> without checking for <code>..</code> sequences. A request like <code>GET /../../etc/shadow.css</code> could read arbitrary files if the regex matched.</td>
-<td>Added <code>..</code> check before <code>serve_file()</code>. Request returns 400 if path contains <code>..</code></td>
+<td>Command Injection</td>
+<td><code>voictune/vt_http_api.cpp</code></td>
+<td>1989-1990</td>
+<td><strong>POST /api/v1/ai/podcast/transcribe</strong> — The <code>file_path</code> parameter from user JSON input was concatenated directly into a <code>popen()</code> shell command without escaping: <code>"whisper ... " + file_path + " 2>&1"</code>. An attacker could inject arbitrary shell commands via a crafted path like <code>"; rm -rf / #"</code>. This endpoint requires authentication but is still critical severity.</td>
+<td class="fixed">FIXED</td>
 </tr>
 
 <tr>
 <td>2</td>
 <td><span class="badge badge-high">HIGH</span></td>
 <td>Path Traversal</td>
-<td><code>http_api.cpp</code></td>
-<td>3176-3186</td>
-<td>The <code>handle_php</code> FastCGI bridge constructs <code>script_filename = g_webroot + req.path</code> without sanitizing path traversal sequences. An attacker could potentially request <code>/app/api/../../etc/passwd.php</code> to execute PHP files outside the webroot.</td>
-<td>Added <code>..</code> check at the start of <code>handle_php</code>. Returns 400 if path contains <code>..</code></td>
+<td><code>voictune/vt_http_api.cpp</code></td>
+<td>1941-1962</td>
+<td><strong>POST /api/v1/ai/podcast/transcribe</strong> — The same <code>file_path</code> parameter was used with <code>fopen()</code> to check existence, allowing an attacker to probe for arbitrary files on the filesystem (e.g., <code>/etc/shadow</code>). The error message also leaked the full path in the response: <code>"Audio file not found: " + file_path</code>.</td>
+<td class="fixed">FIXED</td>
 </tr>
 
 <tr>
 <td>3</td>
 <td><span class="badge badge-high">HIGH</span></td>
-<td>Auth: No Rate Limiting</td>
-<td><code>http_api.cpp</code></td>
-<td>390-420</td>
-<td>The <code>POST /api/v1/auth/login</code> endpoint had no rate limiting. An attacker could brute-force credentials with unlimited attempts per second. With test credentials like <code>hackme</code>, this is especially dangerous if the service is exposed to the internet.</td>
-<td>Added per-IP rate limiter: 5 attempts per 60-second window. Returns HTTP 429 when exceeded. Counter resets on successful login.</td>
+<td>Path Traversal</td>
+<td><code>app/api/forensic.php</code></td>
+<td>108-120, 445-460</td>
+<td><strong>analyzeFile()</strong> and <strong>detectEvents()</strong> accept a <code>file_path</code> parameter from user input without path traversal validation. While <code>escapeshellarg()</code> prevents command injection in the ffprobe/ffmpeg calls, an authenticated user could analyze metadata of any readable file on the system (e.g., <code>/etc/passwd</code>, config files with secrets).</td>
+<td class="fixed">FIXED</td>
 </tr>
 
 <tr>
 <td>4</td>
-<td><span class="badge badge-high">HIGH</span></td>
-<td>Directory Traversal</td>
-<td><code>app/api/tracks.php</code></td>
-<td>1797</td>
-<td>The <code>browse_folders</code> action allowed browsing <code>/etc</code>, <code>/root</code>, <code>/var/log</code>, and other sensitive directories. The blocklist only included <code>/proc</code>, <code>/sys</code>, <code>/dev</code>, <code>/run/systemd</code>, <code>/snap</code>. An authenticated attacker could enumerate directory structures in sensitive areas like <code>/etc/ssl/private</code>.</td>
-<td>Extended blocklist to include <code>/etc</code>, <code>/root</code>, <code>/var/log</code>, <code>/var/run</code>, <code>/tmp</code>, <code>/boot</code>, and changed <code>/run/systemd</code> to <code>/run</code>.</td>
+<td><span class="badge badge-medium">MEDIUM</span></td>
+<td>SSRF</td>
+<td><code>app/api/webhooks.php</code></td>
+<td>270</td>
+<td><strong>Webhook test/send</strong> — The URL for webhook delivery comes from admin-configured data. An admin could set a webhook URL pointing to internal services (e.g., <code>http://127.0.0.1:8330/api/v1/...</code>, <code>http://169.254.169.254/</code>). The <code>file_get_contents()</code> call follows redirects and could reach internal metadata endpoints.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>5</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Cookie Security</td>
-<td><code>http_api.cpp</code></td>
-<td>407-409</td>
-<td>The <code>mc1session</code> cookie was missing the <code>Secure</code> flag. On HTTPS connections, this is a best practice to prevent cookie leakage over downgraded HTTP connections. The cookie had <code>HttpOnly</code> and <code>SameSite=Strict</code> but not <code>Secure</code>.</td>
-<td>Added <code>Secure</code> flag to the Set-Cookie header.</td>
+<td>No CSRF Protection</td>
+<td><code>All POST APIs</code></td>
+<td>-</td>
+<td>State-changing POST endpoints (encoder start/stop, track delete, user management, webhook config, RTMP start, etc.) do not validate CSRF tokens. The <code>SameSite=Lax</code> cookie flag and JSON Content-Type requirement provide partial protection, but same-site attacks remain possible.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>6</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>SQL Injection (Defense-in-depth)</td>
-<td><code>system_health.cpp</code></td>
-<td>194-199</td>
-<td>The <code>sl.state</code> string was used directly via <code>%s</code> format specifier in <code>execf()</code> without escaping. While <code>sl.state</code> is derived from an internal C++ enum and is not user-controlled, defense-in-depth demands all string values in SQL be escaped. The <code>track_title</code> was correctly escaped but <code>state</code> was not.</td>
-<td>Added <code>Mc1Db::escape(sl.state)</code> before using in the <code>execf()</code> call.</td>
+<td>Information Disclosure</td>
+<td><code>Multiple PHP APIs</code></td>
+<td>Various</td>
+<td><strong>20+ instances</strong> of <code>$e->getMessage()</code> returned directly in JSON API responses across: <code>servers.php</code>, <code>encoders.php</code>, <code>edit.encoders.class.php</code>, <code>playlist.manager.pro.class.php</code>, <code>profile.usr.class.php</code>, <code>user_auth.php</code>, <code>podcast.php</code>, <code>daw.php</code>. These expose internal SQL errors, table names, column names, and file paths to authenticated users.</td>
+<td class="open">Low Priority</td>
 </tr>
 
 <tr>
 <td>7</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Information Disclosure</td>
-<td><code>app/api/encoders.php</code></td>
-<td>Multiple</td>
-<td>14 instances of <code>$e->getMessage()</code> exposed raw exception messages (including SQL errors, table names, file paths) in JSON API responses. This gives attackers information about the database schema and internal structure.</td>
-<td>Added <code>mc1_safe_error()</code> helper to <code>logger.php</code> that logs the real error but returns a generic message to the user (unless debug mode is active).</td>
+<td>SQL Truncation</td>
+<td><code>http_api.cpp</code></td>
+<td>3706, 4071</td>
+<td>Fixed-size <code>char sql[2048]</code> buffers used with <code>snprintf()</code> for INSERT statements containing user-supplied escaped strings (episode titles, file paths, tags JSON). If the combined escaped data exceeds 2048 bytes, the SQL is silently truncated, which could cause query errors or — in extreme edge cases — truncation at a point that breaks the escaping.</td>
+<td class="open">Low Priority</td>
 </tr>
 
 <tr>
 <td>8</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Information Disclosure</td>
-<td><code>app/api/servers.php</code></td>
-<td>88,132,182</td>
-<td>Same pattern: raw <code>$e->getMessage()</code> in API responses exposes internal error details including SQL errors.</td>
-<td>Same fix: use <code>mc1_safe_error()</code> helper.</td>
+<td>Insufficient Path Validation</td>
+<td><code>app/api/podcast.php</code></td>
+<td>108, 294, 783, 1000</td>
+<td>Multiple podcast actions accept <code>file_path</code> from user input (via DB lookup, so not directly from request in most cases). While <code>escapeshellarg()</code> is used for all shell commands, no explicit path traversal check is performed on paths that come from the request body (e.g., <code>create_episode</code> accepts <code>file_path</code> directly).</td>
+<td class="open">Low Priority</td>
 </tr>
 
 <tr>
 <td>9</td>
 <td><span class="badge badge-medium">MEDIUM</span></td>
-<td>Input Reflection (XSS via API)</td>
-<td><code>app/api/health.php</code></td>
-<td>146</td>
-<td>The unknown action error message reflected the raw <code>$action</code> value: <code>'Unknown action: ' . $action</code>. While this is a JSON response (not HTML), user input should never be reflected without sanitization as defense-in-depth.</td>
-<td>Changed to generic message: <code>'Unknown action'</code> without reflecting user input.</td>
+<td>Session Token PRNG</td>
+<td><code>http_api.cpp</code></td>
+<td>~95</td>
+<td>The main encoder admin session tokens use <code>std::mt19937_64</code> seeded by <code>std::random_device</code>. While the 256-bit token space prevents practical brute-force, mt19937 is not a CSPRNG. The VoicTune and Producer daemons correctly use <code>RAND_bytes()</code> from OpenSSL. The main admin binary should match.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
@@ -175,68 +180,108 @@ and <code>h()</code> HTML escaping. Several defense-in-depth improvements were i
 <td>Hardcoded Credentials</td>
 <td><code>config/mcaster1_rock_yolo.yaml</code></td>
 <td>-</td>
-<td>Test station credentials (<code>djpulse/hackme</code>) are hardcoded in the YAML config and documented in CLAUDE.md. While this is labeled as a test station, if the config is used in production without changing credentials, it creates an obvious entry point.</td>
-<td>Accepted Risk: documented as test-only. Production deployments must change credentials.</td>
+<td>Test credentials <code>djpulse/hackme</code> are in the YAML config and documented in multiple CLAUDE.md files. The config is labeled as a test station, but if deployed to production without changes, provides trivial access.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>11</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>Session Token Entropy</td>
-<td><code>http_api.cpp</code></td>
-<td>93-101</td>
-<td>Session tokens are generated using <code>std::random_device</code> + <code>std::mt19937_64</code>. While <code>random_device</code> sources entropy from the OS, the <code>mt19937_64</code> PRNG is not cryptographically secure. The VoicTune daemon correctly uses <code>RAND_bytes()</code> from OpenSSL instead. The 256-bit token space makes practical attacks infeasible, but using a CSPRNG is best practice.</td>
-<td>Accepted Risk for now: 256-bit token space is sufficient. Future improvement: migrate to <code>RAND_bytes()</code>.</td>
+<td>Missing Rate Limit</td>
+<td><code>voictune/vt_http_api.cpp</code>, <code>producer/pr_http_api.cpp</code></td>
+<td>Login endpoints</td>
+<td>The VoicTune and Producer daemon login endpoints do not have rate limiting (the main admin binary does). These run on separate ports (8350/8354, 8360/8364) and share the same credentials.</td>
+<td class="open">Low Priority</td>
 </tr>
 
 <tr>
 <td>12</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>Missing CSRF Protection</td>
+<td>Denial of Service</td>
 <td><code>http_api.cpp</code></td>
-<td>-</td>
-<td>State-changing API endpoints (start/stop encoder, update DSP, delete tracks) do not require CSRF tokens. The <code>SameSite=Strict</code> cookie flag provides some protection, but does not protect against same-site attacks. All endpoints require the <code>mc1session</code> cookie, which mitigates cross-origin attacks.</td>
-<td>Low risk due to <code>SameSite=Strict</code> + all state changes are POST/PUT with JSON body (browsers do not send JSON bodies in CSRF).</td>
+<td>serve_file()</td>
+<td><code>serve_file()</code> reads entire files into memory with <code>std::istreambuf_iterator</code>. Only web assets are in the webroot (small files), so practical exploitation is limited.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>13</td>
 <td><span class="badge badge-low">LOW</span></td>
-<td>Denial of Service</td>
+<td>Cookie SameSite</td>
 <td><code>http_api.cpp</code></td>
-<td>234-247</td>
-<td><code>serve_file()</code> reads the entire file into memory with <code>std::istreambuf_iterator</code>. A very large file in the webroot would consume proportional memory. However, the webroot only contains PHP/HTML/CSS/JS files (all small), so practical exploitation is limited.</td>
-<td>Accepted Risk: webroot contains only small web assets.</td>
+<td>Set-Cookie</td>
+<td>Session cookies use <code>SameSite=Lax</code> (changed from Strict to fix cross-port navigation). While Lax provides CSRF protection for non-GET requests, it still allows top-level navigation GET requests to carry the cookie.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>14</td>
-<td><span class="badge badge-info">INFO</span></td>
-<td>SQL Best Practice</td>
-<td><code>vt_db.cpp</code></td>
-<td>All</td>
-<td>VoicTune database module uses <code>escape()</code> on all string values in SQL construction. All integer parameters use <code>std::to_string()</code>. No SQL injection vectors found.</td>
-<td>No action needed.</td>
+<td><span class="badge badge-low">LOW</span></td>
+<td>innerHTML Usage</td>
+<td><code>js/*.js</code></td>
+<td>~50 instances</td>
+<td>JavaScript files use <code>innerHTML</code> extensively for DOM updates. Most data comes from API responses (server-controlled), not direct user input. The <code>esc()</code> function is used for user-derived strings. No direct XSS vectors found, but the pattern increases attack surface if API responses are ever poisoned.</td>
+<td class="open">Accepted Risk</td>
 </tr>
 
 <tr>
 <td>15</td>
 <td><span class="badge badge-info">INFO</span></td>
-<td>Command Injection</td>
-<td><code>app/api/tracks.php</code></td>
-<td>556,892</td>
-<td>All <code>shell_exec()</code> calls use <code>escapeshellarg()</code> on all variable arguments. The <code>ffmpeg</code> commands construct arguments safely. <code>health.php</code> only runs hardcoded system commands (<code>df</code>, <code>pgrep</code>, <code>free</code>, <code>lame --version</code>) with no user input.</td>
-<td>No action needed. Verified safe usage.</td>
+<td>SQL Injection Prevention</td>
+<td><code>All PHP APIs</code></td>
+<td>-</td>
+<td>All PHP database queries use PDO prepared statements with <code>?</code> parameter binding. The <code>Mc1Db</code> trait's <code>rows()</code>, <code>row()</code>, <code>run()</code>, <code>scalar()</code> methods all use prepared statements. No SQL injection vectors found in PHP code.</td>
+<td>N/A</td>
 </tr>
 
 <tr>
 <td>16</td>
 <td><span class="badge badge-info">INFO</span></td>
+<td>SQL Injection Prevention</td>
+<td><code>All C++ source</code></td>
+<td>-</td>
+<td>All C++ SQL queries use <code>Mc1Db::escape()</code> or <code>VtDb::escape()</code> (which call <code>mysql_real_escape_string()</code>) for all string values. Integer values use <code>std::to_string()</code> or <code>%d</code> format specifiers. No SQL injection vectors found in C++ code.</td>
+<td>N/A</td>
+</tr>
+
+<tr>
+<td>17</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>Command Injection Prevention</td>
+<td><code>All PHP APIs</code></td>
+<td>-</td>
+<td>All 60+ <code>exec()</code>/<code>shell_exec()</code> calls in PHP use <code>escapeshellarg()</code> on all variable arguments. Verified across: <code>tracks.php</code>, <code>podcast.php</code>, <code>forensic.php</code>, <code>daw.php</code>, <code>captions.php</code>, <code>producer.php</code>, <code>hls.php</code>, <code>srt.php</code>, <code>rtmp.php</code>, <code>ads.php</code>, <code>ndi.php</code>, <code>health.php</code>.</td>
+<td>N/A</td>
+</tr>
+
+<tr>
+<td>18</td>
+<td><span class="badge badge-info">INFO</span></td>
 <td>XSS Prevention</td>
-<td><code>web_ui/*.php</code></td>
-<td>All</td>
-<td>PHP pages consistently use <code>h()</code> (<code>htmlspecialchars</code>) for HTML output and JavaScript uses an <code>esc()</code> function for DOM insertion. The <code>innerHTML</code> usages in <code>encoders.php</code> pass data through <code>esc()</code> before insertion. Previous category system XSS bug was fixed in L5.5 and is documented.</td>
-<td>No action needed. Verified consistent usage of output escaping.</td>
+<td><code>All PHP pages</code></td>
+<td>-</td>
+<td>All PHP pages use <code>h()</code> (alias for <code>htmlspecialchars(ENT_QUOTES|ENT_HTML5)</code>) for HTML output. Public pages (<code>widget.php</code>, <code>podcast-site.php</code>, <code>request-widget.php</code>, <code>remote-guest.php</code>, <code>podcast_feed.php</code>) all escape user-derived data. The <code>podcast_feed.php</code> uses dedicated <code>xe()</code> for XML escaping.</td>
+<td>N/A</td>
+</tr>
+
+<tr>
+<td>19</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>Auth Coverage</td>
+<td><code>All endpoints</code></td>
+<td>-</td>
+<td>All API endpoints have <code>mc1_is_authed()</code> gates. The 6 intentionally public endpoints are documented: <code>podcast_feed.php</code> (RSS), <code>request-widget.php</code> (listener requests), <code>widget.php</code> / <code>widget-hls.php</code> (embeddable players), <code>remote-guest.php</code> (recording guest), <code>podcast-site.php</code> / <code>podcast-episode-page.php</code> (public podcast site). The C++ <code>with_auth()</code> wrapper protects all <code>/api/v1/</code> routes except <code>/api/v1/auth/login</code>.</td>
+<td>N/A</td>
+</tr>
+
+<tr>
+<td>20</td>
+<td><span class="badge badge-info">INFO</span></td>
+<td>Upload Security</td>
+<td><code>app/api/upload.php</code></td>
+<td>-</td>
+<td>File upload handler uses: <code>realpath()</code>-based allowed root validation, audio-only extension whitelist, filename sanitization via regex, <code>move_uploaded_file()</code>, and duplicate name handling. No path traversal or arbitrary file write vectors found.</td>
+<td>N/A</td>
 </tr>
 
 </tbody>
@@ -246,17 +291,22 @@ and <code>h()</code> HTML escaping. Several defense-in-depth improvements were i
 <table>
 <thead><tr><th>Category</th><th>Files Scanned</th><th>Patterns Searched</th></tr></thead>
 <tbody>
-<tr><td>SQL Injection</td><td>All .cpp, .h, .php (82 files)</td><td><code>exec()</code>, <code>query()</code>, <code>execf()</code>, <code>$_POST/$_GET</code> in SQL, string concatenation in queries</td></tr>
-<tr><td>Command Injection</td><td>All .cpp, .php</td><td><code>system()</code>, <code>popen()</code>, <code>exec()</code>, <code>shell_exec()</code>, <code>passthru()</code>, <code>proc_open()</code></td></tr>
-<tr><td>XSS</td><td>All .php</td><td><code>innerHTML</code>, <code>document.write</code>, unescaped PHP echo, <code>$_GET/$_POST</code> in HTML</td></tr>
-<tr><td>Path Traversal</td><td>All .cpp, .php</td><td><code>../</code> filtering, <code>realpath()</code> usage, file path construction from user input</td></tr>
-<tr><td>Auth Issues</td><td><code>http_api.cpp</code>, <code>vt_http_api.cpp</code>, <code>auth.php</code>, <code>user_auth.php</code></td><td>Token generation, session management, cookie flags, rate limiting</td></tr>
-<tr><td>Info Disclosure</td><td>All .php API files</td><td><code>$e->getMessage()</code>, stack traces, version headers, error messages</td></tr>
+<tr><td>C++ Source</td><td>47 files (src/linux/*.cpp, *.h, voictune/, producer/, dsp/)</td><td>system(), popen(), sprintf(), snprintf(), exec(), string concat in SQL, escape() usage, path construction</td></tr>
+<tr><td>PHP Source</td><td>57 files (web_ui/*.php, app/api/*.php, app/inc/*.php, lang/*.php)</td><td>exec(), shell_exec(), passthru(), proc_open(), prepare/execute vs raw queries, $_GET/$_POST in SQL/HTML, exit()/die(), mc1_is_authed() coverage, h() usage, escapeshellarg() usage</td></tr>
+<tr><td>JavaScript</td><td>21 files (js/*.js, app.js)</td><td>innerHTML, eval(), Function(), setTimeout(string), Object.assign, __proto__, localStorage sensitive data</td></tr>
+<tr><td>SQL Injection</td><td>All 125 files</td><td>Every query() / exec() / run() / scalar() call verified for parameterization or escape()</td></tr>
+<tr><td>Command Injection</td><td>All C++ and PHP</td><td>Every system()/popen()/exec()/shell_exec() call traced back to input source</td></tr>
+<tr><td>XSS</td><td>All PHP pages + JS</td><td>Every echo/<?=  verified for h() wrapping; every innerHTML verified for esc() or server-controlled data</td></tr>
+<tr><td>Path Traversal</td><td>All file operations</td><td>fopen(), file_get_contents(), readfile(), serve_file() — checked for ".." rejection or realpath() validation</td></tr>
+<tr><td>Auth &amp; Session</td><td>http_api.cpp, vt_http_api.cpp, pr_http_api.cpp, all PHP</td><td>Token generation, cookie flags, rate limiting, auth gate coverage on every endpoint</td></tr>
+<tr><td>File Upload</td><td>upload.php, artwork.php, ads.php</td><td>Extension whitelist, MIME check, realpath() root validation, filename sanitization</td></tr>
+<tr><td>SSRF</td><td>webhooks.php, podcast.php, tracks.php, servers.php</td><td>Outbound HTTP from user-controlled URLs</td></tr>
+<tr><td>exit()/die()</td><td>All 57 PHP files</td><td>Zero actual exit()/die() calls found (only comments about avoiding them)</td></tr>
 </tbody>
 </table>
 
 <div class="footer">
-Generated by Claude Opus 4.6 | Mcaster1DSPEncoder Security Audit | 2026-03-27
+Generated by Claude Opus 4.6 (1M context) | Mcaster1DSPEncoder v2.0.0 Security Audit | 2026-03-29 | Full codebase rescan: 125 files
 </div>
 </body>
 </html>

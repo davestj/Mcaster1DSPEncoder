@@ -111,6 +111,12 @@ class ForensicApi {
             return;
         }
 
+        /* Security: reject path traversal (SAST fix 2026-03-29) */
+        if (strpos($filePath, '..') !== false) {
+            mc1_api_respond(['error' => 'Invalid file path'], 400);
+            return;
+        }
+
         /* SHA256 hash */
         $hash = hash_file('sha256', $filePath);
 
@@ -445,6 +451,12 @@ class ForensicApi {
         $filePath = $input['file_path'] ?? '';
         if (empty($filePath) || !file_exists($filePath)) {
             mc1_api_respond(['error' => 'File not found'], 404);
+            return;
+        }
+
+        /* Security: reject path traversal (SAST fix 2026-03-29) */
+        if (strpos($filePath, '..') !== false) {
+            mc1_api_respond(['error' => 'Invalid file path'], 400);
             return;
         }
 
