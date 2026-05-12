@@ -1,8 +1,9 @@
-# PLANNING.md — Mcaster1DSPEncoder Future Roadmap
+# PLANNING.md — Mcaster1DSPEncoder Web Edition — Future Roadmap
 
-**Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
+**Project:** Mcaster1DSPEncoder Web Edition — Dual-platform broadcast DSP encoder
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-03-29
+**Edition:** Web Edition (current) — browser-based PHP admin UI served via FastCGI. A future Linux Desktop Edition with a native GUI (Qt/GTK) is planned for v3.x.
 
 This document captures all completed and planned phases. Reference it in CLAUDE.md for context.
 
@@ -69,7 +70,11 @@ This document captures all completed and planned phases. Reference it in CLAUDE.
 
 ---
 
-## v2.0.0 — CURRENT RELEASE (2026-03-27)
+## v2.0.1 — CURRENT RELEASE (2026-03-29)
+
+Patch release: Web Edition branding, version tracking across all PHP/JS/C++ components, security fixes (info disclosure remediation, compliance dashboard expansion), SAST finding fixes.
+
+## v2.0.0 (2026-03-27)
 
 All 40+ phases complete. Mcaster1 is a full podcaster/broadcaster/video production studio.
 

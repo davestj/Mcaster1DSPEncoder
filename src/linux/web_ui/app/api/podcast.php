@@ -54,6 +54,7 @@
  */
 
 define('MC1_BOOT', true);
+$API_VERSION = '2.0.1';
 require_once __DIR__ . '/../inc/mc1_config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/traits.db.class.php';
@@ -1479,7 +1480,7 @@ class PodcastApi {
                 "UPDATE publish_queue SET status = 'failed', error_message = ? WHERE id = ?",
                 ['Exception: ' . $e->getMessage(), $qid]
             );
-            return ['ok' => false, 'error' => $e->getMessage()];
+            return ['ok' => false, 'error' => 'Publish operation failed. Check server logs.'];
         }
     }
 

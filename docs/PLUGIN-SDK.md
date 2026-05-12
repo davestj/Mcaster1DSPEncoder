@@ -2,6 +2,8 @@
 
 Third-party developers can create DSP effect plugins that load into the Mcaster1 effects rack at runtime. Plugins are shared libraries (`.so`) that implement a standard C interface.
 
+> **Edition compatibility:** Plugins work with both the Web Edition (current, browser-based admin) and the planned Desktop Edition (native GUI). The plugin C API is edition-agnostic -- it hooks into the C++ DSP pipeline, not the UI layer.
+
 ## Quick Start
 
 1. Include `src/linux/dsp/mc1_plugin_api.h` in your plugin source

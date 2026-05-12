@@ -1,7 +1,8 @@
-# Mcaster1DSPEncoder — GnuPG Binary & Package Signing
+# Mcaster1DSPEncoder Web Edition — GnuPG Binary & Package Signing
 
 **Maintainer:** Dave St. John <davestj@mcaster1.com>
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-03-29
+**Edition:** Web Edition
 
 ---
 
@@ -9,7 +10,7 @@
 
 ### Binary Code Signing
 
-Used for signing compiled binaries (`mcaster1-dsp-encoder-admin`, `mcaster1-dsp-encoder`, `mcaster1-voictune`).
+Used for signing compiled binaries (`mcaster1-dsp-encoder-admin`, `mcaster1-dsp-encoder`, `mcaster1-voictune`, `mcaster1-producer`).
 
 ```
 Key ID:      6C07628DF4D94C20
@@ -90,7 +91,8 @@ The signing script also generates SHA256 checksums:
 ```bash
 sha256sum src/linux/mcaster1-dsp-encoder-admin \
           src/linux/mcaster1-dsp-encoder \
-          src/linux/mcaster1-voictune > checksums-v1.8.0-beta.1.sha256
+          src/linux/mcaster1-voictune \
+          src/linux/mcaster1-producer > checksums-v2.0.1.sha256
 ```
 
 ---

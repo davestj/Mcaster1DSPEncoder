@@ -85,7 +85,7 @@ if ($action === 'list') {
         mc1_api_respond(['ok' => true, 'servers' => $rows]);
     } catch (Exception $e) {
         mc1_log(2, 'servers list failed', json_encode(['err' => $e->getMessage()]));
-        mc1_api_respond(['error' => 'Query failed: ' . $e->getMessage()], 500);
+        mc1_api_respond(['error' => 'Server query failed. Check server logs for details.'], 500);
     }
     return;
 }
@@ -129,7 +129,7 @@ if ($action === 'add') {
         mc1_api_respond(['ok' => true, 'id' => $id]);
     } catch (Exception $e) {
         mc1_log(2, 'servers add failed', json_encode(['err' => $e->getMessage()]));
-        mc1_api_respond(['error' => 'Insert failed: ' . $e->getMessage()], 500);
+        mc1_api_respond(['error' => 'Server insert failed. Check server logs for details.'], 500);
     }
     return;
 }
@@ -179,7 +179,7 @@ if ($action === 'update') {
         mc1_api_respond(['ok' => true]);
     } catch (Exception $e) {
         mc1_log(2, 'servers update failed', json_encode(['id' => $id, 'err' => $e->getMessage()]));
-        mc1_api_respond(['error' => 'Update failed: ' . $e->getMessage()], 500);
+        mc1_api_respond(['error' => 'Server update failed. Check server logs for details.'], 500);
     }
     return;
 }
@@ -204,7 +204,7 @@ if ($action === 'delete') {
         mc1_api_respond(['ok' => true]);
     } catch (Exception $e) {
         mc1_log(2, 'servers delete failed', json_encode(['id' => $id, 'err' => $e->getMessage()]));
-        mc1_api_respond(['error' => 'Delete failed: ' . $e->getMessage()], 500);
+        mc1_api_respond(['error' => 'Server delete failed. Check server logs for details.'], 500);
     }
     return;
 }
@@ -230,7 +230,7 @@ if ($action === 'get_stats') {
         $stmt->execute($par);
         $servers = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     } catch (Exception $e) {
-        mc1_api_respond(['error' => 'Query failed: ' . $e->getMessage()], 500);
+        mc1_api_respond(['error' => 'Stats query failed. Check server logs for details.'], 500);
         return;
     }
 

@@ -1,9 +1,10 @@
-# CLAUDE.md — Mcaster1DSPEncoder Project Memory
+# CLAUDE.md — Mcaster1DSPEncoder Web Edition — Project Memory
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
-**Project:** Mcaster1DSPEncoder — Dual-platform broadcast DSP encoder
+**Project:** Mcaster1DSPEncoder Web Edition — Dual-platform broadcast DSP encoder with browser-based admin UI
 **Repo root:** `/var/www/mcaster1.com/Mcaster1DSPEncoder/`
 **Current branch:** `linux-dev`
+**Edition:** Web Edition (PHP/browser admin UI via FastCGI). A future Linux Desktop Edition (native GUI) is planned.
 
 ---
 For mysql connection work from the command line, we use 
@@ -13,7 +14,11 @@ mysql --defaults-extra-file=~/.my.cnf -e "SHOW DATABASES LIKE %yp%";
 
 **See `PLANNING.md`** at the project root for the full future phase roadmap.
 
-### v2.0.0 — CURRENT RELEASE (2026-03-27)
+### v2.0.1 — CURRENT RELEASE (2026-03-29)
+Patch release: Web Edition branding, version tracking across all components, security fixes
+(info disclosure in error messages, compliance dashboard updates), and SAST finding remediation.
+
+### v2.0.0 (2026-03-27)
 All 40+ phases complete. Full podcaster/broadcaster production studio with quad-binary architecture:
 DSP Producer (video capture, switcher, RTMP streaming), multi-track DAW, forensic audio analysis,
 closed captions (Whisper), monetization (DAI), mode-based navigation, daemon health monitor,

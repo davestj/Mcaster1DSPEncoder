@@ -1,8 +1,9 @@
-# Mcaster1DSPEncoder — Linux Build Reference
+# Mcaster1DSPEncoder Web Edition — Linux Build Reference
 
 **Maintainer:** Dave St. John <davestj@gmail.com>
 **Binary:** `mcaster1-encoder`
-**Version:** v1.4.5 (Phase L5.5 — Standalone Popup Player + Category UX Overhaul)
+**Version:** v2.0.1
+**Edition:** Web Edition (browser-based PHP admin UI)
 **Platform:** Debian 12 / Ubuntu 22.04+ (amd64)
 
 ---

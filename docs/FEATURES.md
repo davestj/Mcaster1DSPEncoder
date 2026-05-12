@@ -1,7 +1,8 @@
-# Mcaster1DSPEncoder — Feature Overview
+# Mcaster1DSPEncoder Web Edition — Feature Overview
 
-**Version:** 2.0.0
-**Last Updated:** 2026-03-27
+**Version:** 2.0.1
+**Last Updated:** 2026-03-29
+**Edition:** Web Edition (browser-based PHP admin UI via FastCGI)
 
 ---
 

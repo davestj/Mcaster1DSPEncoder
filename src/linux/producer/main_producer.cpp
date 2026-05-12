@@ -27,7 +27,7 @@
 #include <string>
 #include <atomic>
 
-#define PR_VERSION "2.0.0"
+#define PR_VERSION "2.0.1"
 #define PR_BANNER  "Mcaster1 Producer v" PR_VERSION " — Heavy Workload Daemon"
 
 static std::atomic<bool> g_shutdown{false};

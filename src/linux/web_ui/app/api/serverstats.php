@@ -233,7 +233,8 @@ if ($action === 'get_history') {
             'data'      => $history,
         ]);
     } catch (Exception $e) {
-        mc1_api_respond(['ok' => false, 'error' => 'History query failed: ' . $e->getMessage()], 500);
+        mc1_log(2, 'serverstats history query failed', json_encode(['err' => $e->getMessage()]));
+        mc1_api_respond(['ok' => false, 'error' => 'History query failed. Check server logs.'], 500);
     }
     return;
 }

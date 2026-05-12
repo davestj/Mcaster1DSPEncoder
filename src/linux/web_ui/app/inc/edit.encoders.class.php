@@ -316,7 +316,8 @@ class EditEncoders
             return ['ok' => true, 'id' => (int)$db->lastInsertId(), 'errors' => []];
 
         } catch (\Throwable $e) {
-            return ['ok' => false, 'id' => 0, 'errors' => [$e->getMessage()]];
+            mc1_log(2, 'edit.encoders save failed', json_encode(['err' => $e->getMessage()]));
+            return ['ok' => false, 'id' => 0, 'errors' => ['Database save failed. Check server logs.']];
         }
     }
 
@@ -333,7 +334,8 @@ class EditEncoders
             self::run('mcaster1_encoder', 'DELETE FROM encoder_configs WHERE id = ?', [$id]);
             return ['ok' => true, 'error' => null];
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => $e->getMessage()];
+            mc1_log(2, 'edit.encoders delete failed', json_encode(['id' => $id, 'err' => $e->getMessage()]));
+            return ['ok' => false, 'error' => 'Database delete failed. Check server logs.'];
         }
     }
 }

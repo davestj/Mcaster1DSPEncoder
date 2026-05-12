@@ -1,5 +1,6 @@
 /**
  * pedal-configs.js -- Config panel generators for pedalboard effect units
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/pedal-configs.js
  * Author:  Dave St. John <davestj@gmail.com>

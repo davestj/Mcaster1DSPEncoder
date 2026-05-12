@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 VoicTune — Canvas 2D Visualization Engine
+ * @version 2.0.1
  * js/voictune-viz.js
  *
  * Oscilloscope, spectrum analyzer, RMS/Peak meters, LUFS gauge, pitch display.

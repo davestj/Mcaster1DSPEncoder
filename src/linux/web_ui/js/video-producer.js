@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 Video Producer Engine
+ * @version 2.0.1
  * js/video-producer.js
  *
  * Manages 6 video source slots (4 cameras, video file, media library),

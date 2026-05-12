@@ -1,5 +1,6 @@
 /**
  * webgl-pedals.js -- WebGL rendering for pedalboard: metallic knobs, cable glow,
+ * @version 2.0.1
  *                    EQ frequency response curve
  *
  * File:    src/linux/web_ui/js/webgl-pedals.js

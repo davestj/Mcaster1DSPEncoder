@@ -116,7 +116,8 @@ class Mc1UserProfile
             return ['ok' => true, 'error' => null];
 
         } catch (Exception $e) {
-            return ['ok' => false, 'error' => 'Database error: ' . $e->getMessage()];
+            mc1_log(2, 'profile change_password failed', json_encode(['err' => $e->getMessage()]));
+            return ['ok' => false, 'error' => 'Password change failed. Check server logs.'];
         }
     }
 

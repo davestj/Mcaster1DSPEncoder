@@ -1,5 +1,6 @@
 /**
  * forensic-analyzer.js — Forensic Audio Analysis Engine
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/forensic-analyzer.js
  * Author:  Dave St. John <davestj@gmail.com>

@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 WebGL Video Rendering Utilities
+ * @version 2.0.1
  * js/webgl-video.js
  *
  * GPU-accelerated video frame rendering: texture upload, fullscreen quad,

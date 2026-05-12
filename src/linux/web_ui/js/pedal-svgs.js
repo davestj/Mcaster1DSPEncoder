@@ -1,5 +1,6 @@
 /**
  * pedal-svgs.js -- SVG generator for broadcast rack-mount pedal faceplates
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/pedal-svgs.js
  * Author:  Dave St. John <davestj@gmail.com>

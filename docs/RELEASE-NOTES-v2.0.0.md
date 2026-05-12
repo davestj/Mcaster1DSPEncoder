@@ -1,8 +1,9 @@
-# Mcaster1DSPEncoder v2.0.0 Release Notes
+# Mcaster1DSPEncoder Web Edition — v2.0.0 Release Notes
 
 **Release Date:** 2026-03-27
 **Status:** Stable Release
 **Branch:** `linux-dev`
+**Edition:** Web Edition (browser-based PHP admin UI)
 **Maintainer:** Dave St. John <davestj@gmail.com>
 
 ---

@@ -1,5 +1,6 @@
 /**
  * mixer-console.js — Mcaster1 Virtual Mixer Console
+ * @version 2.0.1
  * Phase MX-1: Channel strip management, fader/knob interaction, VU meters
  */
 (function() {

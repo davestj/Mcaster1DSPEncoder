@@ -1,5 +1,6 @@
 /**
  * daw-engine.js — Multi-Track DAW Engine for Mcaster1 DSP Producer
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/daw-engine.js
  * Author:  Dave St. John <davestj@gmail.com>

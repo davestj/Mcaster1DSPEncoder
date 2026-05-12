@@ -1,5 +1,6 @@
 /**
  * pedalboard.js -- Core pedalboard engine with drag/drop, snap-to-grid,
+ * @version 2.0.1
  *                  collision detection, interactive bezier cable routing,
  *                  and layout persistence.
  *

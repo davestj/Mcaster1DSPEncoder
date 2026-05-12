@@ -1,5 +1,6 @@
 /**
  * webgl-mixer.js — WebGL Enhancements for Mcaster1 Mixer Console
+ * @version 2.0.1
  * Phase MX-3: 3D Fader Caps, Master Spectrum Bridge, Skin Shaders
  *
  * Provides GPU-rendered metallic fader caps with per-skin materials,

@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 WebGL Dashboard Components
+ * @version 2.0.1
  * js/webgl-dashboard.js
  *
  * GPU-accelerated dashboard visualizations:

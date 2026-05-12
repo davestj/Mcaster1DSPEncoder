@@ -1,4 +1,6 @@
-# Building Mcaster1DSPEncoder on macOS
+# Building Mcaster1DSPEncoder Web Edition on macOS
+
+> **Note:** These instructions build the Web Edition (browser-based admin UI served via FastCGI to php-fpm). The same binaries and build process apply to all editions -- only the UI layer differs.
 
 ## Prerequisites
 

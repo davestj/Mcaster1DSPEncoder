@@ -1,7 +1,8 @@
-# Mcaster1DSPEncoder — Development Roadmap
+# Mcaster1DSPEncoder Web Edition — Development Roadmap
 
-**Version:** 2.0.0
-**Last Updated:** 2026-03-27
+**Version:** 2.0.1
+**Last Updated:** 2026-03-29
+**Edition:** Web Edition (current) — browser-based admin. Desktop Edition (native GUI) planned for v3.x.
 
 ---
 

@@ -104,13 +104,15 @@ class PlaylistManagerPro
         try {
             $pl_id = self::upsert_playlist($name, $type, $desc, $rule_json, count($tracks));
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'DB error creating playlist: ' . $e->getMessage()];
+            mc1_log(2, 'playlist create failed', json_encode(['err' => $e->getMessage()]));
+            return ['ok' => false, 'error' => 'Database error creating playlist. Check server logs.'];
         }
 
         try {
             self::write_to_db($pl_id, $tracks);
         } catch (\Throwable $e) {
-            return ['ok' => false, 'error' => 'DB error writing tracks: ' . $e->getMessage()];
+            mc1_log(2, 'playlist write tracks failed', json_encode(['err' => $e->getMessage()]));
+            return ['ok' => false, 'error' => 'Database error writing tracks. Check server logs.'];
         }
 
         // Step 4 — Write M3U file (non-fatal if it fails)

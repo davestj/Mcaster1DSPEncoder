@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 WebGL Visualization Engine
+ * @version 2.0.1
  * js/webgl-viz.js
  *
  * GPU-accelerated visualizations: spectrogram/waterfall, 3D spectrum bars,

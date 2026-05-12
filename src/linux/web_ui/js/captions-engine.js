@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 Captions Engine
+ * @version 2.0.1
  * js/captions-engine.js
  *
  * Caption management: live transcription via Whisper/Ollama, SRT/VTT

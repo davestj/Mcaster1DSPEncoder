@@ -1,5 +1,6 @@
 /**
  * episode-editor.js — Waveform Editor Engine for Podcast Episodes
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/episode-editor.js
  * Author:  Dave St. John <davestj@gmail.com>

@@ -1,5 +1,6 @@
 /**
  * daw-waveform.js — WebGL Multi-Track Waveform Renderer
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/daw-waveform.js
  * Author:  Dave St. John <davestj@gmail.com>

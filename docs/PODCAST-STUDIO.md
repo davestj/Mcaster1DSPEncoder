@@ -1,7 +1,8 @@
-# Mcaster1 Podcast Studio — Comprehensive Documentation
+# Mcaster1 Podcast Studio (Web Edition) — Comprehensive Documentation
 
-**Version:** 2.0.0
-**Last Updated:** 2026-03-28
+**Version:** 2.0.1
+**Last Updated:** 2026-03-29
+**Edition:** Web Edition (browser-based admin UI)
 **Maintainer:** Dave St. John <davestj@gmail.com>
 
 ---

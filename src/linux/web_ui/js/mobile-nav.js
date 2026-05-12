@@ -1,5 +1,6 @@
 /**
  * mobile-nav.js -- Mobile navigation logic for Mcaster1 DSP Encoder UI
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/mobile-nav.js
  * Author:  Dave St. John <davestj@gmail.com>

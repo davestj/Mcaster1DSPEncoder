@@ -9,11 +9,12 @@
  * Auth gate on every action via mc1_is_authed().
  *
  * @author  Dave St. John <davestj@gmail.com>
- * @version 1.8.2
+ * @version 2.0.1
  * @since   2026-03-27
  */
 
 define('MC1_BOOT', true);
+$API_VERSION = '2.0.1';
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/mc1_config.php';

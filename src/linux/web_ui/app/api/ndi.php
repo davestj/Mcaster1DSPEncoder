@@ -30,6 +30,7 @@
  */
 
 define('MC1_BOOT', true);
+$API_VERSION = '2.0.1';
 require_once __DIR__ . '/../inc/mc1_config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/traits.db.class.php';
@@ -432,7 +433,8 @@ if ($action === 'check_support') {
         );
         $sources = $stmt->fetchAll();
     } catch (\Exception $e) {
-        mc1_api_respond(['error' => 'Database error: ' . $e->getMessage()], 500);
+        mc1_log(2, 'ndi.php DB error', json_encode(['err' => $e->getMessage()]));
+        mc1_api_respond(['error' => 'Database operation failed. Check server logs.'], 500);
         return;
     }
 
@@ -483,7 +485,8 @@ if ($action === 'check_support') {
 
         mc1_api_respond(['ok' => true, 'id' => $id]);
     } catch (\Exception $e) {
-        mc1_api_respond(['error' => 'Database error: ' . $e->getMessage()], 500);
+        mc1_log(2, 'ndi.php DB error', json_encode(['err' => $e->getMessage()]));
+        mc1_api_respond(['error' => 'Database operation failed. Check server logs.'], 500);
         return;
     }
 
@@ -500,7 +503,8 @@ if ($action === 'check_support') {
         $db->prepare('DELETE FROM network_sources WHERE id = ?')->execute([$id]);
         mc1_api_respond(['ok' => true]);
     } catch (\Exception $e) {
-        mc1_api_respond(['error' => 'Database error: ' . $e->getMessage()], 500);
+        mc1_log(2, 'ndi.php DB error', json_encode(['err' => $e->getMessage()]));
+        mc1_api_respond(['error' => 'Database operation failed. Check server logs.'], 500);
         return;
     }
 

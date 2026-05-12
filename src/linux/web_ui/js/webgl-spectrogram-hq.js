@@ -1,5 +1,6 @@
 /**
  * webgl-spectrogram-hq.js — High-Quality WebGL 2.0 Spectrogram Renderer
+ * @version 2.0.1
  *
  * File:    src/linux/web_ui/js/webgl-spectrogram-hq.js
  * Author:  Dave St. John <davestj@gmail.com>

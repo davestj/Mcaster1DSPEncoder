@@ -133,7 +133,7 @@ static void setup_routes(httplib::Server& svr)
         json r;
         r["ok"]         = true;
         r["service"]    = "mcaster1-voictune";
-        r["version"]    = "2.0.0";
+        r["version"]    = "2.0.1";
         r["uptime_sec"] = uptime;
         res.set_content(r.dump(), "application/json");
     });
@@ -236,7 +236,7 @@ static void setup_routes(httplib::Server& svr)
             json r;
             r["ok"]      = true;
             r["service"] = "mcaster1-voictune";
-            r["version"] = "2.0.0";
+            r["version"] = "2.0.1";
             r["audio"]   = {
                 {"input_device_index", g_vtcfg.audio.input_device_index},
                 {"sample_rate", g_vtcfg.audio.sample_rate},

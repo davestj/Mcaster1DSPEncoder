@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 VoicTune — Browser Mic Audio Capture + WebSocket
+ * @version 2.0.1
  * js/voictune-audio.js
  *
  * getUserMedia capture with AudioWorklet -> WebSocket streaming to

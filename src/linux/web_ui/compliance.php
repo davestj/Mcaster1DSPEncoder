@@ -200,7 +200,7 @@ function exportHTML() {
     $card_info = [
         'sast-report.html'           => ['SAST Report', 'Static analysis — SQL injection, XSS, auth bypass, CSRF, secrets, command injection, path traversal', 'fa-magnifying-glass-chart'],
         'dast-report.html'           => ['DAST Report', 'Dynamic analysis — HTTP headers, auth enforcement, injection probes, directory listing', 'fa-globe'],
-        'security-patch-status.html' => ['Patch Status &amp; Fixed Issues', 'All security patches with severity, remediation details, and compliance status', 'fa-list-check'],
+        'security-patch-status.html' => ['Patch Status & Fixed Issues', 'All security patches with severity, remediation details, and compliance status', 'fa-list-check'],
     ];
     foreach ($card_info as $file => [$title, $desc, $icon]) {
         $r = $reports[$file];
@@ -249,6 +249,142 @@ function exportHTML() {
     <div style="margin-top:1rem;display:flex;gap:.75rem;flex-wrap:wrap">
         <span class="comp-btn-sec comp-btn" style="cursor:default"><i class="fas fa-terminal"></i> bash security/testharness/run-all.sh --ci</span>
     </div>
+</div>
+
+<!-- Scan Summary -->
+<div class="comp-section">
+    <h2><i class="fas fa-chart-bar"></i> Scan Summary</h2>
+    <table class="comp-table">
+        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+        <tbody>
+        <tr><td>Last Full Scan</td><td>2026-03-29</td></tr>
+        <tr><td>Files Scanned</td><td>125 (47 C++, 57 PHP, 21 JS)</td></tr>
+        <tr><td>Risk Score</td><td><span class="badge-warn">6.2 / 10 (Medium)</span></td></tr>
+        <tr><td>Critical/High Fixed</td><td><span class="badge-ok">3 / 3</span></td></tr>
+        <tr><td>Medium Open</td><td>3 Accepted Risk, 3 Low Priority</td></tr>
+        <tr><td>Scanner</td><td>Claude Opus 4.6 (1M context) Full Manual Review</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- Plugin SDK Security -->
+<div class="comp-section">
+    <h2><i class="fas fa-plug"></i> Plugin SDK Security</h2>
+    <table class="comp-table">
+        <thead><tr><th>Control</th><th>Status</th><th>Details</th></tr></thead>
+        <tbody>
+        <tr>
+            <td>dlopen() sandboxing</td>
+            <td><span class="badge-warn">Partial</span></td>
+            <td>Plugins load via <code>dlopen()</code> with <code>RTLD_LOCAL</code> to prevent symbol leakage. No seccomp/landlock sandbox yet — plugins run with full process privileges.</td>
+        </tr>
+        <tr>
+            <td>Plugin search paths</td>
+            <td><span class="badge-ok">Restricted</span></td>
+            <td>Only <code>/usr/lib/mcaster1/plugins/</code>, <code>/usr/local/lib/mcaster1/plugins/</code>, and <code>~/.local/lib/mcaster1/plugins/</code> are scanned. No user-supplied paths.</td>
+        </tr>
+        <tr>
+            <td>C API boundary</td>
+            <td><span class="badge-ok">Enforced</span></td>
+            <td>Plugins implement a stable C ABI (<code>mc1_plugin_api.h</code>). No C++ symbols cross the boundary. Buffer sizes validated by host.</td>
+        </tr>
+        <tr>
+            <td>API version check</td>
+            <td><span class="badge-ok">Enforced</span></td>
+            <td>Host checks <code>mc1_plugin_api_version()</code> return matches expected version before loading. Rejects incompatible plugins.</td>
+        </tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- GPG Key Status -->
+<div class="comp-section">
+    <h2><i class="fas fa-key"></i> GPG Key Status</h2>
+    <table class="comp-table">
+        <thead><tr><th>Key</th><th>ID</th><th>Fingerprint</th><th>Expires</th><th>Status</th></tr></thead>
+        <tbody>
+        <tr>
+            <td>Binary Code Signing (Keysmith)</td>
+            <td><code>C0BA696674884DAA</code></td>
+            <td><code>5A0EBFDB1DC3398FDFF031D3C0BA696674884DAA</code></td>
+            <td>2029-03-29</td>
+            <td><span class="badge-ok">Active</span></td>
+        </tr>
+        <tr>
+            <td>Debian Package Signing (Keysmith)</td>
+            <td><code>939D89481C7B121E</code></td>
+            <td><code>71F366868D328CEDB1AB5FBF939D89481C7B121E</code></td>
+            <td>2029-03-29</td>
+            <td><span class="badge-ok">Active</span></td>
+        </tr>
+        <tr>
+            <td>File Encryption (Keysmith)</td>
+            <td><code>B55A5DF003C16559</code></td>
+            <td><code>B6DF0EE034AF077518D58552B55A5DF003C16559</code></td>
+            <td>2029-03-29</td>
+            <td><span class="badge-ok">Active</span></td>
+        </tr>
+        <tr>
+            <td>Email S/MIME (Keysmith)</td>
+            <td><code>B0D0DDDC6BDB25C0</code></td>
+            <td><code>AFAE6D080610C507E97CD9FFB0D0DDDC6BDB25C0</code></td>
+            <td>2029-03-29</td>
+            <td><span class="badge-ok">Active</span></td>
+        </tr>
+        <tr style="opacity:.6">
+            <td>Binary Signing (Legacy)</td>
+            <td><code>6C07628DF4D94C20</code></td>
+            <td><code>35CCA6D31103C4EA354C0FCC6C07628DF4D94C20</code></td>
+            <td>2029-03-26</td>
+            <td><span class="badge-warn">Legacy</span></td>
+        </tr>
+        <tr style="opacity:.6">
+            <td>Package Signing (Legacy)</td>
+            <td><code>A29A09463F34D8D5</code></td>
+            <td><code>6951A77CEF64600EE17FD96AA29A09463F34D8D5</code></td>
+            <td>No expiry</td>
+            <td><span class="badge-warn">Legacy</span></td>
+        </tr>
+        </tbody>
+    </table>
+    <p style="font-size:.78rem;color:var(--text-dim,#94a3b8);margin-top:.75rem">
+        Keysmith keys: <code>docs/keys/keysmith/*.asc</code> &nbsp;|&nbsp; Legacy keys: <code>docs/keys/mcaster1-*.asc</code>
+    </p>
+</div>
+
+<!-- Dependency Audit -->
+<div class="comp-section">
+    <h2><i class="fas fa-cubes"></i> Dependency Audit</h2>
+    <table class="comp-table">
+        <thead><tr><th>Library</th><th>Type</th><th>Version</th><th>License</th></tr></thead>
+        <tbody>
+        <?php
+        $deps = [
+            ['cpp-httplib',     'Vendored (header-only)', 'v0.18',   'MIT'],
+            ['nlohmann/json',   'Vendored (header-only)', 'v3.11',   'MIT'],
+            ['kiss_fft',        'Vendored (header-only)', 'v1.3.1',  'BSD-3-Clause'],
+            ['PortAudio',       'System shared lib',      'v19.7+',  'MIT'],
+            ['LAME (libmp3lame)', 'System shared lib',    'v3.100',  'LGPL-2.0'],
+            ['libvorbis',       'System shared lib',      'v1.3.7+', 'BSD-3-Clause'],
+            ['libopus',         'System shared lib',      'v1.3.1+', 'BSD-3-Clause'],
+            ['libopusenc',      'System shared lib',      'v0.2.1+', 'BSD-3-Clause'],
+            ['FLAC',            'System shared lib',      'v1.4+',   'BSD-3-Clause / GPL-2.0'],
+            ['fdk-aac',         'System shared lib',      'v2.0.2+', 'Fraunhofer FDK AAC'],
+            ['libmpg123',       'System shared lib',      'v1.31+',  'LGPL-2.1'],
+            ['libavformat/libavcodec', 'System shared lib', 'v59+',  'LGPL-2.1+ / GPL-2.0+'],
+            ['TagLib',          'System shared lib',      'v1.13+',  'LGPL-2.1 / MPL-1.1'],
+            ['libsndfile',      'System shared lib',      'v1.2+',   'LGPL-2.1'],
+            ['libyaml',         'System shared lib',      'v0.2+',   'MIT'],
+            ['MariaDB Connector/C', 'System shared lib',  'v3.3+',  'LGPL-2.1'],
+            ['OpenSSL',         'System shared lib',      'v3.0+',   'Apache-2.0'],
+            ['php-fpm',         'System service',         'v8.2',    'PHP License'],
+        ];
+        foreach ($deps as [$name, $type, $ver, $lic]) {
+            echo "<tr><td><code>" . h($name) . "</code></td><td>" . h($type) . "</td><td>" . h($ver) . "</td><td>" . h($lic) . "</td></tr>";
+        }
+        ?>
+        </tbody>
+    </table>
 </div>
 
 <!-- CI Pipelines -->

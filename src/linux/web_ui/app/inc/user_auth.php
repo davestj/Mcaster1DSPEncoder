@@ -127,7 +127,8 @@ function mc1_login(string $username, string $password): array
         return [true, $user];
 
     } catch (Exception $e) {
-        return [false, 'Login error: ' . $e->getMessage()];
+        mc1_log(2, 'user_auth login error', json_encode(['err' => $e->getMessage()]));
+        return [false, 'Login failed. Check server logs.'];
     }
 }
 

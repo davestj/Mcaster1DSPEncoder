@@ -28,6 +28,7 @@
  */
 
 define('MC1_BOOT', true);
+$API_VERSION = '2.0.1';
 require_once __DIR__ . '/../inc/mc1_config.php';
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/traits.db.class.php';

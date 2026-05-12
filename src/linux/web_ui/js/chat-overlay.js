@@ -1,5 +1,6 @@
-/*
+/**
  * Mcaster1 Chat Overlay Engine
+ * @version 2.0.1
  * js/chat-overlay.js
  *
  * Renders live chat messages from Twitch, YouTube, built-in song requests,
