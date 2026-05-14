@@ -108,11 +108,15 @@ if ($action === 'auto_login') {
         $db->prepare("UPDATE users SET last_login=NOW() WHERE id=?")
            ->execute([$user['id']]);
 
+        $is_secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                   || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                   || (strpos($_SERVER['HTTP_HOST'] ?? '', '8344') !== false);
         setcookie(MC1_SESSION_COOKIE, $token, [
             'expires'  => time() + MC1_SESSION_TTL,
             'path'     => '/',
             'httponly' => true,
-            'samesite' => 'Strict',
+            'secure'   => $is_secure,
+            'samesite' => 'Lax',
         ]);
 
         // Fetch role for response

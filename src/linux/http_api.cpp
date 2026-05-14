@@ -567,7 +567,7 @@ static void setup_routes(httplib::Server& svr)
                 }
             }
 
-            res.set_header("Set-Cookie", "mc1session=; Path=/; Max-Age=0");
+            res.set_header("Set-Cookie", "mc1session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
             res.status = 302;
             res.set_header("Location", "/login");
         });

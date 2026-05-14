@@ -37,6 +37,13 @@ function mc1_current_user(): ?array
     if ($cached !== false) return $cached;
 
     $cookie = $_COOKIE[MC1_SESSION_COOKIE] ?? '';
+
+    // If no PHP session cookie but C++ auth is valid, auto-bootstrap server-side
+    if ($cookie === '' && ($_SERVER['HTTP_X_MC1_AUTHENTICATED'] ?? '') === '1') {
+        $cached = _mc1_auto_bootstrap_session();
+        return $cached;
+    }
+
     if ($cookie === '') { $cached = null; return null; }
 
     $hash = mc1_hash_token($cookie);
@@ -63,6 +70,75 @@ function mc1_current_user(): ?array
         $cached = null;
     }
     return $cached;
+}
+
+// ── Server-side auto-bootstrap ────────────────────────────────────────────
+// When C++ auth is valid but no PHP session exists, create one server-side.
+// This replaces the client-side JS auto_login call in footer.php.
+
+function _mc1_auto_bootstrap_session(): ?array
+{
+    $hint = trim($_SERVER['HTTP_X_MC1_USER'] ?? '');
+
+    try {
+        $db = mc1_db('mcaster1_encoder');
+
+        if ($hint !== '') {
+            $st = $db->prepare(
+                "SELECT u.id, u.username, u.display_name, u.email, u.role_id,
+                        r.name AS role_name, r.label AS role_label,
+                        r.can_admin, r.can_encode_control, r.can_playlist,
+                        r.can_metadata, r.can_media_library, r.can_metrics,
+                        r.can_podcast, r.can_schedule
+                 FROM users u
+                 JOIN roles r ON r.id = u.role_id
+                 WHERE u.username = ? AND u.is_active = 1 LIMIT 1"
+            );
+            $st->execute([$hint]);
+        } else {
+            $st = $db->query(
+                "SELECT u.id, u.username, u.display_name, u.email, u.role_id,
+                        r.name AS role_name, r.label AS role_label,
+                        r.can_admin, r.can_encode_control, r.can_playlist,
+                        r.can_metadata, r.can_media_library, r.can_metrics,
+                        r.can_podcast, r.can_schedule
+                 FROM users u
+                 JOIN roles r ON r.id = u.role_id
+                 WHERE u.is_active = 1
+                 ORDER BY r.can_admin DESC, u.id ASC LIMIT 1"
+            );
+        }
+
+        $user = $st->fetch();
+        if (!$user) return null;
+
+        // Create PHP session in MySQL
+        $token = mc1_gen_token();
+        $hash  = mc1_hash_token($token);
+        $ip    = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ua    = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 500);
+
+        $db->prepare(
+            "INSERT INTO user_sessions (user_id, token_hash, ip_address, user_agent, expires_at)
+             VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? SECOND))"
+        )->execute([(int)$user['id'], $hash, $ip, $ua, MC1_SESSION_TTL]);
+
+        // Set the cookie so subsequent requests have it
+        $is_secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                   || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                   || (strpos($_SERVER['HTTP_HOST'] ?? '', '8344') !== false);
+        setcookie(MC1_SESSION_COOKIE, $token, [
+            'expires'  => time() + MC1_SESSION_TTL,
+            'path'     => '/',
+            'httponly' => true,
+            'secure'   => $is_secure,
+            'samesite' => 'Lax',
+        ]);
+
+        return $user;
+    } catch (Exception $e) {
+        return null;
+    }
 }
 
 // ── Login ──────────────────────────────────────────────────────────────────
@@ -117,11 +193,15 @@ function mc1_login(string $username, string $password): array
            ->execute([$user['id']]);
 
         // Set cookie (path=/ so it works across /app/ and /api/)
+        $is_secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                   || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                   || (strpos($_SERVER['HTTP_HOST'] ?? '', '8344') !== false);
         setcookie(MC1_SESSION_COOKIE, $token, [
             'expires'  => time() + $effective_ttl,
             'path'     => '/',
             'httponly' => true,
-            'samesite' => 'Strict',
+            'secure'   => $is_secure,
+            'samesite' => 'Lax',
         ]);
 
         return [true, $user];
@@ -145,7 +225,16 @@ function mc1_logout(): void
                 ->execute([$hash]);
         } catch (Exception $e) {}
     }
-    setcookie(MC1_SESSION_COOKIE, '', ['expires' => 1, 'path' => '/', 'httponly' => true]);
+    $is_secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+               || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+               || (strpos($_SERVER['HTTP_HOST'] ?? '', '8344') !== false);
+    setcookie(MC1_SESSION_COOKIE, '', [
+        'expires'  => 1,
+        'path'     => '/',
+        'httponly'  => true,
+        'secure'   => $is_secure,
+        'samesite' => 'Lax',
+    ]);
 }
 
 // ── Permission helpers ─────────────────────────────────────────────────────

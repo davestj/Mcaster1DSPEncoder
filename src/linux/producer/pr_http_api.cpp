@@ -149,6 +149,30 @@ static json job_to_json(const Job& j) {
 
 static void setup_routes(httplib::Server& svr)
 {
+    /* ── CORS: allow cross-port requests from admin UI (port 8344/8330) ── */
+    svr.set_post_routing_handler([](const httplib::Request& req, httplib::Response& res) {
+        auto origin = req.get_header_value("Origin");
+        if (!origin.empty()) {
+            res.set_header("Access-Control-Allow-Origin", origin);
+            res.set_header("Access-Control-Allow-Credentials", "true");
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token");
+        }
+    });
+
+    /* ── CORS preflight handler ──────────────────────────────────────────── */
+    svr.Options(".*", [](const httplib::Request& req, httplib::Response& res) {
+        auto origin = req.get_header_value("Origin");
+        if (!origin.empty()) {
+            res.set_header("Access-Control-Allow-Origin", origin);
+            res.set_header("Access-Control-Allow-Credentials", "true");
+            res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            res.set_header("Access-Control-Allow-Headers", "Content-Type, X-API-Token");
+            res.set_header("Access-Control-Max-Age", "86400");
+        }
+        res.status = 204;
+    });
+
     /* ── Health check (no auth) ──────────────────────────────────────────── */
     svr.Get("/api/v1/producer/health", [](const httplib::Request&, httplib::Response& res) {
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
@@ -179,7 +203,7 @@ static void setup_routes(httplib::Server& svr)
             r["session_token"] = token;
             r["username"]      = user;
             res.set_header("Set-Cookie",
-                "mc1pr_session=" + token + "; Path=/; HttpOnly; SameSite=Strict; Max-Age=" +
+                "mc1pr_session=" + token + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" +
                 std::to_string(g_prcfg.auth.session_timeout_sec));
             res.set_content(r.dump(), "application/json");
         } else {
@@ -195,7 +219,7 @@ static void setup_routes(httplib::Server& svr)
             std::lock_guard<std::mutex> lk(g_session_mtx);
             g_sessions.erase(token);
         }
-        res.set_header("Set-Cookie", "mc1pr_session=; Path=/; Max-Age=0");
+        res.set_header("Set-Cookie", "mc1pr_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
         res.set_content(R"({"ok":true})", "application/json");
     });
 

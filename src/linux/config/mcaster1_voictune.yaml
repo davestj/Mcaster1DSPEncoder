@@ -16,7 +16,7 @@ voictune:
     username: "djpulse"
     password: "hackme"
     api-token: "vt_key_change_me_in_production"
-    session-timeout-sec: 3600
+    session-timeout-sec: 2592000
 
   audio:
     input-device-index: -1       # -1 = system default mic
