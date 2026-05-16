@@ -454,7 +454,7 @@ Audio: portaudio19-dev, libjack-dev
 Codecs: libmp3lame-dev, libvorbis-dev, libflac-dev, libopus-dev, libopusenc-dev, fdk-aac
 Media: libtag1-dev, libmpg123-dev, libavformat-dev, libswresample-dev
 Server: libssl-dev, libyaml-dev, libmariadb-dev
-PHP: php8.2-fpm
+PHP: php8.4-fpm
 ```
 
 ### Quick Start

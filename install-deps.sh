@@ -97,8 +97,8 @@ apt)
     )
 
     PHP_DEPS=(
-        php8.2-fpm php8.2-mysql
-        php8.2-curl php8.2-mbstring
+        php8.4-fpm php8.4-mysql
+        php8.4-curl php8.4-mbstring
     )
 
     echo "  Updating apt cache..."

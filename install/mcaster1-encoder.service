@@ -24,8 +24,8 @@
 [Unit]
 Description=Mcaster1DSPEncoder — Multi-Codec Streaming Encoder (dev)
 Documentation=https://mcaster1.com
-After=network-online.target mysql.service mariadb.service php8.2-fpm.service mcaster1-dnas.service
-Wants=network-online.target mysql.service php8.2-fpm.service
+After=network-online.target mysql.service mariadb.service php8.4-fpm.service mcaster1-dnas.service
+Wants=network-online.target mysql.service php8.4-fpm.service
 Wants=mcaster1-dnas.service
 
 [Service]

@@ -578,7 +578,7 @@
 │          │              │  StreamClient               │   │
 │          ▼              │   Icecast2/DNAS SOURCE      │   │
 │   php-fpm (mcaster1)    └───────────────────────────┘   │
-│   /run/php/php8.2-fpm-mc1.sock                          │
+│   /run/php/php8.4-fpm-mc1.sock                          │
 │          │                                               │
 │          ▼                                               │
 │   PHP Web UI — dashboard/encoders/media/playlists/       │
@@ -691,8 +691,8 @@ Browser ──► C++ server  ──► [mc1session valid?]
   libflac-dev \
   libtag1-dev \
   libyaml-dev \
-  php8.2-fpm php8.2-mysql \
-  php8.2-curl php8.2-mbstring</pre>
+  php8.4-fpm php8.4-mysql \
+  php8.4-curl php8.4-mbstring</pre>
 
     <h3 style="margin-top:1.5rem" id="run">Build</h3>
     <pre>cd /var/www/mcaster1.com/Mcaster1DSPEncoder
@@ -828,12 +828,12 @@ encoders:
     </div>
 
     <h3>Pool Configuration</h3>
-    <p>File: <code>/etc/php/8.2/fpm/pool.d/mcaster1.conf</code></p>
+    <p>File: <code>/etc/php/8.4/fpm/pool.d/mcaster1.conf</code></p>
 
     <pre>[mcaster1]
 user = mediacast1
 group = www-data
-listen = /run/php/php8.2-fpm-mc1.sock
+listen = /run/php/php8.4-fpm-mc1.sock
 listen.owner = mediacast1
 listen.group = www-data
 pm = dynamic

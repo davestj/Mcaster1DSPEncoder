@@ -586,6 +586,13 @@ typedef struct {
 	                                                /* overrides username/password   */
 	int             session_timeout_secs;           /* cookie session TTL (default 3600) */
 
+	/* PHP-FPM Unix socket path for FastCGI bridge — required, no default.
+	 * The PHP version is part of the filename in Debian's pool socket layout
+	 * (e.g. /run/php/php8.4-fpm-mc1.sock). We refuse to pin a default in
+	 * source so OS-level PHP upgrades don't require recompiling the encoder.
+	 * Set in YAML: http-admin.php-fpm-socket                                */
+	char            php_fpm_socket[256];
+
 	/* Default SSL certificate (applies to every ssl-enabled listener
 	 * unless the listener has its own ssl-cert/ssl-key set)          */
 	char            ssl_cert[1024];

@@ -21,7 +21,10 @@ struct FcgiResponse {
 };
 
 // FastCGI client — speaks the FastCGI/1.0 binary protocol over a Unix domain
-// socket path (e.g. /run/php/php8.2-fpm-mc1.sock).
+// socket path. The path is supplied by gAdminConfig.php_fpm_socket (set in
+// YAML: http-admin.php-fpm-socket), not hardcoded — Debian pool sockets
+// embed the PHP version in the filename and we don't want OS upgrades to
+// require recompiling the encoder.
 class FastCgiClient {
 public:
     explicit FastCgiClient(const std::string& sock_path);

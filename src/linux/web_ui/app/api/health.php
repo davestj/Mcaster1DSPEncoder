@@ -89,7 +89,11 @@ if (!$authed) {
     $out = shell_exec('pgrep -c php-fpm 2>/dev/null');
     $fpm['processes'] = (int)trim($out ?: '0');
     $fpm['active'] = $fpm['processes'] > 0;
-    $fpm['socket_exists'] = file_exists('/run/php/php8.2-fpm-mc1.sock');
+    // Glob the mc1 pool socket without pinning the PHP version — Debian's
+    // pool socket filename embeds the active version (e.g. php8.4-fpm-mc1.sock).
+    $mc1_socks = glob('/run/php/php*-fpm-mc1.sock') ?: [];
+    $fpm['socket_exists'] = !empty($mc1_socks);
+    $fpm['socket_path']   = $mc1_socks[0] ?? null;
     $fpm['php_version'] = phpversion();
     $fpm['memory_limit'] = ini_get('memory_limit');
     mc1_api_respond(['ok' => true, 'fpm' => $fpm]);

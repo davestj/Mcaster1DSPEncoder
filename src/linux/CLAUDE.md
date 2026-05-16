@@ -331,7 +331,7 @@ sudo journalctl -u mcaster1-encoder -f    # Live log tail
 #   build/mcaster1-encoder --config src/linux/config/mcaster1_rock_yolo.yaml
 # As user: mediacast1
 # Ports: 8330 (HTTP), 8344 (HTTPS)
-# Depends on: mysql, php8.2-fpm, mcaster1-dnas
+# Depends on: mysql, php8.4-fpm, mcaster1-dnas
 # Restart: on-failure with 10s delay
 ```
 

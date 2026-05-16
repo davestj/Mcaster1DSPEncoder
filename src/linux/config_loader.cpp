@@ -95,6 +95,10 @@ static void parse_http_admin(yaml_document_t* doc,
     if ((v = map_get(doc, node, "session-timeout")))
         gAdminConfig.session_timeout_secs = atoi(node_scalar(doc, v));
 
+    if ((v = map_get(doc, node, "php-fpm-socket")))
+        strncpy(gAdminConfig.php_fpm_socket, node_scalar(doc, v),
+                sizeof(gAdminConfig.php_fpm_socket) - 1);
+
     if ((v = map_get(doc, node, "log-dir")))
         strncpy(gAdminConfig.log_dir, node_scalar(doc, v),
                 sizeof(gAdminConfig.log_dir) - 1);

@@ -4920,8 +4920,16 @@ void http_api_start(const std::string& webroot)
     g_start_time = time(nullptr);
 
     // Initialise FastCGI client (one instance, thread-safe per-request)
-    if (!g_fcgi)
-        g_fcgi = new FastCgiClient("/run/php/php8.2-fpm-mc1.sock");
+    if (!g_fcgi) {
+        if (gAdminConfig.php_fpm_socket[0] == '\0') {
+            fprintf(stderr,
+                "[http_api] FATAL: php-fpm-socket not configured. "
+                "Add to YAML http-admin section, e.g.:\n"
+                "  php-fpm-socket: /run/php/php8.4-fpm-mc1.sock\n");
+            return;
+        }
+        g_fcgi = new FastCgiClient(gAdminConfig.php_fpm_socket);
+    }
 
     // Initialise Ollama AI client (Phase AI-1) — use config values
     if (!g_ollama && gAdminConfig.ollama.enabled) {

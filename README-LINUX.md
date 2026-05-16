@@ -68,7 +68,7 @@ All Linux source lives under `src/linux/`.
 │         │                                               │
 │         ▼                                               │
 │   php-fpm Unix socket                                   │
-│   /run/php/php8.2-fpm-mc1.sock                         │
+│   /run/php/php8.4-fpm-mc1.sock                         │
 │         │                                               │
 │         ▼                                               │
 │   PHP Web UI  (media, metrics, playlists)               │
@@ -247,7 +247,7 @@ The `FastCgiClient` class implements FastCGI/1.0 over AF_UNIX:
 C++ HTTP server → FastCgiClient → php-fpm → PHP response → C++ server → browser
 ```
 
-- Socket: `/run/php/php8.2-fpm-mc1.sock`
+- Socket: `/run/php/php8.4-fpm-mc1.sock`
 - Pool: `mcaster1` (runs as `mediacast1:www-data`)
 - Auth gate: authenticated requests get `HTTP_X_MC1_AUTHENTICATED: 1`
 - PHP files exposed: `/app/*.php` and `/app/api/*.php`
@@ -273,11 +273,11 @@ POST /api/v1/playlist/load               Load playlist file by path
 #### PHP Pool Configuration
 
 ```ini
-; /etc/php/8.2/fpm/pool.d/mcaster1.conf
+; /etc/php/8.4/fpm/pool.d/mcaster1.conf
 [mcaster1]
 user = mediacast1
 group = www-data
-listen = /run/php/php8.2-fpm-mc1.sock
+listen = /run/php/php8.4-fpm-mc1.sock
 listen.owner = mediacast1
 listen.group = www-data
 ```
@@ -539,13 +539,13 @@ bash src/linux/make_phase4.sh
 
 The encoder uses a dedicated PHP-FPM pool named `mcaster1`.
 
-**Pool file:** `/etc/php/8.2/fpm/pool.d/mcaster1.conf`
+**Pool file:** `/etc/php/8.4/fpm/pool.d/mcaster1.conf`
 
 ```ini
 [mcaster1]
 user = mediacast1
 group = www-data
-listen = /run/php/php8.2-fpm-mc1.sock
+listen = /run/php/php8.4-fpm-mc1.sock
 listen.owner = mediacast1
 listen.group = www-data
 pm = dynamic
@@ -569,7 +569,7 @@ php_admin_value[error_log] = /var/log/mcaster1/php_error.log
 
 The FastCGI socket is:
 ```
-/run/php/php8.2-fpm-mc1.sock
+/run/php/php8.4-fpm-mc1.sock
 ```
 
 The C++ `FastCgiClient` connects to this socket for all PHP page requests.
@@ -577,7 +577,7 @@ The C++ `FastCgiClient` connects to this socket for all PHP page requests.
 ### Reload After Config Changes
 
 ```bash
-sudo systemctl reload php8.2-fpm
+sudo systemctl reload php8.4-fpm
 ```
 
 ### uopz Extension Warning
@@ -722,7 +722,7 @@ sudo apt install \
   libflac-dev \
   libtag1-dev \
   libyaml-dev \
-  php8.2-fpm php8.2-mysql
+  php8.4-fpm php8.4-mysql
 ```
 
 ### Vendor Headers (already in repo)
@@ -1125,7 +1125,7 @@ Defined in `web_ui/app/inc/db.php`. This file is **not committed** — only
 # /etc/systemd/system/mcaster1-encoder.service
 [Unit]
 Description=Mcaster1 DSP Encoder
-After=network.target mysql.service php8.2-fpm.service
+After=network.target mysql.service php8.4-fpm.service
 
 [Service]
 Type=simple
@@ -1168,11 +1168,11 @@ server {
 ### php-fpm Pool
 
 ```bash
-# /etc/php/8.2/fpm/pool.d/mcaster1.conf
+# /etc/php/8.4/fpm/pool.d/mcaster1.conf
 [mcaster1]
 user = mediacast1
 group = www-data
-listen = /run/php/php8.2-fpm-mc1.sock
+listen = /run/php/php8.4-fpm-mc1.sock
 listen.owner = mediacast1
 listen.group = www-data
 listen.mode = 0660
@@ -1184,7 +1184,7 @@ pm.max_spare_servers = 3
 ```
 
 ```bash
-sudo systemctl restart php8.2-fpm
+sudo systemctl restart php8.4-fpm
 ```
 
 ### File Permissions
@@ -1192,7 +1192,7 @@ sudo systemctl restart php8.2-fpm
 ```bash
 sudo chown -R mediacast1:www-data /opt/mcaster1/web_ui
 sudo chmod -R 750 /opt/mcaster1/web_ui
-sudo chmod 660 /run/php/php8.2-fpm-mc1.sock
+sudo chmod 660 /run/php/php8.4-fpm-mc1.sock
 ```
 
 ---
