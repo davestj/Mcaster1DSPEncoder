@@ -280,3 +280,13 @@ installer/*.exe
 *.pfx
 *.p12
 SIGNING-KEYS/
+/src/macos/videotv_encoder_00.yaml
+/src/macos/live_video_studio.yaml
+/src/linux/config/mcaster1_startup.yaml
+/src/linux/config/mcaster1_rock_yolo.yaml
+/src/linux/web_ui/app/inc/mc1_config.php
+
+# Allow .example placeholders to be committed even when real ones are ignored
+!**/*.example.yaml
+!**/*.example.yml
+!**/*.example.php

@@ -4,20 +4,31 @@
 encoder:
   name: "TV/Video 1"
   type: "videotv"
-  slot_id: 5
+  slot_id: 3
   codec: "mp3"
   bitrate_kbps: 128
   quality: 5
   sample_rate: 44100
-  channels: 2
+  channels: 1
   encode_mode: "cbr"
   channel_mode: "joint"
   shuffle: false
   repeat_all: true
   auto_start: false
   auto_reconnect: true
-  per_encoder_device_index: -1
+  input_type: "playlist"
+  device_index: -1
+  per_encoder_device_index: 0
   use_global_metadata: true
+
+per_encoder_metadata:
+  source: "disabled"
+  lock_metadata: false
+  manual_text: ""
+  append_string: ""
+  meta_url: ""
+  meta_file: ""
+  update_interval_sec: 10
 
 dsp:
   eq_enabled: true
@@ -217,12 +228,14 @@ dsp_eq31:
   gain_r_30: 3
 
 stream:
-  protocol: "icecast2"
-  host: "localhost"
-  port: 8000
-  mount: "/stream"
+  protocol: "mcaster1_dnas"
+  host: "dnas.mcaster1.com"
+  port: 9443
+  mount: "/stream.webm"
   username: "source"
-  password: ""
+  password: "your_db_password_here"
+  admin_username: "admin"
+  admin_password: ""
   station_name: ""
   description: ""
   genre: ""

@@ -1,0 +1,58 @@
+# mcaster1_startup.yaml — Minimal startup config for Mcaster1DSPEncoder
+#
+# This file contains ONLY what the process needs at boot:
+#   - HTTP/HTTPS admin server sockets, SSL certs, admin credentials
+#   - MySQL database connection
+#   - Mcaster1DNAS stats proxy target
+#   - Logging settings
+#   - Web UI root path
+#
+# Everything else — encoder slots, playlists, media library, users,
+# statistics — lives in MySQL and is managed through the web UI.
+#
+# Usage:
+#   ./build/mcaster1-encoder --config src/linux/config/mcaster1_startup.yaml
+
+# ── HTTP/HTTPS Admin Server ───────────────────────────────────────────────────
+http-admin:
+  sockets:
+    - bind: "0.0.0.0"
+      port: 8330
+      ssl:  false
+
+    - bind: "0.0.0.0"
+      port: 8344
+      ssl:  true
+      cert: "/etc/ssl/mcaster1.com/mcaster1.com-fullchain.crt"
+      key:  "/etc/ssl/mcaster1.com/mcaster1.key"
+
+  admin-username:  "djpulse"
+  admin-password:  "hackme"
+  api-token:       ""
+  session-timeout: 7200
+
+  webroot:   "/var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/web_ui"
+  log-dir:   "/var/log/mcaster1"
+  log-level: 4
+
+# ── MySQL / MariaDB Database ──────────────────────────────────────────────────
+# We connect once at startup to load encoder slots from encoder_configs,
+# then php-fpm connects separately via its own pool credentials.
+database:
+  host:        "127.0.0.1"
+  port:        3306
+  user:        "your_db_username_here"
+  password:    "your_db_password_here"
+  db_encoder:  "mcaster1_encoder"
+  db_media:    "mcaster1_media"
+  db_metrics:  "mcaster1_metrics"
+
+# ── Mcaster1DNAS Stats Proxy ──────────────────────────────────────────────────
+# Used by GET /api/v1/dnas/stats — proxies the DNAS admin stats endpoint
+# and returns it as JSON to the dashboard.
+dnas:
+  host:      "dnas.mcaster1.com"
+  port:      9443
+  stats_url: "/admin/mcaster1stats"
+  username:  "djpulse"
+  password:  "your_db_password_here"

@@ -1,0 +1,571 @@
+# ============================================================
+# Mcaster1 Rock & Roll Yolo! — Format Benchmark Config
+# Mcaster1DSPEncoder Linux v1.4.0
+# ============================================================
+#
+# Station:   Mcaster1 Rock & Roll Yolo!
+# Codecs:    MP3 · Opus · AAC-LC · HE-AAC v1 · HE-AAC v2 · AAC-ELD · FLAC · Vorbis
+# Target:    dnas.mcaster1.com:9443
+#
+# Slot matrix (12 slots — full codec benchmark):
+#   1  MP3     128k  44.1kHz  Stereo   /yolo-mp3-128     (standard reference)
+#   2  Opus    128k  48kHz    Stereo   /yolo-opus-128    (HQ Opus)
+#   3  AAC-LC  128k  44.1kHz  Stereo   /yolo-aac-lc      (AAC Low Complexity)
+#   4  HE-AAC  64k   44.1kHz  Stereo   /yolo-aac-he      (AAC+ SBR)
+#   5  HE-AACv2 32k  44.1kHz  Stereo   /yolo-aac-hev2    (AAC++ SBR+PS)
+#   6  AAC-ELD 64k   44.1kHz  Stereo   /yolo-aac-eld     (low-latency SBR-ELD)
+#   7  FLAC    lossless 44.1kHz Stereo /yolo-flac        (archival)
+#   8  MP3     64k   44.1kHz  Stereo   /yolo-mp3-64      (low bandwidth)
+#   9  Opus    64k   48kHz    Stereo   /yolo-opus-64     (Opus mid)
+#  10  Opus    32k   48kHz    Stereo   /yolo-opus-32     (Opus ultra-low)
+#  11  MP3     256k  44.1kHz  Stereo   /yolo-mp3-256     (high-quality MP3)
+#  12  Vorbis  128k  44.1kHz  Stereo   /yolo-ogg-128     (Ogg Vorbis reference)
+# ============================================================
+
+# ── HTTP Admin server ─────────────────────────────────────────────────────────
+http-admin:
+  enabled: true
+  sockets:
+    - bind:  "0.0.0.0"
+      port:  8330
+      ssl:   false
+    - bind:  "0.0.0.0"
+      port:  8344
+      ssl:   true
+      cert:  "/etc/ssl/mcaster1.com/mcaster1.com-fullchain.crt"
+      key:   "/etc/ssl/mcaster1.com/mcaster1.key"
+  admin-username: "djpulse"
+  admin-password: "hackme"
+  api-token:      "60d561bb40603e054def56ca4c44812720a6179f6391ee5d2a5b781b50036acf"
+  session-timeout: 2592000
+  webroot: "/var/www/mcaster1.com/Mcaster1DSPEncoder/src/linux/web_ui"
+  log-dir:   "/var/log/mcaster1"
+  log-level: 4
+
+# ── MySQL / MariaDB connection ────────────────────────────────────────────────
+database:
+  host:       "127.0.0.1"
+  port:       3306
+  user:       "your_db_username_here"
+  password:   "your_db_password_here"
+  db_encoder: "mcaster1_encoder"
+  db_media:   "mcaster1_media"
+  db_metrics: "mcaster1_metrics"
+
+# ── DNAS server connection details ────────────────────────────────────────────
+dnas:
+  host:          "dnas.mcaster1.com"
+  port:          9443
+  status_url:    "/status.xsl"
+  stats_url:     "/admin/mcaster1stats"
+  admin_url:     "/admin/stats.xsl"
+  songdata_url:  "/admin/songdata"
+  username:      "djpulse"
+  password:      "your_db_password_here"
+
+# ── Encoder slots ─────────────────────────────────────────────────────────────
+encoders:
+
+  # ── Slot 1 — MP3 128k Standard ─────────────────────────────────────────────
+  - slot:    1
+    name:    "Yolo Rock — MP3 128k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      mp3
+      bitrate:     128
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "classic_rock"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-mp3-128"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — MP3 128k"
+      description:  "Classic & modern rock — MP3 128kbps 44.1kHz stereo"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 2 — Opus 128k High Quality ────────────────────────────────────────
+  - slot:    2
+    name:    "Yolo Rock — Opus 128k HQ"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      opus
+      bitrate:     128
+      sample_rate: 48000
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "classic_rock"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-opus-128"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — Opus 128k HQ"
+      description:  "Rock — Opus 128kbps 48kHz stereo, transparent quality"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 3 — AAC-LC 128k ────────────────────────────────────────────────────
+  - slot:    3
+    name:    "Yolo Rock — AAC-LC 128k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      aac_lc
+      bitrate:     128
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "classic_rock"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-aac-lc"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — AAC-LC 128k"
+      description:  "Rock — AAC Low Complexity 128kbps 44.1kHz stereo (ISO 14496-3)"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 4 — HE-AAC v1 (AAC+) 64k ─────────────────────────────────────────
+  - slot:    4
+    name:    "Yolo Rock — HE-AAC v1 (AAC+) 64k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      aac_he
+      bitrate:     64
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "broadcast"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-aac-he"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — HE-AAC v1 (AAC+) 64k"
+      description:  "Rock — HE-AAC v1 (SBR) 64kbps, transparent quality at half the bits"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 5 — HE-AAC v2 (AAC++) 32k ────────────────────────────────────────
+  - slot:    5
+    name:    "Yolo Rock — HE-AAC v2 (AAC++) 32k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      aac_hev2
+      bitrate:     32
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "broadcast"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   2.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-aac-hev2"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — HE-AAC v2 (AAC++) 32k"
+      description:  "Rock — HE-AAC v2 (SBR+PS) 32kbps ultra-low bandwidth, stereo reconstruction"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 6 — AAC-ELD 64k (Low Delay) ───────────────────────────────────────
+  - slot:    6
+    name:    "Yolo Rock — AAC-ELD 64k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      aac_eld
+      bitrate:     64
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "broadcast"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   2.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-aac-eld"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — AAC-ELD 64k"
+      description:  "Rock — AAC Enhanced Low Delay (SBR-ELD) 64kbps, minimal encoder latency"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 7 — FLAC Lossless ──────────────────────────────────────────────────
+  - slot:    7
+    name:    "Yolo Rock — FLAC Lossless"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      flac
+      bitrate:     0
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   false
+      eq_preset:    "flat"
+      agc_enabled:  false
+      crossfade:
+        enabled:    false
+        duration:   0.0
+    volume: 1.0
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-flac"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — FLAC Lossless"
+      description:  "Rock — FLAC lossless 44.1kHz stereo, archival quality"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: false
+
+  # ── Slot 8 — MP3 64k Low Bandwidth ─────────────────────────────────────────
+  - slot:    8
+    name:    "Yolo Rock — MP3 64k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      mp3
+      bitrate:     64
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "broadcast"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-mp3-64"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — MP3 64k"
+      description:  "Rock — MP3 64kbps low bandwidth stream"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 9 — Opus 64k ───────────────────────────────────────────────────────
+  - slot:    9
+    name:    "Yolo Rock — Opus 64k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      opus
+      bitrate:     64
+      sample_rate: 48000
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "broadcast"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-opus-64"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — Opus 64k"
+      description:  "Rock — Opus 64kbps 48kHz, excellent quality at low bitrate"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 10 — Opus 32k Ultra-Low ────────────────────────────────────────────
+  - slot:    10
+    name:    "Yolo Rock — Opus 32k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      opus
+      bitrate:     32
+      sample_rate: 48000
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "spoken_word"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   2.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-opus-32"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — Opus 32k Ultra-Low"
+      description:  "Rock — Opus 32kbps ultra-low bandwidth, mobile/dial-up"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 11 — MP3 256k High Quality ─────────────────────────────────────────
+  - slot:    11
+    name:    "Yolo Rock — MP3 256k HQ"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      mp3
+      bitrate:     256
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "classic_rock"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-mp3-256"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — MP3 256k HQ"
+      description:  "Rock — MP3 256kbps near-CD quality, audiophile stream"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true
+
+  # ── Slot 12 — Vorbis 128k (Ogg) ─────────────────────────────────────────────
+  - slot:    12
+    name:    "Yolo Rock — Vorbis/Ogg 128k"
+    enabled: true
+    input:
+      type:    playlist
+      path:    "/var/www/mcaster1.com/audio/playlists/lyndenradio-all.m3u"
+      shuffle: true
+      repeat:  true
+    codec:
+      format:      vorbis
+      bitrate:     128
+      sample_rate: 44100
+      channels:    2
+    dsp:
+      eq_enabled:   true
+      eq_preset:    "classic_rock"
+      agc_enabled:  true
+      crossfade:
+        enabled:    true
+        duration:   3.0
+    volume: 0.85
+    archive:
+      enabled: false
+    stream:
+      host:     "dnas.mcaster1.com"
+      port:     9443
+      mount:    "/yolo-ogg-128"
+      username: "source"
+      password: "your_db_password_here"
+      protocol: icecast2
+      station_name: "Mcaster1 Yolo Rock — Ogg Vorbis 128k"
+      description:  "Rock — Ogg Vorbis 128kbps 44.1kHz stereo"
+      genre:        "Rock"
+      url:          "https://mcaster1.com"
+      icy2:
+        twitter:   "@Mcaster1Radio"
+        email:     "studio@mcaster1.com"
+        language:  "en"
+        country:   "US"
+        is_public: true

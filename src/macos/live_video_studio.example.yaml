@@ -1,0 +1,52 @@
+# Mcaster1 Live Video Stream Studio config (auto-saved)
+
+video:
+  codec: 3
+  container: 2
+  resolution: "1280x720"
+  fps: 30
+  bitrate_kbps: 1250
+
+audio:
+  device_index: 0
+  codec: 0
+  bitrate_kbps: 128
+  sample_rate: 44100
+  channels: 2
+
+transition:
+  type: 1
+  duration_ms: 968
+
+media_browser:
+  last_dir: "/Users/dstjohn/Media/GhostClips"
+
+stream_targets:
+  - server_type: "Mcaster1 DNAS"
+    host: "dnas.mcaster1.com"
+    port: 9443
+    mount: "/tvstream.webm"
+    password: "your_db_password_here"
+    stream_key: ""
+    output_dir: ""
+    hls_segment_duration: 6
+    hls_max_segments: 5
+    ssl: true
+    station_name: ""
+    description: ""
+    genre: ""
+    url: ""
+  - server_type: "Mcaster1 DNAS"
+    host: "dnas.mcaster1.com"
+    port: 9443
+    mount: "/stream.webm"
+    password: "your_db_password_here"
+    stream_key: ""
+    output_dir: ""
+    hls_segment_duration: 6
+    hls_max_segments: 5
+    ssl: true
+    station_name: ""
+    description: ""
+    genre: ""
+    url: ""

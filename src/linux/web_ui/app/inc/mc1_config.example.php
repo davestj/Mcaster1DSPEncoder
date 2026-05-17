@@ -39,8 +39,8 @@ define('MC1_ARTWORK_DIR', '/var/www/mcaster1.com/audio/artwork');
 /* ── MySQL / MariaDB connection ───────────────────────────────────────── */
 define('MC1_DB_HOST', '127.0.0.1');
 define('MC1_DB_PORT', 3306);
-define('MC1_DB_USER', 'DUMMY_MARIADB_USER_SET_VIA_VAULT');
-define('MC1_DB_PASS', 'DUMMY_MARIADB_PWD_SET_VIA_VAULT');
+define('MC1_DB_USER', 'your_db_username_here');
+define('MC1_DB_PASS', 'your_db_password_here');
 
 /* ── C++ API connection ───────────────────────────────────────────────── */
 define('MC1_API_HOST',  '127.0.0.1');
